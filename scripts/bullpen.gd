@@ -184,18 +184,13 @@ var _doll_demo: Array = []
 var _home_order := 0
 var _catcher: Doll
 var _umpire: Doll
-var _catch_track := {}        # the pitch the catcher is tracking
-var _catch_chase := {}        # a wild pitch: he goes after it
+var _crew: PlateCrew          # drives the catcher and the umpire
 var _dust: DustPuffs
 var _sound: SoundDirector
 var _audio: AudioManager          # _sound.audio, for the loops that follow the ball
 var _was_in_menu := true
 var _later: Array = []        # things to do after a delay: [{"t": seconds, "fn": Callable}]
 var _bat_props: Array = []    # bats that have been dropped: they fall, bounce and lie there
-var _ump_queue: Array = []    # calls waiting for their moment
-var _ump_goal := Vector3(0.0, 0.0, -2.45)
-const UMP_HOME_Z := -2.45
-const CATCH_READY := Vector3(0.05, 0.80, -0.92)
 var _perf_sum := 0.0
 var _perf_frames := 0
 var _perf_max := 0.0
@@ -332,6 +327,15 @@ func _ready() -> void:
 	add_child(_sound)
 	_audio = _sound.audio
 	_sound.mode = _mode
+	_crew = PlateCrew.new()
+	add_child(_crew)
+	_crew.setup(_catcher, _umpire)
+	_crew.blocked.connect(func(at: Vector3):
+		if _dust:
+			_dust.puff(at, 0.6, 3)
+		_sfx_later(0.1, "ball_hits_gear", at + Vector3(0.0, 0.5, -0.05)))
+	_crew.umpire_voice.connect(func(id: String): _sound.umpire_says(id))
+	_crew.throw_started.connect(func(at: Vector3): _sfx_later(0.42, "throw_whoosh", at))
 	_sound.umpire = _umpire
 	_sound.batter = _batter
 	_sound.tired_source = Callable(self, "_arm_fatigue")
@@ -440,108 +444,6 @@ func _simulate_bottom_half(inning: int) -> Dictionary:
 	var r := HalfInningSim.play(_home.lineup, _home_order, their_pitcher, _away, _game_seed + 9000 + inning * 17)
 	_home_order = int(r.next_index)
 	return {"runs": int(r.runs), "hits": int(r.hits)}
-
-
-# ------------------------------------------------------------------ the catcher and the umpire
-## A pitch has been thrown: the catcher reads where it is going and gets his glove there (or
-## does what he can if it is not catchable).
-func _catcher_begin(pitch: Pitch) -> void:
-	if _catcher == null:
-		return
-	var a := pitch.analysis
-	var reached: bool = a.get("reached", false)
-	var plate: Vector3 = a.get("plate_pos", Vector3(0.0, 0.05, 0.0))
-	var flight: float = float(a.get("time", 0.5)) if reached else 0.45
-	var dirt := (not reached) or plate.y < 0.18
-	var catchable := reached and absf(plate.x) <= 1.05 and plate.y >= 0.10 and plate.y <= 1.9
-	_catch_track = {"t": 0.0, "flight": flight, "catchable": catchable, "dirt": dirt,
-		"target": Vector3(clampf(plate.x, -1.15, 1.15), clampf(plate.y, 0.06, 1.85), MITT_Z + 0.10),
-		"body_x": clampf(plate.x * 0.55, -0.55, 0.55), "blocked": false,
-		"contact_time": float(pitch.bat.get("contact_time", 99.0)) if pitch.bat.get("contact", false) else 99.0}
-	_catch_chase = {}
-	_catcher.locomotion = false
-	_catcher.set_squat(1.0, 0.2)
-	_ump_goal = Vector3(0.0, 0.0, UMP_HOME_Z)
-
-
-func _update_catcher(delta: float) -> void:
-	if _catcher == null:
-		return
-	if not _catch_chase.is_empty():
-		_update_catch_chase(delta)
-		return
-	var base := Vector3(0.0, 0.0, -1.35)
-	if _catch_track.is_empty():
-		# Ready position: glove out in front at the middle of the zone, body square.
-		_catcher.position = _catcher.position.lerp(base, clampf(delta * 6.0, 0.0, 1.0))
-		_catcher.aim_glove(CATCH_READY, 0.85)
-		return
-	var tr := _catch_track
-	tr.t += delta
-	var u := clampf(float(tr.t) / maxf(float(tr.flight), 0.05), 0.0, 1.0)
-	var e := u * u * (3.0 - 2.0 * u)
-	var ready := Vector3(CATCH_READY.x, CATCH_READY.y, CATCH_READY.z)
-	var tgt: Vector3 = ready.lerp(tr.target, e)
-	# He shifts his body toward the pitch.
-	_catcher.position.x = lerpf(0.0, float(tr.body_x), e)
-	var after := float(tr.t) - float(tr.flight)
-	if bool(tr.dirt) and u > 0.6 and not tr.blocked:
-		tr.blocked = true
-		_catcher.play("block", 0.95)             # drop to the knees and smother it
-		_sfx_later(0.1, "ball_hits_gear", _catcher.global_position + Vector3(0.0, 0.5, 0.2))
-		if _dust:
-			_dust.puff(_catcher.position + Vector3(0.0, 0.0, 0.25), 0.6, 3)
-	if after > 0.0 and tr.catchable and not tr.dirt:
-		# The pop: the mitt gives a little as the ball hits it, then settles back to frame it.
-		var k := clampf(after / 0.25, 0.0, 1.0)
-		tgt.z -= 0.11 * sin(k * PI) * (1.0 - 0.5 * k)
-		tgt = tgt.lerp(ready, clampf((after - 0.35) / 0.6, 0.0, 1.0))
-		_catcher.position.x = lerpf(float(tr.body_x), 0.0, clampf((after - 0.35) / 0.6, 0.0, 1.0))
-	elif after > 0.0 and not tr.catchable:
-		tgt = tr.target                           # he got the glove out as far as he could
-	if float(tr.t) >= float(tr.contact_time):
-		_catcher.set_squat(0.35, 0.25)            # a ball was hit: he rises to see it
-		_catcher.release_glove()
-		_catch_track = {}
-		return
-	# The glove in world space, behind the plate where the ball arrives.
-	var world_target := Vector3(tgt.x, tgt.y, tgt.z)
-	_catcher.aim_glove(world_target, 1.0)
-	if after > 1.4:
-		_catch_track = {}
-
-
-## A wild pitch or passed ball: he turns, runs back to the backstop for it, and returns.
-func _catcher_chase() -> void:
-	if _catcher == null:
-		return
-	_catch_chase = {"t": 0.0}
-	_catcher.locomotion = true
-	_catcher.release_glove()
-	_catcher.set_squat(0.0, 0.2)
-
-
-func _update_catch_chase(delta: float) -> void:
-	var c := _catch_chase
-	c.t += delta
-	var t: float = c.t
-	var home := Vector3(0.0, 0.0, -1.35)
-	var wall := Vector3(0.6, 0.0, -6.6)
-	var pos := home
-	if t < 1.3:
-		pos = home.lerp(wall, t / 1.3)                  # run back to it
-	elif t < 1.9:
-		pos = wall                                      # pick it up
-	elif t < 3.4:
-		pos = wall.lerp(home, (t - 1.9) / 1.5)          # and walk it back
-	else:
-		_catch_chase = {}
-		_catcher.locomotion = false
-		_catcher.set_squat(1.0, 0.4)
-		return
-	var face := (wall - home) if t < 1.9 else (home - wall)
-	_catcher.position = pos
-	_catcher.rotation.y = atan2(face.x, face.z) if t < 3.2 else 0.0
 
 
 ## Sound lives in SoundDirector (scripts/sound_director.gd). These are the short names used around the scene.
@@ -653,34 +555,6 @@ func _update_props(delta: float) -> void:
 		b.vel = v
 
 
-## The plate umpire: a call after a short beat.
-func _ump_call(clip: String, delay: float = 0.3, seconds: float = 0.9, voice: String = "?") -> void:
-	if voice == "?":
-		voice = {"ump_strike": "ump_strike", "ump_out": "ump_out", "ump_safe": "ump_safe", "ump_foul": "ump_foul"}.get(clip, "")
-	_ump_queue.append({"t": delay, "clip": clip, "dur": seconds, "voice": voice})
-
-
-func _update_umpire(delta: float) -> void:
-	if _umpire == null:
-		return
-	for i in range(_ump_queue.size() - 1, -1, -1):
-		var q: Dictionary = _ump_queue[i]
-		q.t -= delta
-		if q.t <= 0.0:
-			_umpire.play(String(q.clip), float(q.dur))
-			if String(q.voice) != "":
-				_sfx(String(q.voice), _umpire.global_position + Vector3(0.0, 1.5, 0.0))
-			_ump_queue.remove_at(i)
-	# He gives way to a ball in play and comes back when the next pitch is thrown.
-	var goal := _ump_goal
-	var d := goal - _umpire.position
-	if d.length() > 0.02:
-		_umpire.position += d.normalized() * minf(d.length(), 2.2 * delta)
-		_umpire.rotation.y = atan2(d.x, d.z) if d.length() > 0.3 else 0.0
-	else:
-		_umpire.rotation.y = 0.0
-
-
 # ------------------------------------------------------------------ the running game
 func _runners_on() -> bool:
 	return _game != null and (_game.bases[0] != null or _game.bases[1] != null or _game.bases[2] != null)
@@ -734,7 +608,7 @@ func _resolve_steal(a: Dictionary) -> void:
 	var dur := Vector2(0.0 - glove.x, -1.35 - glove.z).length() / 33.0 + 0.1
 	_spawn_flight(Vector3(0.0, 1.5, -1.2), glove, maxf(t_ball - dur - t_now, 0.05), dur, cover, not res.safe)
 	# He comes up out of the crouch and throws; the arm starts early enough that the ball leaves on time.
-	_later_call(maxf(maxf(t_ball - dur - t_now, 0.05) - 0.42, 0.0), func(): _catcher_pop_throw(glove))
+	_crew.pop_throw_in(maxf(maxf(t_ball - dur - t_now, 0.05) - 0.42, 0.0), glove)
 	_steal["safe"] = res.safe
 	_steal["apply_at"] = t_ball
 	_log("steal_resolve", {"base": base, "safe": res.safe, "delivery": _last_delivery, "flight": a.get("time", 0.0),
@@ -759,16 +633,6 @@ func _finish_steal() -> void:
 const RECEIVE_FOR_STEAL := {1: 6, 2: 5}
 
 
-## Up out of the squat and a quick throw down to the base, then back down for the next pitch.
-func _catcher_pop_throw(glove: Vector3) -> void:
-	if _catcher == null:
-		return
-	_sfx_later(0.42, "throw_whoosh", _catcher.global_position + Vector3(0.0, 1.4, 0.0))
-	_catcher.set_squat(0.0, 0.15)
-	_catcher.throw_to(glove, "overhand", 0.6)
-	_later_call(1.1, func():
-		if _catcher != null and _catch_chase.is_empty():
-			_catcher.set_squat(1.0, 0.4))
 
 
 ## A throw to a base (not a pitch): where it goes, whether it gets him, or a balk.
@@ -1030,7 +894,7 @@ func _build_world() -> void:
 	var navy_c := Color(0.12, 0.17, 0.50)
 	_catcher = Doll.create(self, Vector3(0.0, 0.0, -1.35), navy_c, Color(0.62, 0.64, 0.70), navy_c, true, _doll_style(2), "catcher")
 	_field_nodes[2] = _catcher
-	_umpire = Doll.create(self, Vector3(0.0, 0.0, UMP_HOME_Z), Color(0.20, 0.20, 0.25), Color(0.38, 0.38, 0.43),
+	_umpire = Doll.create(self, Vector3(0.0, 0.0, PlateCrew.UMP_HOME_Z), Color(0.20, 0.20, 0.25), Color(0.38, 0.38, 0.43),
 		Color(0.08, 0.08, 0.10), false, _doll_style(3), "umpire")
 	# The rest of the defense: one draw call each. The pitcher is the player, so he is abstract.
 	var navy := Color(0.12, 0.17, 0.50)
@@ -1287,8 +1151,7 @@ func _process(delta: float) -> void:
 			_sound.update_menu(delta, _menu.model.screen())
 		return       # the game waits while a menu is up
 	_game_time += delta
-	_update_catcher(delta)
-	_update_umpire(delta)
+	_crew.update(delta)
 	_update_props(delta)
 	if _sound != null:
 		_sound.update(delta, _game)
@@ -1859,7 +1722,7 @@ func _launch(from: Vector3, vel: Vector3, spin: Vector3, label: String, flutter_
 			_whiffs += 1
 	else:
 		_batter_takes(pitch)
-	_catcher_begin(pitch)
+	_crew.begin_pitch(pitch.analysis, float(pitch.bat.get("contact_time", 99.0)) if pitch.bat.get("contact", false) else 99.0)
 	pitch.ball = _make_ball()
 	pitch.ball.global_position = from
 	if _audio != null:
@@ -1944,11 +1807,11 @@ func _land(pitch: Pitch) -> void:
 		"ball":
 			_sfx_later(0.4, "ump_ball", _umpire.global_position + Vector3(0.0, 1.5, 0.0), -8.0)
 		"called_strike":
-			_ump_call("ump_strike", 0.3, 0.9, "" if third else "ump_strike")
+			_crew.call_it("ump_strike", 0.3, 0.9, "" if third else "ump_strike")
 		"swinging_strike":
-			_ump_call("ump_strike", 0.35, 0.7, "" if third else "ump_strike")
+			_crew.call_it("ump_strike", 0.35, 0.7, "" if third else "ump_strike")
 		"hit_by_pitch":
-			_ump_call("ump_point", 0.3, 1.0)
+			_crew.call_it("ump_point", 0.3, 1.0)
 	if _runners_on() and _steal.is_empty():
 		_last_report_extra = "Delivery %.2f s with runners on" % _last_delivery
 	_resolve_steal(a)
@@ -2000,9 +1863,9 @@ func _land(pitch: Pitch) -> void:
 		"fatigue": snappedf(_home.player_at(1).fatigue(_game.pitch_count), 0.01) if _home else 0.0,
 		"on_before": bases_before.map(func(x): return x != null)})
 	if ev.get("result", "") == "strikeout":
-		_ump_call("ump_out", 0.55, 1.1, "ump_strike_three")             # strike three is rung up
+		_crew.call_it("ump_out", 0.55, 1.1, "ump_strike_three")             # strike three is rung up
 	if wild_ev.get("result", "") != "":
-		_catcher_chase()
+		_crew.chase()
 	var wild_text := _event_text(wild_ev)
 	_last_report = _format_report(pitch.label, a) + _bat_line(pitch) + ("\n" + wild_text if wild_text != "" else "") \
 		+ "\n" + _event_text(ev)
@@ -2057,7 +1920,7 @@ func _contact(pitch: Pitch) -> void:
 	h.play = pitch.play
 	h.bunt = bool(b.get("bunt", false))
 	if sim.fair or sim.home_run:
-		_ump_goal = Vector3(-1.5 if float(sim.get("spray", 0.0)) > 0.0 else 1.5, 0.0, UMP_HOME_Z + 0.4)
+		_crew.step_aside(float(sim.get("spray", 0.0)))
 	h.play_end = _play_end_time(h.play, (h.points.size() - 1) * h.dt)
 	if pitch.human_chance:
 		h.human_chance = true
@@ -2698,12 +2561,12 @@ func _animate_plan(plan: Dictionary, t: float) -> void:
 		if int(e.base) == 4 and t >= float(e.t) and not plan.get("ump_%s" % e.text, false):
 			if e.text == "OUT":
 				plan["ump_OUT"] = true
-				_ump_call("ump_out", 0.1, 1.0)
+				_crew.call_it("ump_out", 0.1, 1.0)
 			elif e.text == "RUN" or e.text == "SAFE":
 				plan["ump_%s" % e.text] = true
 				if not plan.get("ump_safe_called", false):
 					plan["ump_safe_called"] = true
-					_ump_call("ump_safe", 0.1, 1.0)
+					_crew.call_it("ump_safe", 0.1, 1.0)
 	# Callouts: each event shows once its time has come.
 	var shown := {}
 	var slot := 0
@@ -2971,7 +2834,7 @@ func _begin_pa_exit(ev: Dictionary, bases_before: Array) -> void:
 
 ## The next batter comes from the dugout to the box. Pitching waits until he is there.
 func _begin_walk_on() -> void:
-	_ump_goal = Vector3(0.0, 0.0, UMP_HOME_Z)      # the umpire is back behind the plate for the next batter
+	_crew.return_to_plate()      # the umpire is back behind the plate for the next batter
 	if _game != null and not _game.over:
 		_sfx("pa_now_batting")
 		if randf() < 0.4:
@@ -3099,7 +2962,7 @@ func _announce_play(h: Hit) -> void:
 		return
 	elif play.get("result", "") == "foul":
 		var bases_foul := _game.bases.duplicate()
-		_ump_call("ump_foul", 0.1, 1.0)
+		_crew.call_it("ump_foul", 0.1, 1.0)
 		ev = _game.pitch("foul_bunt" if h.bunt else "foul")
 		text = "Foul bunt" if h.bunt else "Foul ball"
 		if ev.get("pa_over", false):

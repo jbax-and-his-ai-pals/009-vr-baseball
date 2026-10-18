@@ -74,7 +74,7 @@ func _init() -> void:
 	for i in 12:
 		bp._batter_free_at = 1e9               # he takes everything, so every pitch ends at the catcher
 		bp._debug_throw()
-		if not bp._catch_track.is_empty():
+		if not bp._crew._track.is_empty():
 			tracked += 1
 		for k in 90:
 			bp._process(1.0 / 60.0)
