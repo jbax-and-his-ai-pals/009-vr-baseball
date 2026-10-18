@@ -187,12 +187,8 @@ var _umpire: Doll
 var _catch_track := {}        # the pitch the catcher is tracking
 var _catch_chase := {}        # a wild pitch: he goes after it
 var _dust: DustPuffs
-var _audio: AudioManager
-var _audio_tick := 0.0
-var _game_start_said := false
-var _stretch_done := false
-var _last_charge := -999.0
-var _flip_next := false           # the last hit was a home run: the bat is flipped, not just dropped
+var _sound: SoundDirector
+var _audio: AudioManager          # _sound.audio, for the loops that follow the ball
 var _was_in_menu := true
 var _later: Array = []        # things to do after a delay: [{"t": seconds, "fn": Callable}]
 var _bat_props: Array = []    # bats that have been dropped: they fall, bounce and lie there
@@ -332,8 +328,13 @@ func _ready() -> void:
 	_build_world()
 	_setup_xr()
 	_build_menu(want_menu)
-	_audio = AudioManager.new()
-	add_child(_audio)
+	_sound = SoundDirector.new()
+	add_child(_sound)
+	_audio = _sound.audio
+	_sound.mode = _mode
+	_sound.umpire = _umpire
+	_sound.batter = _batter
+	_sound.tired_source = Callable(self, "_arm_fatigue")
 	_audio.apply_volumes(_settings.volumes)
 	_menu.ui_sound.connect(func(id: String): _sfx(id))
 	GameLog.start({"mode": game_mode_name, "activity": lineup_mode, "innings": game_innings, "position": fielding_position,
@@ -543,199 +544,25 @@ func _update_catch_chase(delta: float) -> void:
 	_catcher.rotation.y = atan2(face.x, face.z) if t < 3.2 else 0.0
 
 
-## Play a sound (see AudioManager): from a place in the world, or in the head if `at` is null.
+## Sound lives in SoundDirector (scripts/sound_director.gd). These are the short names used around the scene.
 func _sfx(id: String, at: Variant = null, db: float = 0.0) -> void:
-	if _audio != null:
-		_audio.play(id, at, db)
+	if _sound != null:
+		_sound.sfx(id, at, db)
 
 
 func _sfx_later(seconds: float, id: String, at: Variant = null, db: float = 0.0) -> void:
-	if _audio != null:
-		_audio.play_later(seconds, id, at, db)
+	if _sound != null:
+		_sound.sfx_later(seconds, id, at, db)
 
 
-## A person's footstep: dirt on the infield, grass elsewhere. Quieter the farther he is.
 func _on_footstep(at: Vector3) -> void:
-	var dirt := Vector2(at.x, at.z - 13.0).length() < 24.0
-	_sfx("step_dirt_run" if dirt else "step_grass_run", at + Vector3(0.0, 0.1, 0.0), -9.0)
+	if _sound != null:
+		_sound.footstep(at)
 
 
 func _on_walk_step(at: Vector3) -> void:
-	_sfx("step_walk", at + Vector3(0.0, 0.1, 0.0), -8.0)
-
-
-## Which glove pop a pitch makes, by how fast it arrives.
-func _pop_for(mph: float) -> String:
-	if mph < 55.0:
-		return "glove_pop_soft"
-	return "glove_pop_medium" if mph < 70.0 else "glove_pop_hard"
-
-
-## The pitch gets to the plate: the mitt, the dirt, or the batter.
-func _sfx_pitch_arrives(a: Dictionary, outcome: String, plate: Vector3) -> void:
-	var mitt := Vector3(clampf(plate.x, -1.0, 1.0), clampf(plate.y, 0.1, 1.9), MITT_Z)
-	if not a.get("reached", false) or plate.y < 0.18:
-		_sfx("ball_skid_dirt", Vector3(plate.x, 0.0, 0.3))
-		_sfx_later(0.12, "glove_pop_dirt_block", Vector3(0.0, 0.5, -1.0))
-		return
-	if outcome == "hit_by_pitch":
-		_sfx("ball_hits_batter", Vector3(plate.x, plate.y, 0.0))
-		_sfx_later(0.15, "batter_hurt_grunt", _batter.global_position + Vector3(0.0, 1.5, 0.0))
-		_sfx_later(0.2, "crowd_gasp")
-		return
-	_sfx(_pop_for(float(a.get("plate_mph", 60.0))), mitt)
-	if absf(plate.x) > 1.2 or plate.y > 2.0:
-		_sfx_later(0.15, "ball_hits_backstop", Vector3(plate.x, 1.0, BACKSTOP_Z))
-	elif outcome == "called_strike":
-		var loc := PitchLocation.classify(plate.x, plate.y)
-		if loc.halo:
-			_sfx_later(0.25, "corner_chime")
-
-
-## The bat meets the ball: the crack, by how hard it was hit.
-func _sfx_contact(b: Dictionary, sim: Dictionary, at: Vector3) -> void:
-	if b.kind == "foul tip":
-		_sfx("bat_foul_tip", at)
-		return
-	if b.get("bunt", false):
-		_sfx("bat_bunt_tap", at)
-		return
-	var ev := float(b.ev)
-	_sfx("bat_crack_sweet" if ev >= 92.0 else ("bat_crack_good" if ev >= 75.0 else "bat_crack_weak"), at)
-	if ev < 62.0 and randf() < 0.05:
-		_sfx("bat_break", at, -2.0)                  # a jammed one: the bat splinters
-	_flip_next = bool(sim.home_run)
-	if sim.home_run:
-		_sfx("home_run_crack", at, -3.0)
-	elif float(sim.get("apex", 0.0)) > 14.0 and float(sim.get("distance", 0.0)) > 55.0 and sim.fair:
-		_sfx_later(0.6, "crowd_oooh")
-
-
-## The crowd's answer to what just happened in the game.
-func _crowd_react(ev: Dictionary) -> void:
-	if _audio == null or ev.is_empty():
-		return
-	var result := String(ev.get("result", ""))
-	match result:
-		"home_run":
-			_sfx_later(0.5, "crowd_roar_hr")
-			_sfx_later(0.8, "scoreboard_hr_horn")
-			_sfx_later(1.0, "pa_home_run_call")
-			_sfx_later(1.5, "music_home_run_fanfare", null, -4.0)
-			_sfx_later(2.5, "fireworks", null, -6.0)
-		"triple":
-			_sfx_later(0.4, "crowd_cheer_big")
-		"double":
-			_sfx_later(0.4, "crowd_cheer_medium")
-		"single", "strikeout":
-			_sfx_later(0.4, "crowd_cheer_medium" if result == "strikeout" else "crowd_cheer_small")
-			if result == "strikeout":
-				_sfx_later(0.5, "music_strikeout_sting", null, -6.0)
-		"out", "fielders_choice", "sacrifice":
-			_sfx_later(0.4, "crowd_cheer_small", null, -4.0)
-		"walk":
-			_sfx_later(0.3, "crowd_boo", null, -4.0)
-		"error":
-			_sfx_later(0.4, "crowd_groan")
-		"hit_by_pitch":
-			pass
-	if int(ev.get("runs", 0)) > 0 and result != "home_run":
-		_sfx_later(0.6, "scoreboard_run_chime")
-		_sfx_later(0.5, "crowd_cheer_medium" if int(ev.runs) < 2 else "crowd_cheer_big")
-	if ev.get("half_over", false) and not ev.get("game_over", false):
-		_sfx_later(1.0, "organ_inning_tune" if randf() < 0.4 else "music_inning_change", null, -4.0)
-		_sfx_later(4.5, "pa_now_pitching")
-		if int(ev.get("inning_ended", 0)) == 7 and not _stretch_done:
-			_stretch_done = true
-			_sfx_later(3.0, "seventh_inning_stretch", null, -4.0)      # everybody up
-	if ev.get("game_over", false):
-		var mine: bool = _mode.human_pitcher or not _mode.human_fielders.is_empty()      # you are the home side
-		var won: bool = _game.home_score > _game.runs
-		_sfx_later(0.8, "pa_final_score")
-		_sfx_later(1.5, "crowd_applause_polite")
-		_sfx_later(2.0, "music_loss" if (mine and not won) else "music_victory", null, -4.0)
-
-
-## While a menu is up the game does not run, but its sound still has to behave: the main menu has
-## its own theme and no ballpark; a pause ducks the game's sound and stops anything that was mid-flight.
-func _update_menu_audio(delta: float) -> void:
-	if _audio == null:
-		return
-	_audio.set_paused(true)
-	_audio_tick -= delta
-	if _audio_tick > 0.0:
-		return
-	_audio_tick = 0.5
-	if _menu.model.screen() == "pause":
-		return
-	_audio.set_crowd_on(false)
-	_audio.set_stems(0.0, 0.0)
-	for key in ["wind", "buzz", "dugout", "breath", "clap"]:
-		_audio.loop_off(key)
-	_audio.play_music("music_menu")
-
-
-## The ambience, crowd bed and music follow the game: quiet and sparse early, louder with men on
-## and a close game late, hushed and tense with two strikes in a tight ninth. Menu: the menu theme only.
-func _update_audio(delta: float) -> void:
-	if _audio == null:
-		return
-	_audio_tick -= delta
-	if _audio_tick > 0.0:
-		return
-	_audio_tick = 0.5
-	_audio.set_crowd_on(true)
-	_audio.play_music("music_game_base")
-	# The park around you.
-	_audio.loop_on("wind", "stadium_wind", -20.0)
-	_audio.loop_on("buzz", "light_tower_buzz", -28.0)
-	_audio.loop_on("dugout", "dugout_chatter", -24.0)
-	if _game == null:
-		return
-	# A new game: the ump and the PA open it.
-	if not _game_start_said:
-		_game_start_said = true
-		_sfx("ui_start_game", null, -4.0)
-		_sfx_later(0.8, "pa_welcome")
-		_sfx_later(2.6, "ump_play_ball", _umpire.global_position + Vector3(0.0, 1.5, 0.0))
-	var level := 0.22 + minf(_game.inning, 9) * 0.015
-	var on_scoring := _game.bases[1] != null or _game.bases[2] != null
-	for i in 3:
-		if _game.bases[i] != null:
-			level += 0.1
-	var close: bool = absi(_game.runs - _game.home_score) <= 2
-	var late: bool = _game.inning >= 7
-	if late and close:
-		level += 0.18
-	var tense: bool = late and close and _game.strikes == 2 and _game.outs >= 1
-	_audio.set_crowd(level, tense)
-	_audio.set_stems(1.0 if _runners_on() else 0.0, 1.0 if (late and close) else 0.0)
-	# Clapping along when it is a rally; the organ calls a charge, at most every couple of minutes.
-	var rally: bool = level > 0.65 and on_scoring and _game.outs < 2
-	if rally:
-		_audio.loop_on("clap", "crowd_clap_rhythm", -12.0)
-		if _game_time - _last_charge > 120.0:
-			_last_charge = _game_time
-			_sfx("organ_charge", null, -4.0)
-	else:
-		_audio.loop_off("clap")
-	# A tired arm: your own breathing.
-	if _mode.human_pitcher:
-		var tired := _arm_fatigue()
-		if tired > 0.45:
-			_audio.loop_on("breath", "arm_tired_breath", -26.0 + (tired - 0.45) * 30.0)
-		else:
-			_audio.loop_off("breath")
-	# People in the stands, now and then.
-	if randf() < 0.05:
-		var ang := randf_range(-1.0, 4.1)
-		_sfx("fan_shout", Vector3(cos(ang) * 75.0, 6.0, sin(ang) * 75.0 + 20.0), -8.0)
-	if randf() < 0.02:
-		var ang2 := randf_range(-1.0, 4.1)
-		_sfx("vendor_shout", Vector3(cos(ang2) * 55.0, 5.0, sin(ang2) * 55.0 + 20.0), -8.0)
-	if randf() < 0.012:
-		var ang3 := randf_range(-1.0, 4.1)
-		_sfx("seat_flip_clatter", Vector3(cos(ang3) * 60.0, 5.0, sin(ang3) * 60.0 + 20.0), -10.0)
+	if _sound != null:
+		_sound.walk_step(at)
 
 
 ## He lets it go: a pitch at his body makes him jerk away, one near the zone sometimes
@@ -774,8 +601,8 @@ func _drop_bat() -> void:
 	bat.material_override = MeshMerger.vertex_color_material()
 	add_child(bat)
 	bat.global_transform = xf
-	if _flip_next:
-		_flip_next = false
+	if _sound != null and _sound.flip_next:
+		_sound.flip_next = false
 		_sfx("bat_flip", xf.origin)
 	_bat_props.append({"node": bat, "vel": Vector3(randf_range(-0.6, 0.6), 0.9, randf_range(-0.3, 1.0)),
 		"spin": Vector3(randf_range(-4.0, 4.0), randf_range(-2.0, 2.0), randf_range(-5.0, 5.0)), "t": 0.0, "bounces": 0})
@@ -1456,15 +1283,15 @@ func _on_quality_changed(level: int) -> void:
 func _process(delta: float) -> void:
 	_poll_menu_button()
 	if _menu != null and _menu.is_open():
-		_update_menu_audio(delta)
+		if _sound != null:
+			_sound.update_menu(delta, _menu.model.screen())
 		return       # the game waits while a menu is up
-	if _audio != null:
-		_audio.set_paused(false)
 	_game_time += delta
 	_update_catcher(delta)
 	_update_umpire(delta)
 	_update_props(delta)
-	_update_audio(delta)
+	if _sound != null:
+		_sound.update(delta, _game)
 	_log_frame(delta)
 	if _xr_active and _hand != null and _hand.get_is_active():
 		var flag := _hand.is_button_pressed("by_button")
@@ -1726,8 +1553,8 @@ func _new_game() -> void:
 	_game.allow_extra = true
 	_game.bottom_sim = Callable(self, "_simulate_bottom_half")
 	_home_order = 0
-	_game_start_said = false
-	_stretch_done = false
+	if _sound != null:
+		_sound.new_game()
 	_stats.reset()
 	if _zone_markers:
 		_zone_markers.clear()
@@ -2018,11 +1845,8 @@ func _launch(from: Vector3, vel: Vector3, spin: Vector3, label: String, flutter_
 			_batter.bunt_to(swing_at, swing_in)
 		else:
 			_batter.swing_to(swing_at, swing_in)
-			var swing_mph := float(pitch.analysis.get("plate_mph", 60.0))
-			_sfx_later(maxf(swing_in - 0.12, 0.0), "bat_swing_slow" if swing_mph < 55.0 else ("bat_swing_medium" if swing_mph < 70.0 else "bat_swing_fast"),
-				_batter.global_position + Vector3(0.0, 1.1, 0.0))
-			if randf() < 0.3:
-				_sfx_later(maxf(swing_in - 0.1, 0.0), "batter_swing_grunt", _batter.global_position + Vector3(0.0, 1.5, 0.0), -4.0)
+			if _sound != null:
+				_sound.swing(float(pitch.analysis.get("plate_mph", 60.0)), swing_in)
 		if pitch.bat.contact:
 			var b: Dictionary = pitch.bat
 			pitch.sim = BattedBall.simulate(b.contact_pos, b.vel, b.spin)
@@ -2113,7 +1937,8 @@ func _land(pitch: Pitch) -> void:
 	elif a.get("reached", false) and PitchLocation.hits_batter(plate.x, plate.y, _batter_is_lefty()):
 		outcome = "hit_by_pitch"
 	_mark_pitch(a, outcome)
-	_sfx_pitch_arrives(a, outcome, plate)
+	if _sound != null:
+		_sound.pitch_arrives(a, outcome, plate)
 	var third := _game.strikes >= 2              # this strike is the third: the call is the strikeout's
 	match outcome:
 		"ball":
@@ -2218,7 +2043,8 @@ func _contact(pitch: Pitch) -> void:
 		_in_play += 1
 	_best_ev = maxf(_best_ev, b.ev)
 	_batter.snap_to_contact()
-	_sfx_contact(b, sim, pitch.pos)
+	if _sound != null:
+		_sound.contact(b, sim, pitch.pos)
 	var head := _format_report(pitch.label, a)
 	if "--contact-demo" in OS.get_cmdline_user_args():
 		var gap := _batter.sweet_spot_world().distance_to(pitch.pos)
@@ -3323,7 +3149,8 @@ func _event_text(ev: Dictionary) -> String:
 func _after_event(ev: Dictionary, extra: Dictionary = {}) -> void:
 	if ev.is_empty():
 		return
-	_crowd_react(ev)
+	if _sound != null:
+		_sound.crowd_react(ev, _game)
 	if ev.get("pa_over", false):
 		if _batter_player:
 			_stats.record_result(_batter_player.name, String(ev.get("result", "out")),

@@ -41,7 +41,7 @@ func _init() -> void:
 		"arm_", "corner_", "zone_", "cloth_", "fireworks", "home_run_", "seventh_"]
 	var calls := ["_sfx(", "_sfx_later(", "play_later(", "loop_on(", "play_music(", "ui_sound.emit("]
 	var unknown: Array = []
-	for f in ["res://scripts/bullpen.gd", "res://scripts/game_menu.gd", "res://scripts/audio_manager.gd"]:
+	for f in ["res://scripts/bullpen.gd", "res://scripts/game_menu.gd", "res://scripts/audio_manager.gd", "res://scripts/sound_director.gd"]:
 		for line in _src(f).split("
 "):
 			var is_call := false
@@ -121,19 +121,19 @@ func _init() -> void:
 	await process_frame
 	_check(bm._menu.is_open(), "the scene opens on the main menu")
 	for i in 6:
-		bm._audio_tick = 0.0
+		bm._sound._tick = 0.0
 		bm._process(0.5)
 		bm._audio._process(0.5)
 	_check(bm._audio.music_id() == "music_menu" and bm._audio.paused, "the main menu plays its own theme")
 	_check(bm._audio.bed_gain("crowd_bed_high") == 0.0 and not bm._audio.loop_active("wind"), "...with no crowd and no ballpark ambience")
 	bm._menu.close()
 	for i in 4:
-		bm._audio_tick = 0.0
+		bm._sound._tick = 0.0
 		bm._process(0.5)
 		bm._audio._process(0.5)
 	_check(bm._audio.music_id() == "music_game_base" and not bm._audio.paused, "closing the menu starts the game's music")
 	bm._toggle_pause()
-	bm._audio_tick = 0.0
+	bm._sound._tick = 0.0
 	bm._process(0.5)
 	_check(bm._audio.paused and bm._audio.music_id() == "music_game_base", "a pause keeps the game music, ducked")
 
