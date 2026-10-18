@@ -96,21 +96,21 @@ func _init() -> void:
 	_check(not bp._runner.visible, "the batter-runner figure is put away")
 
 	# A double play 4-6-3: each throw is made by the man who took the last one.
-	var dp = bp.get_script().get_script_constant_map()["Hit"].new()
+	var dp = LiveHit.new()
 	dp.play = {"fielder": 4, "movements": [{"fielder": 4, "from": Vector3(8, 0, 30), "to": Vector3(8, 0, 30), "t0": 0.0, "t1": 1.0, "dive": false}]}
 	dp.plan = {"throws": [
 		{"from": Vector3(8, 0, 30), "to": Vector3(0, 1, 38.8), "t0": 1.0, "t1": 1.6, "base": 2},
 		{"from": Vector3(0, 0, 38.8), "to": Vector3(-19.4, 1, 19.4), "t0": 1.9, "t1": 2.6, "base": 1}]}
-	var chain: Array = bp._build_throws(dp)
+	var chain: Array = bp._director.build_throws(dp)
 	_check(chain.size() == 2 and int(chain[0].by) == 4 and int(chain[0].rec) == 6, "double play: the second baseman throws to the shortstop at second")
 	_check(chain.size() == 2 and int(chain[1].by) == 6 and int(chain[1].rec) == 3, "double play: the shortstop, not the second baseman, throws on to first")
 	# How a fielder takes the ball depends on where it is.
-	_check(bp._catch_clip({"field_pos": Vector3(0, 0.2, 22)}, 6) == "scoop", "a ball on the ground is scooped")
-	_check(bp._catch_clip({"field_pos": Vector3(0, 3.0, 60)}, 8) == "jump", "a ball over his head is a jump catch")
-	_check(bp._catch_clip({"field_pos": Vector3(0, 1.4, 60)}, 8) == "catch", "a ball at chest height is a plain catch")
-	_check(bp._catch_clip({"field_pos": Vector3(13.3, 0.2, 31.2)}, 6) == "backhand", "a ball far to the side is a backhand")
-	_check(bp._is_tag_play({"runners": [{"out": true, "out_base": 4, "forced_out": false}]}, 4), "an out at the plate with no force is a tag")
-	_check(not bp._is_tag_play({"runners": [{"out": true, "out_base": 2, "forced_out": true}]}, 2), "a force out is not a tag")
+	_check(bp._director.catch_clip({"field_pos": Vector3(0, 0.2, 22)}, 6) == "scoop", "a ball on the ground is scooped")
+	_check(bp._director.catch_clip({"field_pos": Vector3(0, 3.0, 60)}, 8) == "jump", "a ball over his head is a jump catch")
+	_check(bp._director.catch_clip({"field_pos": Vector3(0, 1.4, 60)}, 8) == "catch", "a ball at chest height is a plain catch")
+	_check(bp._director.catch_clip({"field_pos": Vector3(13.3, 0.2, 31.2)}, 6) == "backhand", "a ball far to the side is a backhand")
+	_check(bp._director.is_tag_play({"runners": [{"out": true, "out_base": 4, "forced_out": false}]}, 4), "an out at the plate with no force is a tag")
+	_check(not bp._director.is_tag_play({"runners": [{"out": true, "out_base": 2, "forced_out": true}]}, 2), "a force out is not a tag")
 	print("  sounds used: ", bp._audio.counts.keys())
 	_check(bp._audio != null and bp._audio.played > 20, "a whole game makes sounds (%d played)" % (bp._audio.played if bp._audio else -1))
 	print("FAILURES: %d" % _failures)

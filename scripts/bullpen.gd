@@ -7,29 +7,6 @@ extends Node3D
 
 enum ReleaseMode { GRIP_RELEASE, AUTO_PEAK }
 
-class Pitch:
-	var ball: MeshInstance3D
-	var trail_inst: MeshInstance3D
-	var trail_mesh := ImmediateMesh.new()
-	var trail := PackedVector3Array()
-	var pos := Vector3.ZERO
-	var vel := Vector3.ZERO
-	var spin := Vector3.ZERO
-	var flight_time := 0.0
-	var accum := 0.0
-	var steps := 0
-	var landed := false
-	var linger := 0.0
-	var label := ""
-	var analysis := {}
-	var flutter_amp := 0.0
-	var flutter_seed := 0.0
-	var bat := {}            # BatterAI.evaluate() result for this pitch
-	var sim := {}            # BattedBall.simulate() result when the pitch is hit
-	var play := {}           # Defense.resolve() result for it
-	var human_chance := false          # the human fielder owns this ball
-	var play_fallback := {}            # what happens if he does not get it
-
 ## PURE: raw physics from your hand, no help. HAND_ASSIST: ball goes where the hand
 ## pointed (unstable, kept for comparison). FUNNEL: the direction your hand travelled
 ## in the second before release picks the location, but how far you miss the center is
@@ -42,38 +19,6 @@ enum AimMode { PURE, HAND_ASSIST, FUNNEL }
 ## and sinks it (sinker), a stiff wrist kills the spin (knuckleball), a slow throw is a
 ## changeup. See scripts/wrist_model.gd.
 enum SpinMode { RAW, WRIST_MODEL }
-
-## Batted ball in flight: played back along a path simulated at contact.
-class Hit:
-	var ball: MeshInstance3D
-	var trail_inst: MeshInstance3D
-	var trail_mesh := ImmediateMesh.new()
-	var points := PackedVector3Array()
-	var dt := 1.0 / 120.0
-	var t := 0.0
-	var last_idx := 0
-	var summary := {}
-	var report := ""
-	var landing_shown := false
-	var rolling := false         # its roll on the ground is making a sound
-	var done := false
-	var linger := 5.0
-	var marker: MeshInstance3D
-	var label: Label3D
-	var play := {}            # Defense.resolve() result for this ball in play
-	var plan := {}            # Baserunning.plan(): every runner's timeline, throws, events
-	var throws: Array = []    # the ball's journey between fielders (relays included), in order
-	var anim_done := {}       # which throws and catches have had their animation started
-	var bunt := false         # he squared around to bunt
-	var human_chance := false # the human fielder is the one who would make this play
-	var human_state := ""     # "waiting" for the glove, "holding", "gripped", "thrown", "done"
-	var fallback := {}        # the AI's play if the human does not get to it
-	var chance_end := 0.0     # seconds after contact when his chance is over
-	var catch_t := 0.0
-	var catch_pos := Vector3.ZERO
-	var play_end := 0.0       # seconds after contact when the play is over
-	var result_shown := false
-
 
 @export var release_mode: ReleaseMode = ReleaseMode.GRIP_RELEASE
 ## Who controls what. Pitching: you pitch against AI batters and fielders. Spectate: an AI pitcher
@@ -173,7 +118,7 @@ var _tag_index := 0
 var _tag_pressed := false
 var _held := false
 var _held_ball: MeshInstance3D
-var _pitches: Array[Pitch] = []
+var _pitches: Array[LivePitch] = []
 var _ball_mesh: ArrayMesh
 var _trail_mat: StandardMaterial3D
 var _count := 0
@@ -184,6 +129,7 @@ var _doll_demo: Array = []
 var _home_order := 0
 var _catcher: Doll
 var _umpire: Doll
+var _director := PlayDirector.new()   # puts a play on the field: fielders, ball, runners, callouts
 var _crew: PlateCrew          # drives the catcher and the umpire
 var _props: FieldProps        # dust, dropped bats, and calls that wait for their moment
 var _dust: DustPuffs          # _props.dust
@@ -240,7 +186,7 @@ var _perf_log := false
 var _perf_timer := 0.0
 var _heartbeat_timer := 0.0
 var _batter_ai: BatterAI
-var _hits: Array[Hit] = []
+var _hits: Array[LiveHit] = []
 var _profile_pressed := false
 var _mode := GameMode.pitching()
 var _home: Team                    # the defense (and the AI pitcher)
@@ -270,8 +216,7 @@ var _throw_cone := HumanFielding.THROW_CONE_DEG
 var _auto_field := false          # debug: the glove finds the ball and throws to first on its own
 var _field_samples: Array = []    # [time, hand position] while holding a ball to throw
 const FIELD_LOCOMOTION_MIN := 0.15
-const _BASE_STANDS := [Vector3(-18.5, 0.0, 19.0), Vector3(0.0, 0.0, 37.9), Vector3(18.5, 0.0, 19.0)]
-var _play_hit: Hit
+var _play_hit: LiveHit
 var _outs := 0
 var _hit_count := 0
 var _errors := 0
@@ -286,6 +231,7 @@ var _best_ev := 0.0
 
 
 func _ready() -> void:
+	_director.leads = _leads          # the scene asks where a runner stands before the world is built
 	_demo = "--demo" in OS.get_cmdline_user_args()
 	_settings = Settings.new() if "--no-settings" in OS.get_cmdline_user_args() else Settings.load_from()
 	apply_settings(_settings)
@@ -340,6 +286,20 @@ func _ready() -> void:
 		if _dust:
 			_dust.puff(at, 0.6, 3)
 		_sfx_later(0.1, "ball_hits_gear", at + Vector3(0.0, 0.5, -0.05)))
+	_director.defense = _defense
+	_director.field_nodes = _field_nodes
+	_director.runner = _runner
+	_director.base_runners = _base_runners
+	_director.leavers = _leavers
+	_director.play_labels = _play_labels
+	_director.leads = _leads
+	_director.presenter = _presenter
+	_director.crew = _crew
+	_director.props = _props
+	_director.sound = _sound
+	_director.human_num = Callable(self, "_human_num")
+	_director.refresh_base_runners = Callable(self, "_refresh_base_runners")
+	_director.batter_hidden.connect(_on_batter_hidden)
 	_crew.umpire_voice.connect(func(id: String): _sound.umpire_says(id))
 	_crew.throw_started.connect(func(at: Vector3): _sfx_later(0.42, "throw_whoosh", at))
 	_sound.umpire = _umpire
@@ -477,7 +437,7 @@ func _on_walk_step(at: Vector3) -> void:
 
 ## He lets it go: a pitch at his body makes him jerk away, one near the zone sometimes
 ## draws a hitch of the bat (a check swing).
-func _batter_takes(pitch: Pitch) -> void:
+func _batter_takes(pitch: LivePitch) -> void:
 	var what := _presenter.take(pitch.analysis, bool(pitch.bat.get("busy", false)), _batter_is_lefty(), _fx_rng.randf())
 	if what == "check":
 		_sfx_later(float(pitch.analysis.get("time", 0.5)) * 0.5, "bat_swing_slow", _batter.global_position + Vector3(0.0, 1.1, 0.0), -6.0)
@@ -598,7 +558,7 @@ func _do_pickoff(base: int, from: Vector3, vel: Vector3, err: float) -> void:
 		"speed": vel.length(), "chance": snappedf(chance, 0.001), "out": out})
 	if _aux_play.is_empty():
 		var bag := Baserunning.BASE_POS[base] as Vector3
-		var plan := Baserunning.plan_dive_back(base, runner, _stand_for(base), _BASE_STANDS[base - 1], dur + 0.25, out)
+		var plan := Baserunning.plan_dive_back(base, runner, _director.stand_for(base), PlayDirector.BASE_STANDS[base - 1], dur + 0.25, out)
 		_aux_play = {"plan": plan, "t": 0.0}
 	_leads[base - 1] = StealModel.lead_after_throw()
 	if out:
@@ -1523,7 +1483,7 @@ func _funnel_target(from: Vector3, release_t: float) -> Dictionary:
 
 
 ## One JSON line per throw: what the arm did, what the assist did, where it went.
-func _log_throw(pitch: Pitch, from: Vector3, release_t: float, latency: float, est: Dictionary, scaled: Vector3, spin: Vector3, funnel: Dictionary, shape: Dictionary) -> void:
+func _log_throw(pitch: LivePitch, from: Vector3, release_t: float, latency: float, est: Dictionary, scaled: Vector3, spin: Vector3, funnel: Dictionary, shape: Dictionary) -> void:
 	var raw: Vector3 = est.velocity
 	var series := []
 	for back_ms in [0, 20, 40, 60, 80, 120, 160]:
@@ -1620,8 +1580,8 @@ func _log_throw(pitch: Pitch, from: Vector3, release_t: float, latency: float, e
 	_logger.record(entry)
 
 
-func _launch(from: Vector3, vel: Vector3, spin: Vector3, label: String, flutter_amp: float = 0.0, flutter_seed: float = 0.0) -> Pitch:
-	var pitch := Pitch.new()
+func _launch(from: Vector3, vel: Vector3, spin: Vector3, label: String, flutter_amp: float = 0.0, flutter_seed: float = 0.0) -> LivePitch:
+	var pitch := LivePitch.new()
 	pitch.pos = from
 	pitch.vel = vel
 	pitch.spin = spin
@@ -1679,12 +1639,12 @@ func _launch(from: Vector3, vel: Vector3, spin: Vector3, label: String, flutter_
 	return pitch
 
 
-func _free_pitch(pitch: Pitch) -> void:
+func _free_pitch(pitch: LivePitch) -> void:
 	pitch.ball.queue_free()
 	pitch.trail_inst.queue_free()
 
 
-func _update_flight(pitch: Pitch, delta: float) -> void:
+func _update_flight(pitch: LivePitch, delta: float) -> void:
 	pitch.accum += delta
 	var changed := false
 	while pitch.accum >= PitchPhysics.SIM_DT and not pitch.landed:
@@ -1721,7 +1681,7 @@ func _update_flight(pitch: Pitch, delta: float) -> void:
 		_rebuild_trail(pitch)
 
 
-func _land(pitch: Pitch) -> void:
+func _land(pitch: LivePitch) -> void:
 	if _audio != null:
 		_audio.loop_off("whiz")
 	pitch.landed = true
@@ -1815,7 +1775,7 @@ func _land(pitch: Pitch) -> void:
 	print(_last_report.replace("\n", " | "))
 
 
-func _bat_line(pitch: Pitch) -> String:
+func _bat_line(pitch: LivePitch) -> String:
 	var b: Dictionary = pitch.bat
 	if b.get("swing", false):
 		return "\nBatter: swing and miss  (%s)" % _batter_ai.profile.name
@@ -1825,7 +1785,7 @@ func _bat_line(pitch: Pitch) -> String:
 
 
 ## The bat meets the ball: end the pitch's flight and send a batted ball out.
-func _contact(pitch: Pitch) -> void:
+func _contact(pitch: LivePitch) -> void:
 	if _audio != null:
 		_audio.loop_off("whiz")
 	pitch.landed = true
@@ -1853,7 +1813,7 @@ func _contact(pitch: Pitch) -> void:
 	if "--contact-demo" in OS.get_cmdline_user_args():
 		var gap := _batter.sweet_spot_world().distance_to(pitch.pos)
 		print("CONTACT CHECK: bat sweet spot is %.1f cm from the ball at contact" % (gap * 100.0))
-	var h := Hit.new()
+	var h := LiveHit.new()
 	h.summary = sim
 	h.points = sim.points
 	h.dt = sim.dt
@@ -1862,7 +1822,7 @@ func _contact(pitch: Pitch) -> void:
 	h.bunt = bool(b.get("bunt", false))
 	if sim.fair or sim.home_run:
 		_crew.step_aside(float(sim.get("spray", 0.0)))
-	h.play_end = _play_end_time(h.play, (h.points.size() - 1) * h.dt)
+	h.play_end = _director.play_end_time(h.play, (h.points.size() - 1) * h.dt)
 	if pitch.human_chance:
 		h.human_chance = true
 		h.fallback = pitch.play_fallback
@@ -1889,10 +1849,11 @@ func _contact(pitch: Pitch) -> void:
 				h.play.movements = (h.play.movements as Array).duplicate()
 				h.play.movements.append({"fielder": cv.fielder, "from": cf.home, "to": cv.to,
 					"t0": 0.3, "t1": maxf(float(cv.t) - 0.1, 0.8), "dive": false})
-		h.throws = _build_throws(h)
+		h.throws = _director.build_throws(h)
 		# Any play with runners (a caught foul ball too) takes the batter out of the box.
 		_batter_ready = false
-	_start_play(h)
+	_play_hit = h
+	_director.start_play(h)
 	h.ball = _make_ball()
 	h.ball.global_position = pitch.pos
 	if _audio != null and sim.fair and float(sim.get("apex", 9.0)) < 2.5 and not sim.home_run:
@@ -1977,7 +1938,7 @@ Rolls %.0f m (%.0f ft) | %d bounces" % [
 		outcome, where, sim.ev_mph, sim.launch, sim.spray, sim.distance, feet, sim.apex, sim.hang_time]
 
 
-func _update_hit(h: Hit, delta: float) -> void:
+func _update_hit(h: LiveHit, delta: float) -> void:
 	if h.done:
 		h.linger -= delta
 		return
@@ -2001,7 +1962,7 @@ func _update_hit(h: Hit, delta: float) -> void:
 		h.ball.global_position = h.points[n - 1]
 	else:
 		idx = clampi(int(minf(field_t, path_end) / h.dt), 0, n - 1)
-		h.ball.global_position = _ball_with_fielder(h)
+		h.ball.global_position = _director.ball_with_fielder(h)
 
 	if h.human_state in ["holding", "gripped"]:
 		h.ball.global_position = _held_by_human(h)
@@ -2031,521 +1992,13 @@ func _update_hit(h: Hit, delta: float) -> void:
 		_show_landing(h)
 
 	if h == _play_hit:
-		_update_play(h)
+		_director.update_play(h)
 	if not h.result_shown and h.t >= h.play_end:
 		h.result_shown = true
 		_announce_play(h)
-	if h.t >= maxf(maxf(h.play_end, path_end), _plan_anim_end(h.plan)):
+	if h.t >= maxf(maxf(h.play_end, path_end), _director.plan_anim_end(h.plan)):
 		h.done = true
 		h.ball.global_position = h.ball.global_position
-
-
-## Time (after contact) at which everything in the play has happened.
-func _play_end_time(play: Dictionary, path_end: float) -> float:
-	var end := path_end
-	if play.is_empty():
-		return end
-	if int(play.get("fielder", 0)) != 0 and play.get("result", "") not in ["home_run", "foul"]:
-		# Once a fielder has it the play is decided: do not wait for the ball to stop rolling.
-		end = float(play.field_time) + 0.5
-	if play.has("throw"):
-		end = maxf(end, float(play.throw.t1) + 0.5)
-	var times: Array = play.get("run_times", Defense.RUNNER_TIMES)
-	var bases := int(play.get("bases", 0))
-	if play.result == "home_run":
-		end = maxf(end, float(times[3]) * 0.8)
-	elif bases >= 1:
-		end = maxf(end, float(times[mini(bases, 4) - 1]) + 0.5)
-	elif play.get("runner_out_at", 0) == 1:
-		end = maxf(end, float(times[0]) + 0.5)
-	return end
-
-
-func _ball_with_fielder(h: Hit) -> Vector3:
-	var play := h.play
-	var catch_p: Vector3 = play.field_pos
-	var field_t: float = float(play.get("field_time", 0.0))
-	# The throws in order (a double play or a relay is several); otherwise the one the defense planned.
-	var throws: Array = h.throws
-	if throws.is_empty():
-		throws = h.plan.get("throws", [])
-	if throws.is_empty() and play.has("throw"):
-		throws = [play.throw]
-	var release_t := field_t + 0.4
-	if not throws.is_empty():
-		release_t = maxf(float(throws[0].t0), field_t + 0.05)
-	# In the hands: carried up from where it was caught (a grounder is in the dirt) to the
-	# throwing hand, not teleported to chest height.
-	var hand := Vector3(catch_p.x, 1.75, catch_p.z)
-	var start := Vector3(catch_p.x, clampf(catch_p.y, 0.1, 2.4), catch_p.z)
-	var u0 := clampf((h.t - field_t) / maxf(release_t - field_t, 0.05), 0.0, 1.0)
-	var pos := start.lerp(hand, u0 * u0 * (3.0 - 2.0 * u0))
-	for th in throws:
-		var t0: float = th.t0
-		var t1: float = maxf(th.t1, t0 + 0.05)
-		if h.t < t0:
-			break
-		var u := clampf((h.t - t0) / (t1 - t0), 0.0, 1.0)
-		var from: Vector3 = th.from
-		var to: Vector3 = th.to
-		var d := Vector2(from.x - to.x, from.z - to.z).length()
-		# A throw is a lofted arc: higher the farther it goes, flat when it is short.
-		var arc := clampf(0.07 * d, 0.2, 5.0) * 4.0 * u * (1.0 - u)
-		pos = from.lerp(to, u) + Vector3(0.0, arc, 0.0)
-		# It leaves the thrower's hand and ends in the receiver's glove, where it stays.
-		var by = _field_nodes.get(int(th.get("by", 0)))
-		if by is Doll:
-			pos = pos.lerp((by as Doll).hand_world(), 1.0 - smoothstep(0.0, 0.12, u))
-		var rec = _field_nodes.get(int(th.get("rec", 0)))
-		if rec is Doll:
-			pos = pos.lerp((rec as Doll).glove_world(), smoothstep(0.75, 0.97, u))
-	return pos
-
-
-## Who can take a throw at `base`, best first (the usual man, then whoever backs him up).
-func _receiver_candidates(base: int, thrower: int, from: Vector3) -> Array:
-	match base:
-		1:
-			return [3, 4, 1]
-		2:
-			if thrower == 6:
-				return [4]
-			if thrower == 4:
-				return [6]
-			return [6, 4] if from.x >= 0.0 else [4, 6]
-		3:
-			return [5, 6]
-		_:
-			return [2, 1]
-
-
-## Who takes a throw at `base`, given who is throwing and from where.
-func _receiver_for(base: int, thrower: int, from: Vector3) -> int:
-	return int(_receiver_candidates(base, thrower, from)[0])
-
-
-## Turn the planned throws (to a base position) into throws between players: each goes to the
-## glove of the man covering that base, long ones through a cutoff man, with that man moving
-## into place. Adds the receivers' and cutoff men's movements to the play.
-func _build_throws(h: Hit) -> Array:
-	var raw: Array = h.plan.get("throws", [])
-	if raw.is_empty() and h.play.has("throw"):
-		raw = [h.play.throw]
-	if raw.is_empty():
-		return []
-	var out: Array = []
-	var moves: Array = (h.play.get("movements", []) as Array).duplicate()
-	var has_move := {}
-	for m in moves:
-		has_move[int(m.fielder)] = true
-	var thrower := int(h.play.get("fielder", 0))
-	for th in raw:
-		var base := int(th.get("base", 1))
-		var spot: Vector3 = Baserunning.RECEIVE_SPOT[clampi(base, 1, 4)]
-		var glove := spot + Vector3(0.0, 1.15, 0.0)
-		var from_p: Vector3 = th.from
-		var from := Vector3(from_p.x, 1.75, from_p.z)
-		var t0: float = th.t0
-		var t1: float = maxf(th.t1, t0 + 0.2)
-		var dist := Vector2(from.x - glove.x, from.z - glove.z).length()
-		# The man who took the last throw makes the next one (the pivot man at second in a double
-		# play), and whoever covers a bag must be free to do it: not the thrower, not a man who is
-		# already running elsewhere to make the play.
-		var receiver := thrower
-		for c in _receiver_candidates(base, thrower, from_p):
-			if c != thrower and not has_move.has(c) and _field_nodes.get(c) != null:
-				receiver = c
-				break
-		if dist > 62.0 and thrower != 0:
-			# From the deep outfield: a cutoff man stands in line, about a third of the way in.
-			var dir := Vector2(from.x - spot.x, from.z - spot.z).normalized()
-			var rd := minf(30.0, dist * 0.4)
-			var rp := Vector3(spot.x + dir.x * rd, 0.0, spot.z + dir.y * rd)
-			var relay := 6 if rp.x >= 0.0 else 4
-			if relay == receiver:
-				relay = 4 if relay == 6 else 6
-			var tm := t0 + (t1 - t0) * 0.62
-			out.append({"from": from, "to": rp + Vector3(0.0, 1.15, 0.0), "t0": t0, "t1": tm, "base": base,
-				"by": thrower, "rec": relay})
-			out.append({"from": rp + Vector3(0.0, 1.75, 0.0), "to": glove, "t0": tm + 0.22, "t1": maxf(t1, tm + 0.7),
-				"base": base, "by": relay, "rec": receiver})
-			if not has_move.has(relay):
-				var rf := _defense.fielder_by_num(relay)
-				moves.append({"fielder": relay, "from": rf.home, "to": rp, "t0": 0.2, "t1": maxf(tm - 0.25, 1.0), "dive": false})
-				has_move[relay] = true
-		else:
-			out.append({"from": from, "to": glove, "t0": t0, "t1": t1, "base": base, "by": thrower, "rec": receiver})
-		if receiver != thrower and not has_move.has(receiver):
-			var rv := _defense.fielder_by_num(receiver)
-			if not rv.is_empty():
-				moves.append({"fielder": receiver, "from": rv.home, "to": spot, "t0": 0.2,
-					"t1": maxf(t0 - 0.2, 0.9), "dive": false})
-				has_move[receiver] = true
-		thrower = receiver
-	h.play.movements = moves
-	return out
-
-
-func _start_play(h: Hit) -> void:
-	_reset_fielders()
-	_play_hit = h
-	_runner.position = Vector3(0.98, 0.0, 0.0)
-	_runner.rotation.y = atan2(Defense.FIRST.x, Defense.FIRST.z)
-	_runner.visible = false
-	for lab in _play_labels:
-		lab.visible = false
-	# The men on base are already in place: they run when the plan says so.
-	_refresh_base_runners()
-
-
-func _reset_fielders() -> void:
-	for f in _defense.fielders:
-		var node: Node3D = _field_nodes.get(f.num)
-		if node == null:
-			continue
-		var home: Vector3 = f.home
-		node.position = Vector3(home.x, 0.0, home.z if f.num != 2 else -1.35)
-		node.rotation = Vector3.ZERO
-		node.rotation.y = 0.0 if f.num == 2 else atan2(-home.x, -home.z)
-	if _runner:
-		_runner.visible = false
-	for lab in _play_labels:
-		lab.visible = false
-
-
-## Drive the fielders and the runner from the play's timeline.
-func _update_play(h: Hit) -> void:
-	var play := h.play
-	if play.is_empty():
-		return
-	var t := h.t
-	if not h.anim_done.has("call") and t >= 0.9 and play.get("caught_in_air", false) and int(play.get("fielder", 0)) != 0 \
-			and int(play.get("fielder", 0)) != _human_num():
-		h.anim_done["call"] = true               # he calls for it
-		var caller = _field_nodes.get(int(play.fielder))
-		if caller is Node3D:
-			_sfx("fielder_call_mine", (caller as Node3D).global_position + Vector3(0.0, 1.6, 0.0), -3.0)
-	if not h.anim_done.has("react") and t >= 0.14:
-		# The crack of the bat: everyone who is not running sinks and gets ready.
-		h.anim_done["react"] = true
-		var movers := {}
-		for m in play.movements:
-			movers[int(m.fielder)] = true
-		for num in _field_nodes:
-			var rn: Node3D = _field_nodes[num]
-			if rn is Doll and rn.visible and num != 2 and not movers.has(int(num)):
-				(rn as Doll).play("react", 0.55)
-	for m in play.movements:
-		var node: Node3D = _field_nodes.get(int(m.fielder))
-		if node == null:
-			continue
-		var from: Vector3 = m.from
-		var to: Vector3 = m.to
-		var span := maxf(float(m.t1) - float(m.t0), 0.05)
-		var u := clampf((t - float(m.t0)) / span, 0.0, 1.0)
-		var e := u * u * (3.0 - 2.0 * u)
-		var pos := from.lerp(to, e)
-		var moving := u > 0.0 and u < 1.0
-		node.position = Vector3(pos.x, 0.07 * absf(sin(t * 11.0)) if moving else 0.0, pos.z)
-		var dir := to - from
-		if moving and dir.length() > 0.2:
-			node.rotation.y = atan2(dir.x, dir.z)
-		if u >= 1.0 and int(m.fielder) == int(play.get("fielder", 0)) and play.has("throw"):
-			var aim: Vector3 = (play.throw.to as Vector3) - pos
-			node.rotation.y = atan2(aim.x, aim.z)
-		node.rotation.x = 0.0
-		if bool(m.get("dive", false)) and u >= 0.72 and node is Doll and not h.anim_done.has("dive%d" % int(m.fielder)):
-			h.anim_done["dive%d" % int(m.fielder)] = true
-			h.anim_done["field"] = true              # the dive is the catch
-			(node as Doll).play("dive", 0.95)
-			_sfx_later(0.35, "catch_dive_thud", (node as Node3D).global_position + Vector3(0.0, 0.3, 0.0))
-			_sfx_later(0.3, "cloth_rustle", (node as Node3D).global_position, -6.0)
-	_animate_plan(h.plan, h.t)
-	_play_throw_animations(h)
-
-
-## Spot where a runner stands: the batter's box, or just off a base.
-func _stand_spot(base: int) -> Vector3:
-	if base <= 0:
-		return Vector3(_batter_home.origin.x, 0.0, _batter_home.origin.z)
-	return _stand_for(base)
-
-
-## Where a runner on this base stands: beside the bag, and off it toward the next base by his lead.
-func _stand_for(base: int) -> Vector3:
-	var stand: Vector3 = _BASE_STANDS[base - 1]
-	var next_pos: Vector3 = [Defense.SECOND, Defense.THIRD, Defense.HOME][base - 1]
-	var toward: Vector3 = next_pos - (Baserunning.BASE_POS[base] as Vector3)
-	toward.y = 0.0
-	return stand + toward.normalized() * float(_leads[base - 1])
-
-
-## Where a runner is at time t, and which way he faces, from his planned arrivals.
-func _runner_at(r: Dictionary, t: float) -> Array:
-	var spot: Vector3 = _stand_spot(int(r.from))
-	# A runner with keyframes (he hedged off the bag and came back, or waited for the ball to
-	# land) follows them: [[time, position], ...].
-	var kf: Array = r.get("keys", [])
-	if not kf.is_empty():
-		var first_p: Vector3 = spot
-		var q_t: float = 0.0
-		var q_p: Vector3 = first_p
-		var face_k := atan2(Defense.FIRST.x - spot.x, Defense.FIRST.z - spot.z)
-		for k in kf:
-			var kt: float = k[0]
-			var kp: Vector3 = k[1]
-			var dk := kp - q_p
-			if dk.length() > 0.01:
-				face_k = atan2(dk.x, dk.z)
-			if t <= kt:
-				var uk := clampf((t - q_t) / maxf(kt - q_t, 0.001), 0.0, 1.0)
-				return [q_p.lerp(kp, uk), face_k]
-			q_t = kt
-			q_p = kp
-		return [q_p, face_k]
-	var prev_t: float = maxf(float(r.t_start), 0.12 if int(r.from) == 0 else 0.0)
-	var prev_p := spot
-	var face := atan2(Defense.FIRST.x - spot.x, Defense.FIRST.z - spot.z)
-	var keys: Array = r.arrivals.keys()
-	keys.sort()
-	if keys.is_empty() and bool(r.out) and int(r.out_base) == 0:
-		# Caught in the air: he gets a few steps and pulls up.
-		var span: float = float(Defense.RUNNER_TIMES[0]) / maxf(float(r.run_factor), 0.5) - prev_t
-		var u0 := clampf((minf(t, float(r.t_out)) - prev_t) / maxf(span, 0.5), 0.0, 1.0)
-		return [prev_p.lerp(Defense.FIRST, u0), face]
-	for k in keys:
-		var at: float = r.arrivals[k]
-		var tgt: Vector3 = Defense.HOME if int(k) == 4 else (Baserunning.BASE_POS[int(k)] as Vector3)
-		var d := tgt - prev_p
-		if d.length() > 0.01:
-			face = atan2(d.x, d.z)
-		if t <= at:
-			var u := clampf((t - prev_t) / maxf(at - prev_t, 0.05), 0.0, 1.0)
-			return [prev_p.lerp(tgt, u), face]
-		prev_t = at
-		prev_p = tgt
-	return [prev_p, face]
-
-
-## Start each fielder's throw so the ball leaves his hand at the planned time, and the man
-## receiving it puts his glove up as it arrives.
-func _play_throw_animations(h: Hit) -> void:
-	var play := h.play
-	var t := h.t
-	var fielder := int(play.get("fielder", 0))
-	if fielder != 0 and not h.anim_done.has("field"):
-		var ft := float(play.get("field_time", 1e9))
-		if t >= ft - 0.3:
-			h.anim_done["field"] = true
-			var fn = _field_nodes.get(fielder)
-			if fn is Doll:
-				var how := _catch_clip(play, fielder)
-				(fn as Doll).play(how, 0.8)
-				var at_glove: Vector3 = (fn as Node3D).global_position + Vector3(0.0, 0.8, 0.0)
-				_sfx_later(0.3, "glove_catch_fly" if how in ["catch", "jump"] else "glove_scoop_ground", at_glove)
-	for i in h.throws.size():
-		var th: Dictionary = h.throws[i]
-		var key := "t%d" % i
-		if not h.anim_done.has(key) and t >= float(th.t0) - 0.42:
-			h.anim_done[key] = true
-			var by = _field_nodes.get(int(th.get("by", 0)))
-			if by is Doll:
-				var from: Vector3 = th.from
-				var to: Vector3 = th.to
-				_sfx_later(0.42, "throw_whoosh", (by as Node3D).global_position + Vector3(0.0, 1.5, 0.0))
-				if randf() < 0.3:
-					_sfx_later(0.4, "throw_grunt", (by as Node3D).global_position + Vector3(0.0, 1.5, 0.0), -6.0)
-				var d := Vector2(from.x - to.x, from.z - to.z).length()
-				var kind := "overhand" if d > 30.0 else ("sidearm" if d > 12.0 else "underhand")
-				(by as Doll).throw_to(to, kind, 0.75)
-		var rkey := "r%d" % i
-		if not h.anim_done.has(rkey) and t >= float(th.t1) - 0.3:
-			h.anim_done[rkey] = true
-			var rec = _field_nodes.get(int(th.get("rec", 0)))
-			if rec is Doll:
-				var is_tag := _is_tag_play(h.plan, int(th.get("base", 0)))
-				(rec as Doll).play("tag" if is_tag else "catch", 0.6)
-				_sfx_later(0.3, "tag_slap" if is_tag else "glove_catch_throw", (rec as Node3D).global_position + Vector3(0.0, 1.0, 0.0))
-
-
-## How this fielder takes the ball: a scoop for a grounder, a backhand when he has to reach
-## across himself for it, a jump for one over his head, otherwise the plain catch.
-func _catch_clip(play: Dictionary, fielder: int) -> String:
-	var p: Vector3 = play.get("field_pos", Vector3.ZERO)
-	if p.y > 2.3:
-		return "jump"
-	if p.y < 0.9:
-		var f: Dictionary = _defense.fielder_by_num(fielder)
-		if not f.is_empty():
-			var home: Vector3 = f.home
-			var fwd := Vector2(-home.x, -home.z).normalized()
-			var d := Vector2(p.x - home.x, p.z - home.z)
-			var side := absf(d.x * fwd.y - d.y * fwd.x)
-			if side > 2.0 and side > absf(d.dot(fwd)) * 1.1:
-				return "backhand"
-		return "scoop"
-	return "catch"
-
-
-## Is the out at this base a tag (not a force, not the batter beaten to first)?
-func _is_tag_play(plan: Dictionary, base: int) -> bool:
-	if base == 1:
-		return false
-	for r in plan.get("runners", []):
-		if bool(r.out) and int(r.out_base) == base and not bool(r.get("forced_out", false)):
-			return true
-	return false
-
-
-## When the last runner who is out has walked back to the dugout.
-func _plan_anim_end(plan: Dictionary) -> float:
-	if plan.is_empty():
-		return 0.0
-	var end := float(plan.get("end_time", 0.0))
-	for r in plan.runners:
-		if bool(r.out):
-			var p: Vector3 = _runner_at(r, float(r.t_out))[0]
-			end = maxf(end, float(r.t_out) + 0.35 + p.distance_to(BatterPresenter.DUGOUT_ENTRY) / BatterPresenter.WALK_SPEED + 0.1)
-		elif int(r.to) == 4 and r.arrivals.has(4):
-			end = maxf(end, float(r.arrivals[4]) + 0.9)          # he stays for the celebration
-	return end
-
-
-## Run every runner on the plan at time t: the batter, the men already on base, and anyone
-## who is out walking back to the dugout.
-func _animate_plan(plan: Dictionary, t: float) -> void:
-	if plan.is_empty():
-		return
-	var hide_at: float = plan.get("hide_batter_at", 0.25)
-	if t >= hide_at and not plan.get("batter_hidden", false):
-		# Once per plan: an older play still walking its runners off must never hide the next
-		# batter who has since come up.
-		plan["batter_hidden"] = true
-		if not plan.get("keep_bat", false):
-			_drop_bat()
-		_batter.visible = false
-		if plan.get("walk_on_when_hidden", false):
-			_begin_walk_on()
-	var out_i := 0
-	for r in plan.runners:
-		var from := int(r.from)
-		var fig: Node3D = _runner if from == 0 else _base_runners[from - 1]
-		if fig == null:
-			continue
-		if from == 0 and t < hide_at:
-			fig.visible = false
-			if bool(r.out):
-				out_i += 1
-			continue
-		if bool(r.out):
-			var lv: Node3D = _leavers[mini(out_i, _leavers.size() - 1)]
-			out_i += 1
-			var t_end := float(r.t_out) + 0.35
-			if t >= t_end:
-				fig.visible = false
-				var start: Vector3 = (_runner_at(r, float(r.t_out))[0] as Vector3)
-				var d := BatterPresenter.DUGOUT_ENTRY - start
-				var u := (t - t_end) / maxf(d.length() / BatterPresenter.WALK_SPEED, 0.1)
-				if u >= 1.0:
-					lv.visible = false
-				else:
-					lv.visible = true
-					lv.position = Vector3(0.0, 0.05 * absf(sin(t * 9.0)), 0.0) + start.lerp(BatterPresenter.DUGOUT_ENTRY, u)
-					lv.rotation.y = atan2(d.x, d.z)
-				continue
-		var done_at := INF
-		if not bool(r.out) and int(r.to) == 4 and r.arrivals.has(4):
-			done_at = float(r.arrivals[4]) + 0.9
-		if t > done_at:
-			fig.visible = false
-			continue
-		if fig is Doll and not r.get("slid", false) and (bool(r.out) or plan.get("steal", false)):
-			var slide_base := int(r.out_base) if bool(r.out) else int(r.to)
-			if slide_base in [2, 3, 4]:
-				var t_there: float = float(r.t_out) if bool(r.out) else float(r.arrivals.get(slide_base, 1e9))
-				if t >= t_there - 0.5:
-					r["slid"] = true
-					(fig as Doll).play("slide", 0.9)
-					_props.puff_at(fig, 0.2, 0.6, 3)
-					_props.puff_at(fig, 0.45, 0.8, 4)
-					_sfx_later(0.15, "slide_dirt", (fig as Node3D).global_position)
-		if fig is Doll:
-			if r.get("dive", false) and not r.get("dived", false) and t >= 0.05:
-				r["dived"] = true              # back to the bag head first
-				(fig as Doll).play("dive", 0.85)
-				_props.puff_at(fig, 0.4, 0.7, 4)
-			if not r.get("cheered", false) and not bool(r.out) and int(r.to) == 4 and r.arrivals.has(4) \
-					and t >= float(r.arrivals[4]) - 0.05:
-				r["cheered"] = true            # he scores: arms up
-				(fig as Doll).play("celebrate", 0.9)
-				_sfx("cloth_rustle", (fig as Node3D).global_position, -6.0)
-			var hedge: Dictionary = r.get("hedge", {})
-			(fig as Doll).watching = not hedge.is_empty() and t >= float(hedge.t_reach) and t < float(hedge.t_leave)
-		fig.visible = true
-		var at: Array = _runner_at(r, t)
-		var pos: Vector3 = at[0]
-		var moving: bool = t > float(r.t_start) and (pos - _stand_spot(from)).length() > 0.05
-		fig.position = Vector3(pos.x, (0.05 * absf(sin(t * 12.0))) if moving else 0.0, pos.z)
-		if moving:
-			fig.rotation.y = float(at[1])
-	# A base is reached or a tag made: the thump of the bag, the scoreboard when a run scores.
-	for ei in plan.events.size():
-		var se: Dictionary = plan.events[ei]
-		var skey := "snd%d" % ei
-		if t >= float(se.t) and not plan.get(skey, false):
-			plan[skey] = true
-			var sb := int(se.base)
-			if sb >= 1 and sb <= 4 and se.kind != "run":
-				_sfx("base_bag_thump", (Defense.HOME if sb == 4 else Baserunning.BASE_POS[sb]) as Vector3, -3.0)
-	# The plate umpire rules on a play at home.
-	for e in plan.events:
-		if int(e.base) == 4 and t >= float(e.t) and not plan.get("ump_%s" % e.text, false):
-			if e.text == "OUT":
-				plan["ump_OUT"] = true
-				_crew.call_it("ump_out", 0.1, 1.0)
-			elif e.text == "RUN" or e.text == "SAFE":
-				plan["ump_%s" % e.text] = true
-				if not plan.get("ump_safe_called", false):
-					plan["ump_safe_called"] = true
-					_crew.call_it("ump_safe", 0.1, 1.0)
-	# Callouts: each event shows once its time has come.
-	var shown := {}
-	var slot := 0
-	for e in plan.events:
-		if t < float(e.t) or slot >= _play_labels.size():
-			continue
-		var base := int(e.base)
-		var where: Vector3 = Defense.HOME if base == 4 else (Baserunning.BASE_POS[base] as Vector3)
-		if base == 0:
-			where = (e.get("at", Defense.FIRST) as Vector3)
-		var stack: int = shown.get(base, 0)
-		shown[base] = stack + 1
-		var color := Color(1.0, 0.35, 0.3)
-		if e.kind == "safe" or e.kind == "run":
-			color = Color(0.4, 1.0, 0.5)
-		if e.text == "HOME RUN":
-			color = Color(1.0, 0.85, 0.2)
-		var lab := _play_labels[slot]
-		slot += 1
-		# Label3D rebuilds its mesh on every assignment, even of the same value, so only touch
-		# what actually changed (this runs every frame while a play is on).
-		if lab.text != e.text:
-			lab.text = e.text
-		if lab.modulate != color:
-			lab.modulate = color
-		var lab_pos := Vector3(where.x, 3.0 + 0.5 * stack, where.z)
-		if lab.position != lab_pos:
-			lab.position = lab_pos
-		if not lab.visible:
-			lab.visible = true
-	for i in range(slot, _play_labels.size()):
-		if _play_labels[i].visible:
-			_play_labels[i].visible = false
-
-
-func _field_pos(play: Dictionary) -> Vector3:
-	var p: Vector3 = play.get("field_pos", Vector3.ZERO)
-	return Vector3(p.x, 0.0, p.z)
 
 
 # ------------------------------------------------------------------ human fielding
@@ -2554,7 +2007,7 @@ func _human_num() -> int:
 
 
 ## Where your glove is: the off-hand controller, a little in front of it.
-func _glove_pos(h: Hit) -> Vector3:
+func _glove_pos(h: LiveHit) -> Vector3:
 	if _xr_active and _off_hand and _off_hand.get_is_active():
 		return _off_hand.global_transform * Vector3(0.0, 0.0, -0.12)
 	if _auto_field and h != null:
@@ -2564,7 +2017,7 @@ func _glove_pos(h: Hit) -> Vector3:
 	return Vector3(0.0, -50.0, 0.0)
 
 
-func _held_by_human(h: Hit) -> Vector3:
+func _held_by_human(h: LiveHit) -> Vector3:
 	if h.human_state == "gripped" and _xr_active and _hand:
 		return _hand.global_transform * HOLD_OFFSET
 	if _xr_active and _off_hand:
@@ -2573,7 +2026,7 @@ func _held_by_human(h: Hit) -> Vector3:
 
 
 ## Each frame while the ball is yours: did the glove get it? did you run out of time?
-func _update_human(h: Hit, _delta: float) -> void:
+func _update_human(h: LiveHit, _delta: float) -> void:
 	match h.human_state:
 		"waiting":
 			var ball := h.ball.global_position
@@ -2590,7 +2043,7 @@ func _update_human(h: Hit, _delta: float) -> void:
 				_human_hold_too_long(h)
 
 
-func _fielder_play(h: Hit, result: String, text: String, extra: Dictionary) -> Dictionary:
+func _fielder_play(h: LiveHit, result: String, text: String, extra: Dictionary) -> Dictionary:
 	var hn := _human_num()
 	var fn := _defense.fielder_by_num(hn)
 	var play := {"result": result, "text": text, "short": text, "fielder": hn, "fielder_name": fn.get("name", ""),
@@ -2602,7 +2055,7 @@ func _fielder_play(h: Hit, result: String, text: String, extra: Dictionary) -> D
 	return play
 
 
-func _human_catch(h: Hit, ball: Vector3) -> void:
+func _human_catch(h: LiveHit, ball: Vector3) -> void:
 	print("FIELDING: caught at t=%.2f y=%.2f" % [h.t, ball.y])
 	h.catch_pos = ball
 	h.catch_t = h.t
@@ -2633,7 +2086,7 @@ func _human_catch(h: Hit, ball: Vector3) -> void:
 
 
 ## The ball got past you (or you never reached it): the rest of the defense plays it.
-func _human_miss(h: Hit) -> void:
+func _human_miss(h: LiveHit) -> void:
 	print("FIELDING: missed at t=%.2f" % h.t)
 	h.human_state = "done"
 	h.play = h.fallback if not h.fallback.is_empty() else {"result": "single", "text": "Single", "bases": 1,
@@ -2647,7 +2100,7 @@ func _human_miss(h: Hit) -> void:
 	_last_report_extra = "Got by you"
 
 
-func _human_hold_too_long(h: Hit) -> void:
+func _human_hold_too_long(h: LiveHit) -> void:
 	h.human_state = "done"
 	h.play = _fielder_play(h, "single", "Infield single (held the ball)", {"bases": 1})
 	Baserunning.apply_throw(h.plan, 0, 0.0, _game.outs, h.catch_pos, _run_rng)
@@ -2655,7 +2108,7 @@ func _human_hold_too_long(h: Hit) -> void:
 
 
 ## You let go of the ball with this velocity (m/s, world space).
-func _human_throw(h: Hit, vel: Vector3) -> void:
+func _human_throw(h: LiveHit, vel: Vector3) -> void:
 	var hn := _human_num()
 	var fn := _defense.fielder_by_num(hn)
 	var from := h.ball.global_position
@@ -2741,7 +2194,7 @@ func _poll_fielding(now: float) -> void:
 		_field_samples.clear()
 
 
-func _holding_hit() -> Hit:
+func _holding_hit() -> LiveHit:
 	for h in _hits:
 		if h.human_state in ["holding", "gripped"]:
 			return h
@@ -2830,8 +2283,8 @@ func _update_batter_lifecycle(delta: float) -> void:
 	if not _aux_play.is_empty():
 		_aux_play.t += delta
 		var plan: Dictionary = _aux_play.plan
-		_animate_plan(plan, float(_aux_play.t))
-		if float(_aux_play.t) >= _plan_anim_end(plan):
+		_director.animate_plan(plan, float(_aux_play.t))
+		if float(_aux_play.t) >= _director.plan_anim_end(plan):
 			_aux_play = {}
 			_runner.visible = false
 			for lv in _leavers:
@@ -2839,6 +2292,16 @@ func _update_batter_lifecycle(delta: float) -> void:
 			_refresh_base_runners()
 			_refresh_scoreboard()
 	_presenter.update(delta)
+
+
+## The batter-runner has left the box: his bat drops (unless he carries it off), and if the plan says
+## so the next batter starts walking on.
+func _on_batter_hidden(plan: Dictionary) -> void:
+	if not plan.get("keep_bat", false):
+		_drop_bat()
+	_batter.visible = false
+	if plan.get("walk_on_when_hidden", false):
+		_begin_walk_on()
 
 
 ## He is in the box: the pitcher may throw.
@@ -2851,7 +2314,7 @@ func _on_batter_arrived() -> void:
 
 
 ## The play is over: tell the scorebook, say what happened.
-func _announce_play(h: Hit) -> void:
+func _announce_play(h: LiveHit) -> void:
 	var play := h.play
 	var text: String = play.get("text", "")
 	var ev := {}
@@ -2969,7 +2432,7 @@ func _refresh_base_runners(bases: Array = []) -> void:
 	var on: Array = bases if bases.size() == 3 else _game.bases
 	if _base_runners.is_empty():
 		for i in 3:
-			var fig := _runner_doll(_stand_for(i + 1))
+			var fig := _runner_doll(_director.stand_for(i + 1))
 			fig.idle_bounce = true             # on his toes off the bag
 			fig.crouch = 0.6
 			fig.visible = false
@@ -2979,11 +2442,11 @@ func _refresh_base_runners(bases: Array = []) -> void:
 		_leads[i] = StealModel.lead(who as Player, int(_since_throw[i])) if who is Player else 2.4
 		_base_runners[i].visible = on[i] != null
 		(_base_runners[i] as Doll).watching = false
-		_base_runners[i].position = _stand_for(i + 1)
+		_base_runners[i].position = _director.stand_for(i + 1)
 		_base_runners[i].rotation.y = atan2(-Baserunning.BASE_POS[i + 1].x, -Baserunning.BASE_POS[i + 1].z)
 
 
-func _show_landing(h: Hit) -> void:
+func _show_landing(h: LiveHit) -> void:
 	var sim := h.summary
 	var bounce: Vector3 = sim.get("landing_pos", Vector3.ZERO)
 	if sim.home_run:
@@ -3036,11 +2499,11 @@ func _show_landing(h: Hit) -> void:
 		print(h.report.replace("\n", " | "))
 
 
-func _free_hit(h: Hit) -> void:
+func _free_hit(h: LiveHit) -> void:
 	if h.rolling and _audio != null:
 		_audio.loop_off("roll")
 	if h == _play_hit:
-		_reset_fielders()
+		_director.reset_fielders()
 		_play_hit = null
 	h.ball.queue_free()
 	h.trail_inst.queue_free()
@@ -3087,7 +2550,7 @@ func _format_report(label: String, a: Dictionary) -> String:
 ## Inject a batted ball without a pitch (for looking at fielding and baserunning).
 ## The defense's answer for a ball in play. If a human plays the position that would field it,
 ## the ball is his chance, and the AI's version is what happens when he misses.
-func _resolve_ball(pitch: Pitch) -> void:
+func _resolve_ball(pitch: LivePitch) -> void:
 	var run_f := _batter_player.run_factor() * _run_rng.randf_range(0.97, 1.03)
 	# You are the pitcher: the ball is not yours to field (yet), so an AI one stays out of it.
 	var skip: Array = [1] if _mode.human_pitcher else []
@@ -3111,7 +2574,7 @@ func _debug_hit(ev_mph: float, launch_deg: float, spray_deg: float) -> void:
 	var origin := Vector3(0.0, 0.9, 0.4)
 	var rel := Vector3(0.0, PitchPhysics.MOUND_H + 1.85, PitchPhysics.MOUND_Z - 1.7)
 	var pv := PitchPhysics.solve_aim(rel, 36.0, Vector3.ZERO, Vector3(0.0, 0.85, 0.0))
-	var pitch := Pitch.new()
+	var pitch := LivePitch.new()
 	pitch.pos = origin
 	pitch.label = "Test pitch"
 	pitch.analysis = PitchPhysics.analyze(rel, pv, Vector3.ZERO)
@@ -3140,7 +2603,7 @@ func _debug_throw() -> void:
 	_launch(rel, v, spin, key)
 
 
-func _rebuild_trail(pitch: Pitch) -> void:
+func _rebuild_trail(pitch: LivePitch) -> void:
 	pitch.trail_mesh.clear_surfaces()
 	if pitch.trail.size() < 2:
 		return

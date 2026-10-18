@@ -60,9 +60,9 @@ func _init() -> void:
 	var h3 = bp._hits[bp._hits.size() - 1]
 	if int(h3.play.get("fielder", 0)) != 0 and h3.play.get("result", "") != "home_run":
 		h3.t = float(h3.play.field_time) + 0.01
-		var y0: float = (bp._ball_with_fielder(h3) as Vector3).y
+		var y0: float = (bp._director.ball_with_fielder(h3) as Vector3).y
 		h3.t = float(h3.play.field_time) + 0.30
-		var y1: float = (bp._ball_with_fielder(h3) as Vector3).y
+		var y1: float = (bp._director.ball_with_fielder(h3) as Vector3).y
 		_check(y1 > y0 + 0.2 or y0 > 1.5, "the ball is raised toward the hand after the catch (%.2f -> %.2f)" % [y0, y1])
 
 	print("FAILURES: %d" % _failures)
