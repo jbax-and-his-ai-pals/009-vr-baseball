@@ -430,3 +430,7 @@ files come from `tools/make_placeholder_audio.py` and are replaced by dropping r
 name. The bullpen calls it through `_sfx` / `_sfx_later`; the crowd bed and music are driven by
 `_update_audio` twice a second from the game state. Volumes live in `Settings.volumes` and the
 Options > Sound screen.
+
+## Scene script split (in progress)
+
+`bullpen.gd` is being broken up (see `ROADMAP.md`, M3). Extracted so far: `SoundDirector` (decides what is heard; owns the `AudioManager`), `PlateCrew` (catcher and umpire; reports what happened through signals), `FieldProps` (dust, dropped bats, a game-time delay queue). The scene still owns the rest and passes them what happened.

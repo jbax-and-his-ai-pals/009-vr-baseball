@@ -70,6 +70,9 @@ func _process(delta: float) -> void:
 			_mm.set_instance_transform(k, Transform3D(Basis.from_scale(Vector3.ZERO), Vector3.ZERO))
 			continue
 		_age[k] += delta
+		if _age[k] >= LIFE:
+			_mm.set_instance_transform(k, Transform3D(Basis.from_scale(Vector3.ZERO), Vector3.ZERO))
+			continue
 		alive += 1
 		var u := clampf(_age[k] / LIFE, 0.0, 1.0)
 		_pos[k] += _vel[k] * delta

@@ -185,12 +185,11 @@ var _home_order := 0
 var _catcher: Doll
 var _umpire: Doll
 var _crew: PlateCrew          # drives the catcher and the umpire
-var _dust: DustPuffs
+var _props: FieldProps        # dust, dropped bats, and calls that wait for their moment
+var _dust: DustPuffs          # _props.dust
 var _sound: SoundDirector
 var _audio: AudioManager          # _sound.audio, for the loops that follow the ball
 var _was_in_menu := true
-var _later: Array = []        # things to do after a delay: [{"t": seconds, "fn": Callable}]
-var _bat_props: Array = []    # bats that have been dropped: they fall, bounce and lie there
 var _perf_sum := 0.0
 var _perf_frames := 0
 var _perf_max := 0.0
@@ -481,78 +480,15 @@ func _batter_takes(pitch: Pitch) -> void:
 		_sfx_later(float(a.get("time", 0.5)) * 0.5, "bat_swing_slow", _batter.global_position + Vector3(0.0, 1.1, 0.0), -6.0)
 
 
-## Run `fn` after `seconds` of game time.
-func _later_call(seconds: float, fn: Callable) -> void:
-	_later.append({"t": seconds, "fn": fn})
-
-
-## A puff of dust where this node is, `seconds` from now (a slide kicks it up as he goes).
-func _dust_at(node: Node3D, seconds: float, size: float, count: int) -> void:
-	_later_call(seconds, func():
-		if _dust != null and is_instance_valid(node):
-			_dust.puff(node.global_position, size, count))
-
-
 ## The batter lets go of the bat: it drops, bounces and lies there until the next one comes up.
 func _drop_bat() -> void:
 	if _batter == null or not _batter.visible:
 		return
 	var xf := _batter.drop_bat()
-	var bat := MeshInstance3D.new()
-	bat.mesh = Figure.bat_mesh()
-	bat.material_override = MeshMerger.vertex_color_material()
-	add_child(bat)
-	bat.global_transform = xf
 	if _sound != null and _sound.flip_next:
 		_sound.flip_next = false
 		_sfx("bat_flip", xf.origin)
-	_bat_props.append({"node": bat, "vel": Vector3(randf_range(-0.6, 0.6), 0.9, randf_range(-0.3, 1.0)),
-		"spin": Vector3(randf_range(-4.0, 4.0), randf_range(-2.0, 2.0), randf_range(-5.0, 5.0)), "t": 0.0, "bounces": 0})
-
-
-func _update_props(delta: float) -> void:
-	for i in range(_later.size() - 1, -1, -1):
-		if i >= _later.size():
-			continue
-		var l: Dictionary = _later[i]
-		l.t -= delta
-		if l.t <= 0.0:
-			_later.remove_at(i)
-			(l.fn as Callable).call()
-	for i in range(_bat_props.size() - 1, -1, -1):
-		var b: Dictionary = _bat_props[i]
-		b.t += delta
-		var n: Node3D = b.node
-		if b.t > 8.0 or not is_instance_valid(n):
-			if is_instance_valid(n):
-				n.queue_free()
-			_bat_props.remove_at(i)
-			continue
-		if int(b.bounces) >= 3:
-			continue
-		var v: Vector3 = b.vel
-		v.y -= 9.8 * delta
-		n.global_position += v * delta
-		var sp: Vector3 = b.spin
-		n.rotate_object_local(Vector3.RIGHT, sp.x * delta)
-		n.rotate_object_local(Vector3.UP, sp.y * delta)
-		n.rotate_object_local(Vector3.BACK, sp.z * delta)
-		if n.global_position.y < 0.04 and v.y < 0.0:
-			var gp := n.global_position
-			gp.y = 0.04
-			n.global_position = gp
-			v = Vector3(v.x * 0.5, -v.y * 0.35, v.z * 0.5)
-			b.spin = sp * 0.5
-			b.bounces = int(b.bounces) + 1
-			if int(b.bounces) == 1:
-				_sfx("bat_drop", gp)
-			if _dust:
-				_dust.puff(gp, 0.3, 1)
-			if absf(v.y) < 0.5 or int(b.bounces) >= 3:
-				b.bounces = 3
-				var yaw := randf() * TAU
-				n.global_transform = Transform3D(Basis(Quaternion(Vector3.UP, Vector3(sin(yaw), 0.0, cos(yaw)))), gp)
-		b.vel = v
+	_props.drop_bat(xf)
 
 
 # ------------------------------------------------------------------ the running game
@@ -871,8 +807,10 @@ func _build_world() -> void:
 	_batter.position = Vector3(0.98, 0.0, 0.0)
 	add_child(_batter)
 	_batter_home = _batter.transform
-	_dust = DustPuffs.new()
-	add_child(_dust)
+	_props = FieldProps.new()
+	add_child(_props)
+	_dust = _props.dust
+	_props.bat_bounced.connect(func(at: Vector3): _sfx("bat_drop", at))
 
 	# Mound, plate, rubber, backstop wall and the cartoon catcher: one baked mesh, one draw call.
 	var field := MeshMerger.new()
@@ -1152,7 +1090,7 @@ func _process(delta: float) -> void:
 		return       # the game waits while a menu is up
 	_game_time += delta
 	_crew.update(delta)
-	_update_props(delta)
+	_props.update(delta)
 	if _sound != null:
 		_sound.update(delta, _game)
 	_log_frame(delta)
@@ -2525,14 +2463,14 @@ func _animate_plan(plan: Dictionary, t: float) -> void:
 				if t >= t_there - 0.5:
 					r["slid"] = true
 					(fig as Doll).play("slide", 0.9)
-					_dust_at(fig, 0.2, 0.6, 3)
-					_dust_at(fig, 0.45, 0.8, 4)
+					_props.puff_at(fig, 0.2, 0.6, 3)
+					_props.puff_at(fig, 0.45, 0.8, 4)
 					_sfx_later(0.15, "slide_dirt", (fig as Node3D).global_position)
 		if fig is Doll:
 			if r.get("dive", false) and not r.get("dived", false) and t >= 0.05:
 				r["dived"] = true              # back to the bag head first
 				(fig as Doll).play("dive", 0.85)
-				_dust_at(fig, 0.4, 0.7, 4)
+				_props.puff_at(fig, 0.4, 0.7, 4)
 			if not r.get("cheered", false) and not bool(r.out) and int(r.to) == 4 and r.arrivals.has(4) \
 					and t >= float(r.arrivals[4]) - 0.05:
 				r["cheered"] = true            # he scores: arms up

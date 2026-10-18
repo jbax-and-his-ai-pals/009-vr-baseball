@@ -252,6 +252,8 @@ tune from the logs, not memory:
 - A short list of animation fixes done.
 
 ### M3. Split `bullpen.gd` (M)
+
+**Status: in progress (2026-10-18).** Done: seam 1 `SoundDirector` (`scripts/sound_director.gd`: what is heard and why; the scene tells it what happened), seam 2 `PlateCrew` (`plate_crew.gd`: catcher and umpire, emits `blocked` / `umpire_voice` / `throw_started` signals, own unit test) and `FieldProps` (`field_props.gd`: dust, dropped bats, the game-time delay queue, own unit test). `bullpen.gd` went from 3,646 to about 3,300 lines. Still to do: `BatterPresenter`, `PlayDirector`, `PitchFlight`, `HumanPitcher`, the event bus, typed plans, one RNG per concern. Each move keeps the whole suite green.
 Move one seam at a time, with `lifecycle_test` and the whole suite green after each move. The order
 below goes from lowest risk to highest:
 1. **`SoundDirector`**: `_sfx*`, `_crowd_react`, `_update_audio`, footsteps. Have it *listen to
