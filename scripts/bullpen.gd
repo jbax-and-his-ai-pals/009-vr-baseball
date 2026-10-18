@@ -133,6 +133,7 @@ var _director := PlayDirector.new()   # puts a play on the field: fielders, ball
 var _crew: PlateCrew          # drives the catcher and the umpire
 var _props: FieldProps        # dust, dropped bats, and calls that wait for their moment
 var _dust: DustPuffs          # _props.dust
+var _haptics := Haptics.new()     # controller vibration
 var _sound: SoundDirector
 var _audio: AudioManager          # _sound.audio, for the loops that follow the ball
 var _was_in_menu := true
@@ -274,6 +275,9 @@ func _ready() -> void:
 	_fx_rng.seed = _game_seed ^ 0x5EED
 	_build_world()
 	_setup_xr()
+	_haptics.hand = _hand
+	_haptics.off_hand = _off_hand
+	_haptics.set_level(_settings.haptics)
 	_build_menu(want_menu)
 	_sound = SoundDirector.new()
 	add_child(_sound)
@@ -309,6 +313,7 @@ func _ready() -> void:
 	_sound.tired_source = Callable(self, "_arm_fatigue")
 	_audio.apply_volumes(_settings.volumes)
 	_menu.ui_sound.connect(func(id: String): _sfx(id))
+	_menu.ui_haptic.connect(func(c: XRController3D, ev: String): _haptics.play_on(c, ev))
 	GameLog.start({"mode": game_mode_name, "activity": lineup_mode, "innings": game_innings, "position": fielding_position,
 		"assist": _settings.assist, "hand": _settings.hand, "settings": _settings.to_dict(), "xr": _xr_active,
 		"args": OS.get_cmdline_user_args(), "throw_log": ThrowLogger.override_path, "menu_open": want_menu,
@@ -537,6 +542,7 @@ const RECEIVE_FOR_STEAL := {1: 6, 2: 5}
 
 ## A throw to a base (not a pitch): where it goes, whether it gets him, or a balk.
 func _do_pickoff(base: int, from: Vector3, vel: Vector3, err: float) -> void:
+	_haptics.play("release", 0.5)
 	var runner = _game.bases[base - 1]
 	var glove: Vector3 = (Baserunning.RECEIVE_SPOT[base] as Vector3) + Vector3(0.0, 1.15, 0.0)
 	var speed := clampf(vel.length() * 0.85, 12.0, 30.0)
@@ -571,6 +577,7 @@ func _do_pickoff(base: int, from: Vector3, vel: Vector3, err: float) -> void:
 
 
 func _call_balk(why: String) -> void:
+	_haptics.play("buzz")
 	_log("balk", {"why": why})
 	_sfx_later(0.2, "ump_balk", _umpire.global_position + Vector3(0.0, 1.5, 0.0))
 	var before := _game.bases.duplicate()
@@ -1141,6 +1148,7 @@ func _poll_hand(now: float) -> void:
 	if not _held:
 		if grip > GRAB_THRESHOLD and _batter_ready:
 			_held = true
+			_haptics.play("grab")
 			_detector.clear()
 			_held_ball.visible = true
 			_delivery_start = -1.0
@@ -1290,6 +1298,7 @@ func _on_menu_event(ev: Dictionary) -> void:
 		"settings":
 			_settings.save()
 			apply_assist(_settings)
+			_haptics.set_level(_settings.haptics)
 			if _audio:
 				_audio.apply_volumes(_settings.volumes)
 		"start":
@@ -1441,6 +1450,7 @@ func _release_from_hand(release_t: float, vel_latency: float, spin_latency: floa
 			vel = PitchPhysics.solve_aim(from, maxf(vel.length(), MIN_ASSIST_SPEED), spin, target)
 	var pitch := _launch(from, vel, spin, "Your pitch", shape.get("flutter", 0.0), _run_rng.randf() * 100.0)
 	pitch.label = PitchNamer.name_pitch(pitch.analysis, _wrist.typical_mph(velocity_gain), hand_sign, shape.get("knuckle", false))
+	_haptics.play("release", clampf(float(pitch.analysis.get("speed_mph", 60.0)) / 90.0, 0.0, 1.0))
 	_log_throw(pitch, from, release_t, vel_latency, est, scaled, spin, funnel, shape)
 
 
@@ -1703,6 +1713,9 @@ func _land(pitch: LivePitch) -> void:
 	_mark_pitch(a, outcome)
 	if _sound != null:
 		_sound.pitch_arrives(a, outcome, plate)
+	if a.get("reached", false) and outcome != "hit_by_pitch":
+		# The mitt: felt less when it was in the dirt.
+		_haptics.play("pop", clampf(float(a.get("plate_mph", 60.0)) / 90.0, 0.0, 1.0) * (0.3 if plate.y < 0.18 else 1.0))
 	var third := _game.strikes >= 2              # this strike is the third: the call is the strikeout's
 	match outcome:
 		"ball":
@@ -1809,6 +1822,7 @@ func _contact(pitch: LivePitch) -> void:
 	_batter.snap_to_contact()
 	if _sound != null:
 		_sound.contact(b, sim, pitch.pos)
+	_haptics.play("contact", clampf(float(b.ev) / 110.0, 0.0, 1.0))
 	var head := _format_report(pitch.label, a)
 	if "--contact-demo" in OS.get_cmdline_user_args():
 		var gap := _batter.sweet_spot_world().distance_to(pitch.pos)
@@ -2056,6 +2070,7 @@ func _fielder_play(h: LiveHit, result: String, text: String, extra: Dictionary) 
 
 
 func _human_catch(h: LiveHit, ball: Vector3) -> void:
+	_haptics.play("catch")
 	print("FIELDING: caught at t=%.2f y=%.2f" % [h.t, ball.y])
 	h.catch_pos = ball
 	h.catch_t = h.t
@@ -2109,6 +2124,7 @@ func _human_hold_too_long(h: LiveHit) -> void:
 
 ## You let go of the ball with this velocity (m/s, world space).
 func _human_throw(h: LiveHit, vel: Vector3) -> void:
+	_haptics.play("throw")
 	var hn := _human_num()
 	var fn := _defense.fielder_by_num(hn)
 	var from := h.ball.global_position
@@ -2383,6 +2399,11 @@ func _after_event(ev: Dictionary, extra: Dictionary = {}) -> void:
 		return
 	if _sound != null:
 		_sound.crowd_react(ev, _game)
+	match String(ev.get("result", "")):
+		"home_run":
+			_haptics.play("rumble", 1.0)
+		"strikeout":
+			_haptics.play("rumble", 0.3)
 	if ev.get("pa_over", false):
 		if _batter_player:
 			_stats.record_result(_batter_player.name, String(ev.get("result", "out")),

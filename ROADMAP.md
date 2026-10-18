@@ -253,7 +253,7 @@ tune from the logs, not memory:
 
 ### M3. Split `bullpen.gd` (M)
 
-**Status: in progress (2026-10-18).** Done: seam 1 `SoundDirector` (`scripts/sound_director.gd`: what is heard and why; the scene tells it what happened), seam 2 `PlateCrew` (`plate_crew.gd`: catcher and umpire, emits `blocked` / `umpire_voice` / `throw_started` signals, own unit test) and `FieldProps` (`field_props.gd`: dust, dropped bats, the game-time delay queue, own unit test). `bullpen.gd` went from 3,646 to about 3,300 lines. Still to do: `BatterPresenter`, `PlayDirector`, `PitchFlight`, `HumanPitcher`, the event bus, typed plans, one RNG per concern. Each move keeps the whole suite green.
+**Status: seams 1-5 done (2026-10-18), the rest open.** Extracted: `SoundDirector` (what is heard and why), `PlateCrew` (catcher and umpire, signals, own test), `FieldProps` (dust, dropped bats, game-time delay queue, own test), `BatterPresenter` (walk-on, box side, takes, bat drop, own test), `PlayDirector` (the whole on-field playback: fielders, ball hand-to-glove, throws, runners, callouts), and the `LiveHit` / `LivePitch` data classes (were inner classes). `bullpen.gd` went from 3,646 to about 2,760 lines. Still in it: XR input and the throwing pipeline, pitch flight and contact, the steal / pickoff flow, human fielding, HUD and boards, the log, the menu hooks. Open for M3: `PitchFlight`, `HumanPitcher`, `GameDirector`, an event bus replacing the remaining scene-to-director calls, typed plans, one RNG per concern (the AI classes still seed themselves). Each move kept the whole suite green.
 Move one seam at a time, with `lifecycle_test` and the whole suite green after each move. The order
 below goes from lowest risk to highest:
 1. **`SoundDirector`**: `_sfx*`, `_crowd_react`, `_update_audio`, footsteps. Have it *listen to
@@ -281,6 +281,8 @@ Alongside the split:
 game replays the same.
 
 ### M4. Core VR feel (M)
+
+**Status: haptics done (2026-10-18); hands, pitch lab, tutorial, signs, comebackers open.** `Haptics` (`scripts/haptics.gd`): a pure event table (`profile(event, strength)`) says which hand feels what and how hard: grab, release (harder with speed), the mitt's pop (mostly the glove hand, softer in the dirt), contact, a glove catch, throws, a rumble on a home run or strikeout, a balk's buzz, and menu hover / select / error in the pointing controller. Options > Haptics: Off / Low / Normal / Strong, saved. `tests/haptics_test.gd`; the full-game test checks the mitt and bat pulses happen. Not yet felt on a real controller: the amplitudes and durations are first guesses.
 - **Haptics:**
   - grip
   - release (scaled by speed)

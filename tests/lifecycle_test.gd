@@ -111,6 +111,10 @@ func _init() -> void:
 	_check(bp._director.catch_clip({"field_pos": Vector3(13.3, 0.2, 31.2)}, 6) == "backhand", "a ball far to the side is a backhand")
 	_check(bp._director.is_tag_play({"runners": [{"out": true, "out_base": 4, "forced_out": false}]}, 4), "an out at the plate with no force is a tag")
 	_check(not bp._director.is_tag_play({"runners": [{"out": true, "out_base": 2, "forced_out": true}]}, 2), "a force out is not a tag")
+	var felt := {}
+	for pulse in bp._haptics.history:
+		felt[pulse.event] = true
+	_check(felt.has("pop") and felt.has("contact"), "the game made the controllers buzz for the mitt and the bat (%s)" % str(felt.keys()))
 	print("  sounds used: ", bp._audio.counts.keys())
 	_check(bp._audio != null and bp._audio.played > 20, "a whole game makes sounds (%d played)" % (bp._audio.played if bp._audio else -1))
 	print("FAILURES: %d" % _failures)

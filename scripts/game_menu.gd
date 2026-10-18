@@ -10,6 +10,10 @@ extends Node3D
 signal chosen(event: Dictionary)
 ## A sound the menu wants played: "ui_hover", "ui_select", "ui_back", "ui_error".
 signal ui_sound(id: String)
+## The same moments for the controller that caused them (null for a mouse): "ui_hover", "ui_select", "ui_error".
+signal ui_haptic(controller: XRController3D, event: String)
+
+var _pointer: XRController3D          # the controller that is pointing (or just clicked)
 
 const WIDTH := 1.5
 const ROW_H := 0.15
@@ -215,6 +219,7 @@ func _set_hover(i: int) -> void:
 		_hover = i
 		if i >= 0:
 			ui_sound.emit("ui_hover")
+			ui_haptic.emit(_pointer, "ui_hover")
 		_rebuild()
 
 
@@ -223,8 +228,10 @@ func _click(i: int) -> void:
 		return
 	if not _rows[i].enabled:
 		ui_sound.emit("ui_error")
+		ui_haptic.emit(_pointer, "ui_error")
 		return
 	var row_id: String = _rows[i].id
+	ui_haptic.emit(_pointer, "ui_select")
 	var ev := model.activate(i)
 	if row_id in ["vignette", "snap_turn", "developer"]:
 		var now_on: bool = bool(model.settings.get(row_id))
@@ -261,6 +268,7 @@ func _process(delta: float) -> void:
 		var down := c.is_button_pressed("trigger_click")
 		if idx >= 0:
 			best = idx
+			_pointer = c
 		if down and not _trigger_was.get(k, false) and idx >= 0:
 			_click(idx)
 		_trigger_was[k] = down

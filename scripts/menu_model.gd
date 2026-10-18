@@ -103,6 +103,7 @@ func items() -> Array[Dictionary]:
 			rows.append(_row("assist_opt", "Assist", settings.assist, true, Settings.ASSIST_NOTES.get(settings.assist, "")))
 			rows.append(_row("quality", "Quality", settings.quality, true, "applies next game"))
 			rows.append(_row("locomotion", "Movement", settings.locomotion))
+			rows.append(_row("haptics", "Haptics", settings.haptics))
 			rows.append(_row("vignette", "Comfort vignette", "on" if settings.vignette else "off"))
 			rows.append(_row("snap_turn", "Snap turn", "on" if settings.snap_turn else "off"))
 			rows.append(_row("developer", "Developer options", "on" if settings.developer else "off"))
@@ -204,6 +205,9 @@ func activate(index: int) -> Dictionary:
 			return {"type": "settings"}
 		"locomotion":
 			settings.locomotion = _cycle(Settings.LOCOMOTION, settings.locomotion)
+			return {"type": "settings"}
+		"haptics":
+			settings.haptics = _cycle(Settings.HAPTICS, settings.haptics)
 			return {"type": "settings"}
 		"vignette":
 			settings.vignette = not settings.vignette

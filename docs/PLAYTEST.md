@@ -142,3 +142,15 @@ Sound (headphones in the headset; these are crude placeholders, judge timing and
 - [ ] Crowd grows with runners on and a close late game; the umpire's calls are audible but not loud.
 - [ ] Anything that is annoying or repeats too much: note the sound name (`docs/AUDIO_LIST.md`).
 - [ ] Options > Sound sliders work and persist.
+
+## 11. Haptics (new; first guesses, tune by feel)
+
+Options > Haptics: Off / Low / Normal / Strong.
+- [ ] Grabbing the ball gives a faint tick in the throwing hand.
+- [ ] Release is a short sharp pulse, noticeably harder for a faster throw.
+- [ ] The catcher's mitt pop: felt in the glove hand (stronger) and the throwing hand (faint), on the frame the ball lands; barely there for a ball in the dirt.
+- [ ] A ball hit: a firm thud in both hands. A home run or strikeout: a longer low rumble.
+- [ ] A balk: a buzzy double-hand pulse that feels like "wrong".
+- [ ] Fielding: closing your glove on a ball is a strong glove-hand pulse; throwing is a pulse in the throwing hand.
+- [ ] Menu: pointing at a row ticks in the pointing hand only; selecting is a firmer pulse; a greyed row buzzes.
+- [ ] Anything too strong, too long or annoying over 50 pitches: note the event name (`scripts/haptics.gd` profile()).

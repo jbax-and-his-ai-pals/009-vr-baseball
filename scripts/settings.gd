@@ -15,6 +15,7 @@ const ASSISTS := ["Casual", "Standard", "Pro"]
 const HANDS := ["right", "left"]
 const QUALITY := ["Auto", "Quest", "High"]
 const LOCOMOTION := ["smooth", "teleport"]
+const HAPTICS := ["Off", "Low", "Normal", "Strong"]
 
 ## The numbers an assist preset stands for. Standard is what the game has always played like.
 const ASSIST_VALUES := {
@@ -34,6 +35,7 @@ var hand := "right"                # throwing hand
 var assist := "Standard"
 var quality := "Auto"              # Auto: governor decides; Quest: tuned settings; High: no tuning
 var locomotion := "smooth"
+var haptics := "Normal"            # controller vibration strength
 var vignette := true               # darken the edges while moving (fielding)
 var snap_turn := false
 var developer := false             # reveals logging / debug options in the menu
@@ -52,7 +54,7 @@ func throwing_hand_name() -> StringName:
 
 func to_dict() -> Dictionary:
 	return {"version": VERSION, "hand": hand, "assist": assist, "quality": quality,
-		"locomotion": locomotion, "vignette": vignette, "snap_turn": snap_turn,
+		"locomotion": locomotion, "haptics": haptics, "vignette": vignette, "snap_turn": snap_turn,
 		"developer": developer, "volumes": volumes, "last_game": last_game}
 
 
@@ -64,6 +66,7 @@ static func from_dict(d: Dictionary) -> Settings:
 	s.assist = d.get("assist", s.assist) if d.get("assist", "") in ASSISTS else s.assist
 	s.quality = d.get("quality", s.quality) if d.get("quality", "") in QUALITY else s.quality
 	s.locomotion = d.get("locomotion", s.locomotion) if d.get("locomotion", "") in LOCOMOTION else s.locomotion
+	s.haptics = d.get("haptics", s.haptics) if d.get("haptics", "") in HAPTICS else s.haptics
 	s.vignette = bool(d.get("vignette", s.vignette))
 	s.snap_turn = bool(d.get("snap_turn", s.snap_turn))
 	s.developer = bool(d.get("developer", s.developer))
