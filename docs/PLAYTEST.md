@@ -122,3 +122,23 @@ vignette, snap turn and movement options are stored but not wired; no squeeze or
 no rundowns; the batter, catcher and umpire use the older static figures; the knuckleball
 "shot put" gesture is unbuilt; the pitcher and catcher cannot be played; the pitcher figure does
 not field bunts while you pitch.
+
+---
+
+## 10. People, animation and sound (new; none of it has been seen or heard in the headset)
+
+Animation (look from the mound, then from behind the plate):
+- [ ] Catcher: the mitt follows each pitch to where it crosses; a wide or low pitch is reached for; a dirt ball is blocked (dust); he pops up and throws on a steal.
+- [ ] Umpire: a call gesture after each strike, out, safe and foul; he steps aside on a ball in play and is back behind the plate before the next batter.
+- [ ] Batter: bat hangs low on the walk up and comes up in the box; waggle; swing hands stay on the bat; bunts square around; the odd check swing; flinch from a pitch at him; bat dropped (flipped on a homer). **Left-handed hitters** stand on the first-base side.
+- [ ] Fielders: scoop on grounders, backhand to the side, jump catch on a high ball, a small sink at the crack of the bat, a glove sweep on tags; throws end in the receiver's glove, and in a double play the shortstop (not the second baseman) throws on to first.
+- [ ] Runners: bounce on a lead, watch a fly ball, slide with dust, dive back on a pickoff, celebrate on scoring.
+- [ ] Paper players no longer turn toward your head when you look around.
+
+Sound (headphones in the headset; these are crude placeholders, judge timing and level, not quality):
+- [ ] Main menu has its own music; pausing quiets the game and the ball-in-flight sounds stop.
+- [ ] Glove pop is at the catcher's mitt and on the beat of the catch; harder pitch, harder pop.
+- [ ] Bat crack on contact, louder for a harder hit; home run: crack, crowd roar, horn, fireworks.
+- [ ] Crowd grows with runners on and a close late game; the umpire's calls are audible but not loud.
+- [ ] Anything that is annoying or repeats too much: note the sound name (`docs/AUDIO_LIST.md`).
+- [ ] Options > Sound sliders work and persist.

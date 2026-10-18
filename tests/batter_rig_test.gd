@@ -85,6 +85,26 @@ func _init() -> void:
 	b.reset()
 	_check(b._bat.visible, "a new batter has a bat")
 
+	# A left-hander is the mirror image: same contact accuracy, hands on the bat.
+	var lb := CartoonBatter.new()
+	lb.right_handed = false
+	lb.position = Vector3(0.98, 0.0, 0.0)
+	root.add_child(lb)
+	await _frames(3)
+	var lworst := 0.0
+	for p in [Vector3(0.0, 0.9, 0.2), Vector3(-0.1, 0.7, 0.15), Vector3(0.05, 1.1, 0.25)]:
+		lb.swing_to(p, 0.3)
+		lb.snap_to_contact()
+		lworst = maxf(lworst, lb.sweet_spot_world().distance_to(p))
+		lb.reset()
+	_check(lb.global_position.x < -0.5 and lworst < 0.03, "a left-hander stands at the other side and meets the ball (box x %.2f, worst %.3f m)" % [lb.global_position.x, lworst])
+	lb.swing_to(Vector3(0.0, 0.9, 0.2), 0.3)
+	lb.snap_to_contact()
+	await _frames(2)
+	var ld := lb.doll.glove_world().distance_to(lb.to_global(lb._h_low))
+	var lu := lb.doll.hand_world().distance_to(lb.to_global(lb._h_up))
+	_check(ld < 0.16 and lu < 0.16, "a left-hander's hands are on the bat (%.3f, %.3f m)" % [ld, lu])
+
 	# The dust pool: a burst appears, fades and is gone; a flood never overflows the pool.
 	var dust := DustPuffs.new()
 	root.add_child(dust)

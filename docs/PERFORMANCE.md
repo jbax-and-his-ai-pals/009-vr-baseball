@@ -11,8 +11,8 @@ allocation matter too, but this game does very little per frame.
 
 | Budget | Now (idle / busy) | Limit | Notes |
 |---|---|---|---|
-| Draw calls | 30 / 47 (+8 when the fielders are in view) | 220 (hard), ~120 (plan to stay under) | `tools/perf.sh --budget` fails above 220 |
-| Triangles | 156k / 165k | 350k (hard) | cheap compared with draw calls |
+| Draw calls | 75 mean, 82 max in the busy demo (measured 2026-10-18, `tools/perf.sh --demo`; fielders and Dolls included) | 220 (hard), ~120 (plan to stay under) | `tools/perf.sh --budget` fails above 220 |
+| Triangles | 163k mean, 169k max | 350k (hard) | cheap compared with draw calls |
 | Large transparent surfaces | 2 (strike zone, netting) | keep <= 3 | overdraw is costly on mobile GPUs |
 | Per-frame script cost | small | keep allocation out of `_process` | trails rebuild only when they change |
 
@@ -22,8 +22,7 @@ allocation matter too, but this game does very little per frame.
 
 1. **A character is one or two draw calls.** Build bodies from primitives and bake them with
    `MeshMerger` (vertex colors, one shared material). Only parts that animate independently get
-   their own mesh: the batter is legs, torso+head, four arm segments and the bat = 7 (he is the
-   hero figure; background people such as the catcher and umpire are 1 each). Do **not** add a `MeshInstance3D`
+   their own mesh: a person is one skinned `Doll` (one draw call); the batter is a Doll plus the bat = 2. Do **not** add a `MeshInstance3D`
    per limb. Nine fielders built per-limb would be 100+ calls on their own.
 2. **Static scenery is merged.** `Stadium` collects opaque props into one mesh; add new props
    through its `_add()`. Anything repeated (fans, fence segments, stands) is a `MultiMesh`.
@@ -95,3 +94,10 @@ trail.
 2. Add a pitch/hit pool instead of creating and freeing meshes every pitch.
 3. LOD the crowd (already scaled by the governor) and the far stands.
 4. Reduce `MSAA` or render scale before cutting content.
+
+## Not yet measured
+
+Every number here is from the PC. Nothing has run standalone on a Quest 3 (there is no Android export
+preset yet). Open questions for milestone M1 in `ROADMAP.md`: the off-screen bottom half inning at the third
+out (one synchronous frame, about 60 ms on the PC), the 71 `Label3D` nodes, per-frame Doll animation for
+about 20 people, and 24 MB of PCM audio.

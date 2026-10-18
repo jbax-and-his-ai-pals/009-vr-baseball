@@ -56,12 +56,17 @@ var _h_up := Vector3.ZERO
 var _wag := 0.0
 
 
+## Where he stands in the box, as a transform. A right-hander is on the third-base side (+X) with
+## his chest to the plate; a left-hander is the mirror image (the whole figure is flipped, so his
+## lead side is still the one toward the pitcher and nothing else has to know).
+static func home_transform(right: bool, x: float = 0.98) -> Transform3D:
+	if right:
+		return Transform3D(Basis(Vector3.UP, deg_to_rad(-90.0)), Vector3(x, 0.0, 0.0))
+	return Transform3D(Basis(Vector3.UP, deg_to_rad(90.0)) * Basis.from_scale(Vector3(-1.0, 1.0, 1.0)), Vector3(-x, 0.0, 0.0))
+
+
 func _ready() -> void:
-	# A right-hander stands on the third-base side (+X) with his chest to the plate (-X in the
-	# world); a left-hander mirrors that.
-	var side := 1.0 if right_handed else -1.0
-	position.x = absf(position.x) * side
-	rotation_degrees.y = -90.0 * side
+	transform = home_transform(right_handed, absf(position.x))
 	doll = Doll.create(self, Vector3.ZERO, shirt_color, pants_color, helmet_color, false, Doll.Style.SOFT, "batter")
 	doll.crouch = 0.0
 	doll.look_yaw = FACE_PITCHER

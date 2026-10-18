@@ -185,6 +185,8 @@ Without these a session has no "one more game" pull.
 4. **Then make it a game you return to** (feel, then meta), then widen the roles, then production.
 
 ### M0. Safety and housekeeping (S)
+
+**Status: done 2026-10-18** (details at the end of this section).
 - `git init`, first commit, then commit per feature. For the 24 MB of generated placeholder audio,
   do not ignore `audio/**/*.wav`: real recordings deliberately take the same names and extension,
   so they would be ignored too. Either commit the placeholders (simplest; 24 MB is fine), or have
@@ -199,6 +201,14 @@ Without these a session has no "one more game" pull.
   volume menu).
 
 **Exit criteria:** the project is in git; B1-B6 are fixed with tests; the docs agree with the code.
+
+**M0 results (2026-10-18)**
+- Project under git; baseline commit before the fixes. Placeholder audio is committed (simplest; 11.5 MB packed), so real recordings can never be ignored by accident.
+- B1/B2: `_process` now runs `_update_menu_audio` while a menu is open: the main menu plays `music_menu` with no crowd or ambience; pause ducks Music/Crowd/SFX/Voice by 12 dB (the UI bus is exempt) and cuts the whiz and roll loops. Delayed sounds wait on a game-time queue inside `AudioManager`, so they stop while paused.
+- B3: `CartoonBatter.home_transform(right)` (a left-hander is the whole figure mirrored); the batter's box, walk-on path and hit-by-pitch zone follow `Player.bats_right`; `--lefty` forces it for screenshots.
+- B4/B6: `--seed=N` (logged in the session header) seeds the gameplay generator, a separate cosmetic generator and the off-screen bottom half, which no longer reads the clock. Still unseeded (M3): the `randomize()` calls inside `AIPitcher`, `BatterAI`, `Defense` and `GameState` for the half you pitch.
+- B5: `PERFORMANCE.md` and the superseded "not modelled" lists in `DESIGN.md` brought up to date; `PLAYTEST.md` has a new section for the animation and sound work.
+- New `tests/hygiene_test.gd`: every sound id the code plays is in the manifest, cosmetic code does not touch the gameplay RNG, a seed replays the bottom half, left-handers, delayed sounds pause, and the menu audio.
 
 ### M1. Run standalone on a Quest 3 (M)
 - Android export: the export template, an arm64 preset, and the OpenXR vendors plugin for Meta.

@@ -54,7 +54,7 @@ func _init() -> void:
 				for hh in bp._hits:
 					info += " | hit result=%s shown=%s hidden=%s t=%.1f" % [hh.play.get("result", "?"), hh.result_shown, hh.plan.get("batter_hidden", "-"), hh.t]
 				print("  INVISIBLE: ", info)
-		if bp._batter_ready and bp._batter.transform.origin.distance_to(home.origin) > 0.1:
+		if bp._batter_ready and bp._batter.transform.origin.distance_to(bp._batter_home.origin) > 0.1:
 			ready_away_frames += 1
 		if not bp._batter_ready:
 			unready_run += dt
@@ -82,7 +82,7 @@ func _init() -> void:
 	_check(bp._batter_ready or bp._game.over, "after settling the batter is ready (or the game is over)")
 	if not bp._game.over:
 		_check(bp._batter.visible, "the batter is visible in the box")
-		_check(bp._batter.transform.origin.distance_to(home.origin) < 0.05, "he stands where his box is")
+		_check(bp._batter.transform.origin.distance_to(bp._batter_home.origin) < 0.05, "he stands where his box is")
 	var leaving := 0
 	for lv in bp._leavers:
 		if lv.visible:

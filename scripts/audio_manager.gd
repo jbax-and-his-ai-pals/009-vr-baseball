@@ -49,6 +49,9 @@ var _volumes := {"Master": 1.0, "SFX": 1.0, "Crowd": 0.8, "Music": 0.5, "UI": 0.
 ## What has been played lately (id and bus), newest last: for tests and the session log.
 var recent: Array = []
 var played := 0
+var paused := false                       # the game is stopped (a menu is up): delayed sounds wait, the game's sound is ducked
+var _pending: Array = []                  # delayed sounds: {"t": seconds left, "id", "at", "db"}
+const PAUSE_DUCK_DB := -12.0
 var counts: Dictionary = {}              # id -> times played (what a game actually used)
 var missing := 0
 
@@ -279,12 +282,29 @@ func _free_2d() -> AudioStreamPlayer:
 	return best
 
 
-## Play `id` `seconds` from now (a swing whoosh timed to the contact).
+## Play `id` `seconds` from now (a swing whoosh timed to the contact). The wait is in game time:
+## it stops while the game is paused, like everything else.
 func play_later(seconds: float, id: String, at: Variant = null, db: float = 0.0) -> void:
 	if seconds <= 0.0:
 		play(id, at, db)
 		return
-	get_tree().create_timer(seconds).timeout.connect(func(): play(id, at, db))
+	_pending.append({"t": seconds, "id": id, "at": at, "db": db})
+
+
+## The game stops (a menu is up) or goes on. Stopped: the game's sound is ducked (the interface is not),
+## and sounds that only make sense while the ball is moving are cut.
+func set_paused(on: bool) -> void:
+	if on == paused:
+		return
+	paused = on
+	if on:
+		for key in ["whiz", "roll"]:
+			loop_off(key)
+	apply_volumes(_volumes)
+
+
+func pending_count() -> int:
+	return _pending.size()
 
 
 # ------------------------------------------------------------------ the crowd
@@ -438,6 +458,13 @@ func stem_gain(id: String) -> float:
 
 
 func _process(delta: float) -> void:
+	if not paused:
+		for i in range(_pending.size() - 1, -1, -1):
+			var w: Dictionary = _pending[i]
+			w.t -= delta
+			if w.t <= 0.0:
+				_pending.remove_at(i)
+				play(String(w.id), w.at, float(w.db))
 	for key in _loops.keys():
 		var l: Dictionary = _loops[key]
 		var pl: Node = l.p
@@ -484,20 +511,21 @@ func _process(delta: float) -> void:
 func apply_volumes(v: Dictionary) -> void:
 	for k in v:
 		_volumes[k] = clampf(float(v[k]), 0.0, 1.0)
+	var duck := PAUSE_DUCK_DB if paused else 0.0
 	_set_bus("Master", float(_volumes["Master"]))
-	_set_bus("SFX", float(_volumes["SFX"]))
+	_set_bus("SFX", float(_volumes["SFX"]), duck)
 	_set_bus("UI", float(_volumes["SFX"]) * 0.8)
-	_set_bus("Crowd", float(_volumes["Crowd"]))
-	_set_bus("Music", float(_volumes["Music"]))
-	_set_bus("Voice", float(_volumes["Voice"]))
+	_set_bus("Crowd", float(_volumes["Crowd"]), duck)
+	_set_bus("Music", float(_volumes["Music"]), duck)
+	_set_bus("Voice", float(_volumes["Voice"]), duck)
 
 
-static func _set_bus(name: String, linear: float) -> void:
+static func _set_bus(name: String, linear: float, extra_db: float = 0.0) -> void:
 	var i := AudioServer.get_bus_index(name)
 	if i < 0:
 		return
 	AudioServer.set_bus_mute(i, linear <= 0.001)
-	AudioServer.set_bus_volume_db(i, linear_to_db(maxf(linear, 0.001)))
+	AudioServer.set_bus_volume_db(i, linear_to_db(maxf(linear, 0.001)) + extra_db)
 
 
 func volume(bus: String) -> float:

@@ -260,6 +260,8 @@ var _field_nodes := {}            # fielder number -> Node3D
 var _runner: Node3D
 var _play_labels: Array[Label3D] = []
 var _run_rng := RandomNumberGenerator.new()
+var _fx_rng := RandomNumberGenerator.new()   # presentation choices only: never shares a stream with the rules
+var _game_seed := 0
 var _last_report_extra := ""
 var _origin: XROrigin3D
 var _settings := Settings.new()
@@ -321,6 +323,12 @@ func _ready() -> void:
 	_ai_pitcher = AIPitcher.new(_home.player_at(1))
 	_away = Team.generate("Away", 52.0, 14)
 	_new_game()
+	_game_seed = randi()
+	for sa in OS.get_cmdline_user_args():
+		if sa.begins_with("--seed="):
+			_game_seed = int(sa.substr(7))
+	_run_rng.seed = _game_seed
+	_fx_rng.seed = _game_seed ^ 0x5EED
 	_build_world()
 	_setup_xr()
 	_build_menu(want_menu)
@@ -331,7 +339,7 @@ func _ready() -> void:
 	GameLog.start({"mode": game_mode_name, "activity": lineup_mode, "innings": game_innings, "position": fielding_position,
 		"assist": _settings.assist, "hand": _settings.hand, "settings": _settings.to_dict(), "xr": _xr_active,
 		"args": OS.get_cmdline_user_args(), "throw_log": ThrowLogger.override_path, "menu_open": want_menu,
-		"home_lineup": _home.lineup.map(func(x): return x.name), "away_lineup": _away.lineup.map(func(x): return x.name),
+		"seed": _game_seed, "home_lineup": _home.lineup.map(func(x): return x.name), "away_lineup": _away.lineup.map(func(x): return x.name),
 		"funnel": [funnel_spread_x, funnel_spread_y], "velocity_gain": velocity_gain})
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--profile="):
@@ -428,7 +436,7 @@ func _maybe_change_pitcher() -> void:
 ## The half inning you do not pitch: your team bats against their pitcher, played out of sight.
 func _simulate_bottom_half(inning: int) -> Dictionary:
 	var their_pitcher: Player = _away.player_at(1)
-	var r := HalfInningSim.play(_home.lineup, _home_order, their_pitcher, _away, 9000 + inning * 17 + int(Time.get_ticks_msec()) % 997)
+	var r := HalfInningSim.play(_home.lineup, _home_order, their_pitcher, _away, _game_seed + 9000 + inning * 17)
 	_home_order = int(r.next_index)
 	return {"runs": int(r.runs), "hits": int(r.hits)}
 
@@ -648,6 +656,25 @@ func _crowd_react(ev: Dictionary) -> void:
 		_sfx_later(2.0, "music_loss" if (mine and not won) else "music_victory", null, -4.0)
 
 
+## While a menu is up the game does not run, but its sound still has to behave: the main menu has
+## its own theme and no ballpark; a pause ducks the game's sound and stops anything that was mid-flight.
+func _update_menu_audio(delta: float) -> void:
+	if _audio == null:
+		return
+	_audio.set_paused(true)
+	_audio_tick -= delta
+	if _audio_tick > 0.0:
+		return
+	_audio_tick = 0.5
+	if _menu.model.screen() == "pause":
+		return
+	_audio.set_crowd_on(false)
+	_audio.set_stems(0.0, 0.0)
+	for key in ["wind", "buzz", "dugout", "breath", "clap"]:
+		_audio.loop_off(key)
+	_audio.play_music("music_menu")
+
+
 ## The ambience, crowd bed and music follow the game: quiet and sparse early, louder with men on
 ## and a close game late, hushed and tense with two strikes in a tight ninth. Menu: the menu theme only.
 func _update_audio(delta: float) -> void:
@@ -657,14 +684,8 @@ func _update_audio(delta: float) -> void:
 	if _audio_tick > 0.0:
 		return
 	_audio_tick = 0.5
-	var in_menu := _menu != null and _menu.is_open() and _menu.model.screen() != "pause"
-	_audio.set_crowd_on(not in_menu)
-	_audio.play_music("music_menu" if in_menu else "music_game_base")
-	if in_menu:
-		for key in ["wind", "buzz", "dugout", "breath", "clap"]:
-			_audio.loop_off(key)
-		_audio.set_stems(0.0, 0.0)
-		return
+	_audio.set_crowd_on(true)
+	_audio.play_music("music_game_base")
 	# The park around you.
 	_audio.loop_on("wind", "stadium_wind", -20.0)
 	_audio.loop_on("buzz", "light_tower_buzz", -28.0)
@@ -724,9 +745,9 @@ func _batter_takes(pitch: Pitch) -> void:
 	if not a.get("reached", false) or _batter == null:
 		return
 	var p: Vector3 = a.get("plate_pos", Vector3(9.0, 9.0, 0.0))
-	if PitchLocation.hits_batter(p.x, p.y):
+	if PitchLocation.hits_batter(p.x, p.y, _batter_is_lefty()):
 		_batter.flinch()
-	elif not pitch.bat.get("busy", false) and absf(p.x) < 0.55 and p.y > 0.3 and p.y < 1.5 and _run_rng.randf() < 0.3:
+	elif not pitch.bat.get("busy", false) and absf(p.x) < 0.55 and p.y > 0.3 and p.y < 1.5 and _fx_rng.randf() < 0.3:
 		_batter.check_swing(Vector3(p.x, p.y, 0.1), float(a.get("time", 0.5)))
 		_sfx_later(float(a.get("time", 0.5)) * 0.5, "bat_swing_slow", _batter.global_position + Vector3(0.0, 1.1, 0.0), -6.0)
 
@@ -1435,7 +1456,10 @@ func _on_quality_changed(level: int) -> void:
 func _process(delta: float) -> void:
 	_poll_menu_button()
 	if _menu != null and _menu.is_open():
+		_update_menu_audio(delta)
 		return       # the game waits while a menu is up
+	if _audio != null:
+		_audio.set_paused(false)
 	_game_time += delta
 	_update_catcher(delta)
 	_update_umpire(delta)
@@ -1569,6 +1593,17 @@ func _sync_batter() -> void:
 		_batter_player = _game.current_batter()
 		_batter_ai.profile = BatterProfile.from_player(_batter_player)
 	_refresh_scoreboard()
+	# A batter already standing in his box (the first of a game) takes the right side now; everyone
+	# else is placed when he walks on, so the last batter never flips sides in front of you.
+	if _batter_ready and _walk_on.is_empty() and _aux_play.is_empty() and not _play_in_progress() and _batter != null:
+		_batter_home = CartoonBatter.home_transform(not _batter_is_lefty())
+		_batter.transform = _batter_home
+
+
+func _batter_is_lefty() -> bool:
+	if "--lefty" in OS.get_cmdline_user_args():
+		return true                      # debug: make every batter left-handed
+	return _batter_player != null and not _batter_player.bats_right
 
 
 ## Player preferences: handedness and the assist preset (funnel, glove, throw cone).
@@ -1813,7 +1848,7 @@ func _release_from_hand(release_t: float, vel_latency: float, spin_latency: floa
 			funnel = _funnel_target(from, release_t)
 			var target: Vector3 = funnel.target
 			vel = PitchPhysics.solve_aim(from, maxf(vel.length(), MIN_ASSIST_SPEED), spin, target)
-	var pitch := _launch(from, vel, spin, "Your pitch", shape.get("flutter", 0.0), randf() * 100.0)
+	var pitch := _launch(from, vel, spin, "Your pitch", shape.get("flutter", 0.0), _run_rng.randf() * 100.0)
 	pitch.label = PitchNamer.name_pitch(pitch.analysis, _wrist.typical_mph(velocity_gain), hand_sign, shape.get("knuckle", false))
 	_log_throw(pitch, from, release_t, vel_latency, est, scaled, spin, funnel, shape)
 
@@ -2075,7 +2110,7 @@ func _land(pitch: Pitch) -> void:
 		outcome = "swinging_strike"
 	elif a.get("reached", false) and a.get("strike", false):
 		outcome = "called_strike"
-	elif a.get("reached", false) and PitchLocation.hits_batter(plate.x, plate.y):
+	elif a.get("reached", false) and PitchLocation.hits_batter(plate.x, plate.y, _batter_is_lefty()):
 		outcome = "hit_by_pitch"
 	_mark_pitch(a, outcome)
 	_sfx_pitch_arrives(a, outcome, plate)
@@ -3123,6 +3158,7 @@ func _begin_walk_on() -> void:
 	if _zone_markers:
 		_zone_markers.clear()
 	_refresh_hud()
+	_batter_home = CartoonBatter.home_transform(not _batter_is_lefty())
 	var home := _batter_home.origin
 	var path: Array = [DUGOUT_ENTRY, Vector3(-3.0, 0.0, -2.4), Vector3(home.x, 0.0, home.z - 1.0), home]
 	var length := 0.0
@@ -3456,7 +3492,7 @@ func _format_report(label: String, a: Dictionary) -> String:
 ## The defense's answer for a ball in play. If a human plays the position that would field it,
 ## the ball is his chance, and the AI's version is what happens when he misses.
 func _resolve_ball(pitch: Pitch) -> void:
-	var run_f := _batter_player.run_factor() * randf_range(0.97, 1.03)
+	var run_f := _batter_player.run_factor() * _run_rng.randf_range(0.97, 1.03)
 	# You are the pitcher: the ball is not yours to field (yet), so an AI one stays out of it.
 	var skip: Array = [1] if _mode.human_pitcher else []
 	pitch.play = _defense.resolve(pitch.sim, run_f, skip)

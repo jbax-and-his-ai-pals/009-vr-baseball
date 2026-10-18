@@ -109,7 +109,7 @@ Physics never gated by level. Assist level is the dial; career ratings (command,
 - Visuals: fielders are one mesh each (`People.fielder`); the play timeline drives them (run, dive, cover first, face the throw), the ball (flight -> glove -> throw arc -> base), and the batter becomes a runner with SAFE / OUT / HOME RUN labels. The HUD announces the result when the play ends, with running Outs / Hits / HR / Errors.
 - Debug: `-- --hit-test=EV:LAUNCH:SPRAY` injects a batted ball (e.g. `78:-4:15` is a routine grounder to short, `103:17:-24` a gap liner); cameras `--infield`, `--outfield`.
 - Fixed along the way: a fielder could "intercept" every ball at t=0 because it starts inside the catcher's reach; grounders lost 18% of their speed per bounce (now 10%).
-- Not modelled yet: runners already on base, force plays and double plays, tag-ups, balks/steals, the count (balls/strikes), innings, the pitcher fielding his position, fielders drifting before the pitch, errors on throws.
+- *(Superseded: runners, force and double plays, tag-ups, balks, steals, the count and innings are all built; see the later sections. Still open: the pitcher fielding his position, fielders drifting before the pitch, errors on throws.)*
 
 ## Players, ratings, teams and modes (foundation for what comes next)
 - **`Player`** (`player.gd`): name, number, position, handedness and ratings 0-100 (50 = average everyday player, 80 elite, 20 poor). Hitting: contact, power, eye, timing, recognition, plus aggression (approach) and loft. Running/fielding: speed, fielding_range, hands, arm. Pitching: velocity, command, movement, stamina, repertoire. `Player.factor(rating, spread)` turns a rating into a multiplier where 50 is the calibrated baseline.
@@ -127,7 +127,7 @@ Physics never gated by level. Assist level is the dial; career ratings (command,
 - Balance after simulating twelve nine-inning games with an average AI pitcher vs an average lineup: ~3.4 pitches per batter, K 30%, BB 11%, ~8 hits, ~3.8 runs, ~1.2 HR per game. To get there, bat speed was raised (29.5 to 38.5 m/s across the power rating) and contact penalties softened; an MVP now averages ~98 mph exit velocity, a Slugger hits 14% of its balls in play over the fence.
 - Tests: `tests/game_state_test.gd` covers every rule above and runs a full simulated game through the real batter, defense and AI pitcher.
 - Debug: `-- --situation=outs:1,bases:101,count:2-1,inning:4`, `--mode=spectate`, `--demo-interval=S`.
-- Not modelled: bottom halves (the home team never bats), hit by pitch, wild pitches / passed balls / steals / bunts, pitcher fatigue (stamina is unused), pinch hitters and substitutions, ties and extra innings, per-batter stat lines.
+- *(Superseded: bottom halves, HBP, wild pitches, steals, bunts, fatigue, relievers, extras are built. Still open: pinch hitters and substitutions you control, per-batter career stat lines.)*
 
 ## Roadmap
 Moved to `ROADMAP.md` (a review of the whole game and milestones M0-M8, written 2026-10-18).
@@ -164,10 +164,7 @@ turns the defense's play (who fielded it, when, with what arm) into a timeline f
   fielder would have reached it and throws to first 0.7 s after; add `--hit-test=EV:LA:SPRAY`
   and `--situation=` to force a ball at a position with runners on.
 
-Not done: wild throws do not let runners take more than the planned base; no steals, bunts or
-wild pitches; infield-in and no-doubles defenses; the catcher and pitcher cannot be played;
-the human position still needs real tuning once you have played it in the headset (catch
-radius, throw cone, locomotion speed are the first things to feel for).
+*(Mostly superseded. Still open: wild throws letting runners advance, infield-in and no-doubles defenses, playing the pitcher or catcher yourself, and tuning the human position in the headset: catch radius, throw cone and locomotion speed.)*
 
 ## Settings and GameConfig (menu foundation, built)
 
@@ -295,8 +292,7 @@ drawn as one skinned mesh, so a person is one draw call in either style:
 - Throws are started so the ball leaves the hand at the planned release (an overhand throw above
   30 m, sidearm above 12 m, underhand flips under that); the receiving fielder and cutoff man are
   told to catch as it arrives; a fielder catches as the ball reaches him.
-- Not done: the batter is still the older 7-mesh figure; the catcher and umpire are static
-  meshes; no slide, dive or reaction animations yet; paper dolls have no facial detail.
+- *(Superseded: the batter, catcher and umpire are dolls now; slide, dive and reaction clips exist. See "Animation pass 2".)*
 
 ## Runner and throw decisions, audited (built)
 
@@ -318,9 +314,7 @@ anyway), otherwise he takes the out at first. A throw that cannot get there is n
 standing at the bag steps on it. A clean ground ball the batter beats is a **fielder's choice** when
 a force is worth taking (no hit, an at-bat; `result: fielders_choice`).
 
-Not done: on a hit, which base the throw goes to (cut off the trailing runner when the lead
-runner cannot be stopped); infield-in; tag plays on a runner caught in a rundown; a runner
-deciding to break for the next base on a throw to another base.
+*(The throw on a hit is built, next section. Still open: rundowns, infield-in, a runner breaking on a throw to another base.)*
 
 ## The throw on a hit (built)
 
@@ -349,9 +343,7 @@ chances for each runner to be thrown out on the same play.
 - A bug fixed on the way: a foul ball's late announcement could mark the batter ready while the
   next ball in play had already taken him out of the box (you pitched to nothing).
 
-Not yet: stolen bases and pickoffs (they depend on how long your delivery takes, which is not
-measured yet), bunts and sacrifices, balks, ground-rule doubles, intentional walks, extra innings,
-the bottom half of an inning, pitcher fatigue and substitutions.
+*(Superseded by "The rest of the rulebook" below, which builds stolen bases, pickoffs, bunts, balks, ground-rule doubles, intentional walks, extra innings, bottom halves and fatigue.)*
 
 ## The rest of the rulebook (built)
 
@@ -392,8 +384,7 @@ the bottom half of an inning, pitcher fatigue and substitutions.
     every runner moves up.
   - A ball put in play on a steal keeps the runner's head start.
 
-Still not built: squeeze plays, hit-and-run, pitching changes you control, hitting for yourself,
-rundowns, and the catcher's and umpire's animations.
+Still not built: squeeze plays, hit-and-run, pitching changes you control, hitting for yourself, rundowns, base umpires. See `ROADMAP.md`.
 
 ## The session log (built)
 

@@ -32,10 +32,12 @@ static func outside_by(x: float, y: float) -> float:
 	return sqrt(dx * dx + dy * dy)
 
 
-## Does a pitch crossing here hit the (right-handed) batter standing in his box? His body is
-## well off the plate on the third-base side, from about the knees to the shoulders.
-static func hits_batter(x: float, y: float) -> bool:
-	return x >= 0.62 and x <= 1.28 and y >= 0.25 and y <= 1.60
+## Does a pitch crossing here hit the batter standing in his box? A right-hander stands on the
+## third-base side (+x), a left-hander on the other: his body is well off the plate, from about
+## the knees to the shoulders.
+static func hits_batter(x: float, y: float, lefty: bool = false) -> bool:
+	var side := -x if lefty else x
+	return side >= 0.62 and side <= 1.28 and y >= 0.25 and y <= 1.60
 
 
 static func classify(x: float, y: float) -> Dictionary:
