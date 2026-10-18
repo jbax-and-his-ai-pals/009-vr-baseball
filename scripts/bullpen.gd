@@ -218,14 +218,21 @@ var _stats := StatsTracker.new()
 var _last_report := ""
 var _canned_index := 0
 var _batter: CartoonBatter
-var _batter_home := Transform3D.IDENTITY   # where he stands in his box
+var _presenter: BatterPresenter           # the batter's walk-on, box, bat; owns the figure
+var _batter_home: Transform3D:             # where he stands in his box
+	get: return _presenter.home if _presenter != null else Transform3D.IDENTITY
+	set(v):
+		if _presenter != null:
+			_presenter.home = v
 var _batter_ready := true                  # in the box and pitching may go on
 var _unready_for := 0.0
-var _walk_on := {}                         # the next batter's walk to the box
+var _walk_on: Dictionary:                  # the next batter's walk to the box
+	get: return _presenter.walk if _presenter != null else {}
+	set(v):
+		if _presenter != null:
+			_presenter.walk = v
 var _aux_play := {}                        # a walk or strikeout's own runner animation
 var _leavers: Array[Node3D] = []   # figures that walk back to the dugout after an out
-const DUGOUT_ENTRY := Vector3(-9.0, 0.0, 5.2)
-const WALK_SPEED := 4.0
 var _stadium: Stadium
 var _xr_interface: XRInterface
 var _governor := PerfGovernor.new()
@@ -337,6 +344,8 @@ func _ready() -> void:
 	_crew.throw_started.connect(func(at: Vector3): _sfx_later(0.42, "throw_whoosh", at))
 	_sound.umpire = _umpire
 	_sound.batter = _batter
+	_presenter.walk_step.connect(_on_walk_step)
+	_presenter.arrived.connect(_on_batter_arrived)
 	_sound.tired_source = Callable(self, "_arm_fatigue")
 	_audio.apply_volumes(_settings.volumes)
 	_menu.ui_sound.connect(func(id: String): _sfx(id))
@@ -469,22 +478,17 @@ func _on_walk_step(at: Vector3) -> void:
 ## He lets it go: a pitch at his body makes him jerk away, one near the zone sometimes
 ## draws a hitch of the bat (a check swing).
 func _batter_takes(pitch: Pitch) -> void:
-	var a: Dictionary = pitch.analysis
-	if not a.get("reached", false) or _batter == null:
-		return
-	var p: Vector3 = a.get("plate_pos", Vector3(9.0, 9.0, 0.0))
-	if PitchLocation.hits_batter(p.x, p.y, _batter_is_lefty()):
-		_batter.flinch()
-	elif not pitch.bat.get("busy", false) and absf(p.x) < 0.55 and p.y > 0.3 and p.y < 1.5 and _fx_rng.randf() < 0.3:
-		_batter.check_swing(Vector3(p.x, p.y, 0.1), float(a.get("time", 0.5)))
-		_sfx_later(float(a.get("time", 0.5)) * 0.5, "bat_swing_slow", _batter.global_position + Vector3(0.0, 1.1, 0.0), -6.0)
+	var what := _presenter.take(pitch.analysis, bool(pitch.bat.get("busy", false)), _batter_is_lefty(), _fx_rng.randf())
+	if what == "check":
+		_sfx_later(float(pitch.analysis.get("time", 0.5)) * 0.5, "bat_swing_slow", _batter.global_position + Vector3(0.0, 1.1, 0.0), -6.0)
 
 
 ## The batter lets go of the bat: it drops, bounces and lies there until the next one comes up.
 func _drop_bat() -> void:
-	if _batter == null or not _batter.visible:
+	var dropped = _presenter.drop_bat()
+	if dropped == null:
 		return
-	var xf := _batter.drop_bat()
+	var xf: Transform3D = dropped
 	if _sound != null and _sound.flip_next:
 		_sound.flip_next = false
 		_sfx("bat_flip", xf.origin)
@@ -803,10 +807,10 @@ func _build_world() -> void:
 	# The park (grass, infield, stands, crowd, ...) and a batter standing in his box.
 	_stadium = Stadium.new()
 	add_child(_stadium)
-	_batter = CartoonBatter.new()
-	_batter.position = Vector3(0.98, 0.0, 0.0)
-	add_child(_batter)
-	_batter_home = _batter.transform
+	_presenter = BatterPresenter.new()
+	add_child(_presenter)
+	_presenter.setup(self)
+	_batter = _presenter.batter
 	_props = FieldProps.new()
 	add_child(_props)
 	_dust = _props.dust
@@ -1224,8 +1228,7 @@ func _sync_batter() -> void:
 	# A batter already standing in his box (the first of a game) takes the right side now; everyone
 	# else is placed when he walks on, so the last batter never flips sides in front of you.
 	if _batter_ready and _walk_on.is_empty() and _aux_play.is_empty() and not _play_in_progress() and _batter != null:
-		_batter_home = CartoonBatter.home_transform(not _batter_is_lefty())
-		_batter.transform = _batter_home
+		_presenter.place_in_box(_batter_is_lefty())
 
 
 func _batter_is_lefty() -> bool:
@@ -2402,7 +2405,7 @@ func _plan_anim_end(plan: Dictionary) -> float:
 	for r in plan.runners:
 		if bool(r.out):
 			var p: Vector3 = _runner_at(r, float(r.t_out))[0]
-			end = maxf(end, float(r.t_out) + 0.35 + p.distance_to(DUGOUT_ENTRY) / WALK_SPEED + 0.1)
+			end = maxf(end, float(r.t_out) + 0.35 + p.distance_to(BatterPresenter.DUGOUT_ENTRY) / BatterPresenter.WALK_SPEED + 0.1)
 		elif int(r.to) == 4 and r.arrivals.has(4):
 			end = maxf(end, float(r.arrivals[4]) + 0.9)          # he stays for the celebration
 	return end
@@ -2441,13 +2444,13 @@ func _animate_plan(plan: Dictionary, t: float) -> void:
 			if t >= t_end:
 				fig.visible = false
 				var start: Vector3 = (_runner_at(r, float(r.t_out))[0] as Vector3)
-				var d := DUGOUT_ENTRY - start
-				var u := (t - t_end) / maxf(d.length() / WALK_SPEED, 0.1)
+				var d := BatterPresenter.DUGOUT_ENTRY - start
+				var u := (t - t_end) / maxf(d.length() / BatterPresenter.WALK_SPEED, 0.1)
 				if u >= 1.0:
 					lv.visible = false
 				else:
 					lv.visible = true
-					lv.position = Vector3(0.0, 0.05 * absf(sin(t * 9.0)), 0.0) + start.lerp(DUGOUT_ENTRY, u)
+					lv.position = Vector3(0.0, 0.05 * absf(sin(t * 9.0)), 0.0) + start.lerp(BatterPresenter.DUGOUT_ENTRY, u)
 					lv.rotation.y = atan2(d.x, d.z)
 				continue
 		var done_at := INF
@@ -2785,22 +2788,10 @@ func _begin_walk_on() -> void:
 	if _zone_markers:
 		_zone_markers.clear()
 	_refresh_hud()
-	_batter_home = CartoonBatter.home_transform(not _batter_is_lefty())
-	var home := _batter_home.origin
-	var path: Array = [DUGOUT_ENTRY, Vector3(-3.0, 0.0, -2.4), Vector3(home.x, 0.0, home.z - 1.0), home]
-	var length := 0.0
-	for i in range(1, path.size()):
-		length += (path[i] as Vector3).distance_to(path[i - 1])
-	_walk_on = {"t": 0.0, "path": path, "duration": length / WALK_SPEED}
-	_log("walk_on", {"duration": snappedf(length / WALK_SPEED, 0.01), "batter": _batter_player.name if _batter_player else ""})
-	_batter.set_carry(true, true)          # the bat hangs at his side on the walk up
-	if not _batter.doll.footstep.is_connected(_on_walk_step):
-		_batter.doll.footstep.connect(_on_walk_step)
+	var duration := _presenter.begin_walk_on(_batter_is_lefty())
+	_log("walk_on", {"duration": snappedf(duration, 0.01), "batter": _batter_player.name if _batter_player else ""})
 	if _game != null and not _game.over and randf() < 0.5:
 		_sfx("music_walkup", null, -10.0)
-	_batter.reset()
-	_batter.visible = true
-	_batter.transform = Transform3D(Basis(Vector3.UP, 0.0), DUGOUT_ENTRY)
 
 
 ## True while a ball in play (one with runners moving) has not been announced yet.
@@ -2847,39 +2838,16 @@ func _update_batter_lifecycle(delta: float) -> void:
 				lv.visible = false
 			_refresh_base_runners()
 			_refresh_scoreboard()
-	if not _walk_on.is_empty():
-		_walk_on.t += delta
-		var u := clampf(float(_walk_on.t) / maxf(float(_walk_on.duration), 0.1), 0.0, 1.0)
-		var path: Array = _walk_on.path
-		var total := 0.0
-		var seg_len: Array = []
-		for i in range(1, path.size()):
-			var l: float = (path[i] as Vector3).distance_to(path[i - 1])
-			seg_len.append(l)
-			total += l
-		var d := u * total
-		if total - d < 2.2:
-			_batter.set_carry(false)           # he raises the bat as he steps into the box
-		var pos: Vector3 = path[path.size() - 1]
-		var face := 0.0
-		for i in seg_len.size():
-			var l2: float = seg_len[i]
-			var dir: Vector3 = (path[i + 1] as Vector3) - (path[i] as Vector3)
-			face = atan2(dir.x, dir.z)
-			if d <= l2 or i == seg_len.size() - 1:
-				pos = (path[i] as Vector3).lerp(path[i + 1], clampf(d / maxf(l2, 0.001), 0.0, 1.0))
-				break
-			d -= l2
-		if u >= 1.0:
-			_sfx("batter_step_dirt", _batter_home.origin)
-			if randf() < 0.5:
-				_sfx_later(0.5, "bat_tap_plate", Vector3(0.0, 0.1, 0.0), -4.0)
-			_batter.transform = _batter_home
-			_walk_on = {}
-			_batter_ready = true
-			_refresh_hud()
-		else:
-			_batter.transform = Transform3D(Basis(Vector3.UP, face), pos + Vector3(0.0, 0.05 * absf(sin(float(_walk_on.t) * 9.0)), 0.0))
+	_presenter.update(delta)
+
+
+## He is in the box: the pitcher may throw.
+func _on_batter_arrived() -> void:
+	_sfx("batter_step_dirt", _batter_home.origin)
+	if randf() < 0.5:
+		_sfx_later(0.5, "bat_tap_plate", Vector3(0.0, 0.1, 0.0), -4.0)
+	_batter_ready = true
+	_refresh_hud()
 
 
 ## The play is over: tell the scorebook, say what happened.
