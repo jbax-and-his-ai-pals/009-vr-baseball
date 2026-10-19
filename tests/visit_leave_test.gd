@@ -35,7 +35,7 @@ func _init() -> void:
 	ThrowLogger.override_path = "user://test_throws.jsonl"
 	var bp: Node3D = load("res://scenes/bullpen.tscn").instantiate()
 	bp.menu_on_start = false
-	bp.game_innings = 1
+	bp.game_innings = 3
 	root.add_child(bp)
 	await process_frame
 
