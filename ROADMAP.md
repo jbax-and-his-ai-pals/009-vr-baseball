@@ -16,6 +16,143 @@ Sizes are in working sessions like the ones we have been doing:
 
 ---
 
+## Phased checklist
+
+`[x]` done, `[ ]` open, `[~]` partly done (the note says what is left). The detail, reasoning and exit
+criteria for each phase are in section 5; this is the at-a-glance view. Updated 2026-10-18.
+
+### Phase 0 - Safety and housekeeping (M0) - DONE
+- [x] Put the project under git; baseline commit before the fixes
+- [x] Commit the placeholder audio (so real recordings can never be ignored by accident)
+- [x] B1 main menu music, and pause ducking and loops
+- [x] B2 delayed sounds run on game time (stop while paused)
+- [x] B3 left-handed batters (box side, mirrored figure, hit-by-pitch side)
+- [x] B4 check swing no longer draws from the gameplay random numbers
+- [x] B5 `PERFORMANCE.md` numbers updated; superseded "not modelled" notes in `DESIGN.md` marked
+- [x] B6 off-screen bottom half seeded from the game seed (`--seed=N`, logged)
+- [x] Test: every sound id the code plays exists in the manifest (`hygiene_test`)
+- [x] Test: the menu theme plays on the main menu; pause ducks (`hygiene_test`)
+- [x] Refresh `PLAYTEST.md` for the new behaviours
+- [x] `ROADMAP.md` at the project root
+
+### Phase 1 - Run standalone on a Quest 3 (M1) - SKIPPED FOR NOW (needs the headset and an export setup)
+- [ ] Android export preset, arm64, OpenXR vendors plugin for Meta; `tools/deploy.sh`
+- [ ] Measure on the device: frame time, draw calls, a busy play (double play with dust and sound)
+- [ ] Measure the third-out frame (off-screen bottom half) on the device
+- [ ] Measure the 71 `Label3D` nodes (boards) and audio memory (24 MB of PCM)
+- [ ] If the numbers ask: spread `HalfInningSim` over frames or a thread
+- [ ] If the numbers ask: bake board text into textures / cut the label count
+- [ ] If the numbers ask: convert loops and music to Ogg; reduce per-frame Doll work for far dolls
+- [ ] `--quest-budget` mode in `perf.sh` with device-calibrated limits
+- [ ] Exit: a 3-inning game runs at the headset's refresh rate in busy plays, or a written PC-VR-only decision
+
+### Phase 2 - Playtest and tune what exists (M2) - NEXT, needs you in the headset
+- [ ] Work through `docs/PLAYTEST.md` (sections 0-12) with logging on and marks
+- [ ] Pitching feel: funnel per assist, release timing; gesture confusion matrix (each gesture at 80%+)
+- [ ] Animation readability from the mound (catcher glove, slides and dives, soft vs paper at distance)
+- [ ] Audio mix: bus levels, mitt pop and bat crack on the frame, crowd busyness; drop placeholders worse than silence
+- [ ] Haptics: amplitudes and durations by feel
+- [ ] Balance: BABIP (about .33, slightly high), triple-play rate, steal success, AI intentional walks
+- [ ] Challenges: are the six fair and fun (parameters at the top of `scripts/scenario.gd`)
+- [ ] Exit: two full 3-inning games with no blocking marks; confusion matrix in `DESIGN.md`; tuned mix
+
+### Phase 3 - Split `bullpen.gd` (M3) - MOSTLY DONE
+- [x] `SoundDirector` (what is heard and why)
+- [x] `PlateCrew` (catcher and umpire, signals, own test)
+- [x] `FieldProps` (dust, dropped bats, game-time delay queue, own test)
+- [x] `BatterPresenter` (walk-on, box side, takes, bat drop, own test)
+- [x] `PlayDirector` (fielders, ball hand-to-glove, throws, runners, callouts)
+- [x] `LiveHit` / `LivePitch` data classes (were inner classes)
+- [ ] `PitchFlight` (pitch launch, flight, landing, contact detection)
+- [ ] `HumanPitcher` (XR input, throw detection, funnel aim, delivery timing, pickoff throws)
+- [ ] `GameDirector` (game flow, AI pitcher pacing, steals, menu hooks); `bullpen.gd` under 800 lines (now about 2,800)
+- [ ] Event bus: typed events (`pitch_arrived`, `contact`, `play_event`, `pa_over`, `half_over`, `game_over`) replacing the remaining direct calls
+- [ ] Typed plans (`PlayPlan`, `RunnerPlan`, `ThrowPlan`) instead of dictionaries
+- [~] One RNG per concern: gameplay, cosmetic and bottom-half generators are separate and seeded; the AI classes (`AIPitcher`, `BatterAI`, `Defense`, `GameState`) still self-seed for the half you pitch
+- [~] Test: a seed replays the game (only the bottom half is covered so far)
+- [~] Each presenter has a test (`PlateCrew`, `FieldProps`, `BatterPresenter` do; `SoundDirector` and `PlayDirector` are covered only through the full-game tests)
+
+### Phase 4 - Core VR feel (M4) - STARTED
+- [x] Controller haptics (event table, Options > Haptics, menu pulses in the pointing hand)
+- [ ] Hand model holding the ball; grip shape that teaches the recognised pitch at easier assists
+- [ ] Glove model on the off hand
+- [ ] Pitch lab (Bullpen mode rebuilt): recognised pitch, spin axis, break, speed, location, "what made it a slider"
+- [ ] First-run tutorial: calibrate your normal throw, then one gesture per pitch type
+- [ ] Catcher signs (pitch and location called, shake-offs, a bonus for hitting the sign)
+- [ ] Comebackers: catch a ball hit at you with the glove hand
+- [ ] Seated mode with height calibration
+- [ ] Verify left-handed throwing end to end
+- [ ] Colour-blind palette for the zone colours
+- [ ] Text for umpire calls
+- [ ] Exit: a new player can calibrate, learn three pitches and play a game with no one explaining
+
+### Phase 5 - A game you come back to (M5) - HALF DONE
+- [x] Persistence: saved game lines, lifetime totals, best games per leaderboard (`PlayerProfile`)
+- [x] Stats screen (main menu) with lifetime lines and top five per board
+- [x] Local leaderboards per mode, length and assist level, ranked by Game Score
+- [x] Challenge scenarios: six, with 0-3 stars, a Challenges menu, results saved
+- [x] Tests never touch the player's profile
+- [ ] Per-pitch-type metrics over time in the profile; box scores per game
+- [ ] Leaderboards for Fielding mode
+- [ ] Create a pitcher (name, hand, look)
+- [ ] A season of starts in a fictional league; the other games simulated with the existing engine (`HalfInningSim` generalised)
+- [ ] Standings and your stat line
+- [ ] Ratings that grow from use (command, stamina, new pitches from the pitch lab); physics never gated
+- [ ] League data: fictional teams, names, parks, uniform colours, a schedule
+- [ ] Exit: a 10-start season playable with saved progress, standings and a stats screen
+
+### Phase 6 - More roles (M6)
+- [~] Human fielding: 1B to RF exist (`--field-pos`); open: pitcher and catcher, first base taking throws, tuning in the headset
+- [ ] Wild throws let runners advance
+- [ ] Fielding drills ("ten grounders to short")
+- [ ] Catcher as a position (framing and blocking mini-game)
+- [ ] Hitting: bat in hand with tracked swing physics (reuse `BattedBall`), pitch recognition, timing feedback
+- [ ] Batting practice and home-run derby
+- [ ] Role switching in a game (pitch your half, hit in the bottom, or field)
+
+### Phase 7 - Rest of the rulebook and the manager (M7)
+- [x] Intentional walk (pause menu, pitching mode)
+- [ ] Rundowns
+- [ ] Squeeze, hit-and-run, infield in
+- [ ] Base umpires
+- [ ] Pitching changes you control (bullpen phone), mound visits, an intentional-walk gesture
+- [ ] Pickoff moves from the stretch; pitcher covering first and backing up bases
+- [ ] Platoon effects (left-handed batters now exist)
+- [ ] Pitching change PA call (`pa_pitching_change`, the one sound with no trigger) and `pa_number_digits`
+
+### Phase 8 - Production (M8, mostly assets)
+- [ ] Commit to one art style (decision 3 below)
+- [ ] Proper character models, or the procedural rig refined in the chosen style
+- [ ] Hero pass: catcher, batter, your own hands
+- [ ] 2-3 parks, day and night
+- [ ] Animated crowd (shader bob, stand for home runs)
+- [ ] Record and source the P0 audio (mitt, bat, crowd, umpire voice), then P1; real music
+- [ ] Menu and board art pass, transitions, between-innings presentation
+- [ ] Store readiness if shipping on Meta (comfort rating, performance, entitlement, privacy policy)
+
+### Later
+- [ ] Async ghost multiplayer (same seed, same lineup)
+- [ ] Weather and altitude
+- [ ] Replay camera for big plays
+
+### Decisions waiting for you
+- [ ] Standalone Quest or PC VR as the target (recommendation: measure in Phase 1 first)
+- [ ] Arcade/challenges first or career first (recommendation: challenges first; challenges are now in)
+- [ ] One art style, soft or paper
+- [ ] When hitting comes (largest feature after career; needs Phase 3 finished)
+
+### Animation and audio, from the earlier plans
+- [x] Catcher glove tracking with IK, block, chase, pop-up throw; umpire calls and movement
+- [x] Batter on the shared rig: swing, bunt, check swing, flinch, bat carry and drop, left-handed mirror
+- [x] Fielder scoop, backhand, jump catch, reaction step, tag, dive
+- [x] Runner lead bounce, fly-ball watching, turn lean, slide, dive-back, celebration
+- [x] Dust puffs; throws end in the receiver's glove; double-play pivot man throws on
+- [x] `AudioManager` with buses, crowd beds, music and stems, loops that follow the ball; 457 placeholder files; all but two sounds wired
+- [ ] Chalk puffs, grass kick, glove-pop ring, bat-hit flash; coaches; dugout reactions; high fives and helmet toss
+- [ ] Real recordings replacing the placeholders (`docs/AUDIO.md`, `docs/AUDIO_LIST.md`)
+
+---
+
 ## 1. Where the game is
 
 | Area | State |
