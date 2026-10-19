@@ -392,6 +392,8 @@ func _ready() -> void:
 	_sync_batter()
 	if not _xr_active:
 		_governor.set_refresh_rate(60.0)  # a desktop window is judged against 60 Hz, not a headset's 90
+	if "--excite" in OS.get_cmdline_user_args():
+		_stadium.pulse(1.0)                  # debug: the crowd on its feet (it settles over about five seconds)
 	_perf_log = "--perf" in OS.get_cmdline_user_args()
 	_governor.enabled = not ("--no-governor" in OS.get_cmdline_user_args())
 	_governor.level_changed.connect(_on_quality_changed)
@@ -3223,6 +3225,18 @@ func _bottom_event(ev: Dictionary, extra: Dictionary) -> Dictionary:
 	return out
 
 
+## How far the crowd gets to its feet for this event (0 for nothing special).
+func _crowd_excitement(ev: Dictionary) -> float:
+	match String(ev.get("result", "")):
+		"home_run":
+			return 1.0
+		"triple", "double":
+			return 0.5
+		"strikeout":
+			return 0.3
+	return 0.6 if int(ev.get("runs", 0)) > 0 else 0.0
+
+
 ## After anything that changes the game: next batter, runners, scoreboard, game over.
 func _after_event(ev: Dictionary, extra: Dictionary = {}) -> void:
 	if ev.is_empty():
@@ -3231,6 +3245,8 @@ func _after_event(ev: Dictionary, extra: Dictionary = {}) -> void:
 		ev = _bottom_event(ev, extra)
 	if _sound != null:
 		_sound.crowd_react(ev, _game)
+	if _stadium != null:
+		_stadium.pulse(_crowd_excitement(ev))
 	match String(ev.get("result", "")):
 		"home_run":
 			_haptics.play("rumble", 1.0)

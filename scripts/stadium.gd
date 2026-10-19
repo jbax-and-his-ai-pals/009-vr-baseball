@@ -248,7 +248,7 @@ func _build_crowd() -> void:
 	mm.multimesh.visible_instance_count = placed
 	_crowd_mm = mm
 	_crowd_placed = placed
-	mm.material_override = _instance_color_material()
+	mm.material_override = _crowd_material(0.0)
 	add_child(mm)
 
 	# Heads on the bodies: a second multimesh so fans read as people, not capsules.
@@ -264,7 +264,7 @@ func _build_crowd() -> void:
 		xf.origin += Vector3(0.0, 0.62, 0.0)
 		hm.multimesh.set_instance_transform(i, xf)
 		hm.multimesh.set_instance_color(i, skin[(i * 7 + 3) % skin.size()])
-	hm.material_override = _instance_color_material()
+	hm.material_override = _crowd_material(0.62)
 	add_child(hm)
 	_heads_mm = hm
 	_heads_placed = placed
@@ -401,6 +401,43 @@ func _build_details() -> void:
 # --------------------------------------------------------------------------- helpers
 
 var _inst_mat: StandardMaterial3D
+var _crowd_mats: Array[ShaderMaterial] = []
+var _excite := 0.0                          # how worked up the crowd is now, 0..1
+var _excite_target := 0.0
+
+
+## The fans' material: sways all the time, stands and bounces with `excite` (see shaders/crowd.gdshader).
+func _crowd_material(anchor_y: float) -> ShaderMaterial:
+	var m := ShaderMaterial.new()
+	m.shader = load("res://shaders/crowd.gdshader")
+	m.set_shader_parameter("anchor_y", anchor_y)
+	m.set_shader_parameter("excite", _excite)
+	_crowd_mats.append(m)
+	return m
+
+
+## The crowd gets excited (a homer is 1.0, a run 0.6): it jumps up at once and settles over a few seconds.
+func pulse(amount: float) -> void:
+	_excite_target = maxf(_excite_target, clampf(amount, 0.0, 1.0))
+	_excite = maxf(_excite, _excite_target)
+	_apply_excite()
+
+
+func excitement() -> float:
+	return _excite
+
+
+func _apply_excite() -> void:
+	for m in _crowd_mats:
+		m.set_shader_parameter("excite", _excite)
+
+
+func _process(delta: float) -> void:
+	if _excite <= 0.0 and _excite_target <= 0.0:
+		return
+	_excite_target = maxf(_excite_target - delta / 5.0, 0.0)      # the cheer lasts about five seconds
+	_excite = maxf(_excite_target, _excite - delta / 1.2)
+	_apply_excite()
 
 
 ## Material for multimeshes that carry a color per instance (fans, ad boards).
