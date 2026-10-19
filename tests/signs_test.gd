@@ -95,7 +95,7 @@ func _init() -> void:
 	var tg: Vector2 = bp.manager.sign.target
 	bp.manager.grade_sign(p, Vector3(tg.x, tg.y, 0.0))
 	_check(int(bp.manager.sign_tally.called) == 1 and int(bp.manager.sign_tally.perfect) == 1, "a pitch that matches the call is a sign hit")
-	var line: Dictionary = bp._game_line()
+	var line: Dictionary = bp.results.game_line()
 	_check(int(line.signs) == 1 and int(line.sign_hits) == 1, "it goes on your line")
 	var prof := PlayerProfile.new()
 	prof.record_game(GameConfig.new(), line)

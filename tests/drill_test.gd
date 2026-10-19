@@ -69,7 +69,7 @@ func _init() -> void:
 	_check(int(bp.fielding.fld.chances) >= 3 and int(bp.fielding.fld.caught) + int(bp.fielding.fld.missed) + int(bp.fielding.fld.errors) >= 3, "your chances were counted (%s)" % str(bp.fielding.fld))
 	var rec: Dictionary = bp._profile.challenge("drill_f6")
 	_check(int(rec.attempts) == 1, "the result is saved against your position (%s)" % str(rec))
-	_check(bp._props.pending_count() > 0 and not bp._game_recorded, "a way back to the menu is scheduled, and it is not recorded as a game")
+	_check(bp._props.pending_count() > 0 and not bp.results.game_recorded, "a way back to the menu is scheduled, and it is not recorded as a game")
 	bp.queue_free()
 
 	print("FAILURES: %d" % _failures)

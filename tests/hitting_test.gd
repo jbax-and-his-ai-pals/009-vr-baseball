@@ -114,8 +114,8 @@ func _init() -> void:
 			bp._process(1.0 / 60.0)
 			if bp._batter_ready and bp._aux_play.is_empty():
 				break
-	_check(bp._game.over and bp._game_recorded, "the game ends and is recorded")
-	var line: Dictionary = bp._hitting_line()
+	_check(bp._game.over and bp.results.game_recorded, "the game ends and is recorded")
+	var line: Dictionary = bp.results.hitting_line()
 	_check(line.kind == "hitting" and line.pa > 0 and line.h >= 0, "your line is a batter's line (%s)" % str(line))
 	_check(int(bp._profile.totals.get("h_games", 0)) == 1, "and it is in your history under hitting")
 	bp.queue_free()

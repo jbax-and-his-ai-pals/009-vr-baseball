@@ -105,7 +105,7 @@ func mound_visit() -> void:
 func leave_game() -> void:
 	if not host._mode.human_pitcher or host._game == null or host._game.over:
 		return
-	left_line = host._game_line()
+	left_line = host.results.game_line()
 	user_left = true
 	host._game.bottom_live = false              # with you out of the game the bottom halves are played for you
 	host._drop_held()

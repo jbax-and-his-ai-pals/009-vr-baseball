@@ -105,7 +105,7 @@ func _init() -> void:
 	_check(in_zone >= speeds.size() - 1, "and over the plate (%d of %d)" % [in_zone, speeds.size()])
 	_check(bp.acts.derby_done and bp.acts.derby_outs >= 10, "ten outs end it (%d outs, %d homers)" % [bp.acts.derby_outs, bp.acts.derby_hr])
 	_check(int(bp._profile.challenge("derby").attempts) == 1, "the result is saved")
-	_check(bp._props.pending_count() > 0 and not bp._game_recorded, "a way back to the menu is scheduled, and it is not a recorded game")
+	_check(bp._props.pending_count() > 0 and not bp.results.game_recorded, "a way back to the menu is scheduled, and it is not a recorded game")
 	print("  homers hit in the test: %d" % hrs_seen)
 	bp.queue_free()
 

@@ -70,10 +70,10 @@ func _init() -> void:
 	var t := 0.0
 	for i in 60 * 400:
 		bp._process(1.0 / 60.0)
-		if bp._game.over and bp._game_recorded:
+		if bp._game.over and bp.results.game_recorded:
 			break
-	_check(bp._game.over and bp._game_recorded, "the game goes on without you and ends")
-	var line: Dictionary = bp._game_line()
+	_check(bp._game.over and bp.results.game_recorded, "the game goes on without you and ends")
+	var line: Dictionary = bp.results.game_line()
 	_check(line.pitches == pitches_before and line.outs == outs_before and line.won == (bp._game.home_score > bp._game.runs),
 		"your line is closed, the win or loss is the team's")
 	_check(int(bp._profile.totals.get("games", 0)) == games_before + 1, "and it is in your history")

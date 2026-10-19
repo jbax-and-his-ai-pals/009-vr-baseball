@@ -129,7 +129,6 @@ var _dust: DustPuffs          # _props.dust
 var _profile := PlayerProfile.load_from()   # lifetime stats, leaderboards, challenge results
 var _career: Career = Career.load_from()    # the saved season, if any
 var _career_game := false                    # this game is the next start of the career
-var _game_recorded := false
 var _call_label: Label3D                    # the umpire's call as words, above the plate
 var _call_label_until := 0.0
 var _tracker := SwingTracker.new()          # your controller as a bat (Hitting)
@@ -197,6 +196,7 @@ var acts := Activities.new()                 # derby, drills, challenges and the
 var manager := Manager.new()                 # the pitcher's side of managing: signs, gestures, visits, changes, the infield alignment
 var hud := HudText.new()                 # the stat boards, the scoreboard feed, notices and the words of a report
 var slog := SessionRecorder.new()                 # the session log: events, snapshots, frame spikes, your throws
+var results := GameResults.new()                 # what a finished game is worth: lines, the book, the career
 var _game_seed := 0
 var forced_seed := -1                       # tests and replays: use this seed (the --seed= flag does the same)
 var _origin: XROrigin3D
@@ -217,10 +217,10 @@ var _batter_free_at := 0.0   # a batter still finishing a swing cannot start ano
 const SWING_RECOVERY := 0.75
 var _whiffs := 0
 var _in_play := 0
-var _best_ev := 0.0
 
 
 func _init() -> void:
+	results.host = self
 	slog.host = self
 	hud.host = self
 	manager.host = self
@@ -1153,7 +1153,7 @@ func _new_game() -> void:
 	_home_order = 0
 	if _sound != null:
 		_sound.new_game()
-	_game_recorded = false
+	results.game_recorded = false
 	fielding.fld = {"chances": 0, "caught": 0, "missed": 0, "errors": 0, "assists": 0, "frames": 0, "lost": 0, "blocks": 0, "passed": 0, "covers": 0, "uncovered": 0}
 	acts.derby_outs = 0
 	acts.derby_hr = 0
@@ -1577,7 +1577,7 @@ func _contact(pitch: LivePitch) -> void:
 	_stat_pitch(pitch.label, a.speed_mph, "in_play" if in_play else "foul")
 	if in_play:
 		_in_play += 1
-	_best_ev = maxf(_best_ev, b.ev)
+	results.best_ev = maxf(results.best_ev, b.ev)
 	_batter.snap_to_contact()
 	if _sound != null:
 		_sound.contact(b, sim, pitch.pos)
@@ -1919,65 +1919,6 @@ func _announce_play(h: LiveHit) -> void:
 	print(hud.last_report.replace("\n", " | "))
 
 
-## What you did as a batter this game: the lineup is you, so it is the lineup's line against their pitcher.
-func _hitting_line() -> Dictionary:
-	return GameRecords.hitting(_game, _best_ev, _home.name)
-
-
-## What you did as a fielder this game (see PlayerProfile.fielding_score).
-func _fielding_line() -> Dictionary:
-	return GameRecords.fielding(_game, fielding.fld, fielding.human_num(), _away.name)
-
-
-## A career start is over: the result goes into the season, you are told how you did, and you go back to the menu.
-func _finish_career_start() -> void:
-	if _career == null:
-		return
-	var line := _game_line()
-	var res := _career.finish_start(line, _game.home_score, _game.runs)
-	_career.save()
-	var d: Dictionary = res.deltas
-	slog.record("career_start", {"won": res.won, "rank": res.rank, "over": res.over, "deltas": d, "line": line})
-	hud.show_notice("%s %d-%d vs %s   CMD %+.1f  STA %+.1f   Rank #%d%s" % ["WIN" if res.won else "LOSS", _game.home_score, _game.runs,
-		res.opponent, float(d.command), float(d.stamina), int(res.rank), "   SEASON OVER" if res.over else ""], true)
-	_props.later(7.0, func():
-		Session.show_menu = true
-		get_tree().reload_current_scene.call_deferred())
-
-
-## What you did in this game, as one pitching line.
-func _game_line() -> Dictionary:
-	return GameRecords.pitching(_game, _stats, manager.sign_tally, _away.name, manager.left_line, roles.bat_log)
-
-
-## A finished game goes in the book (only games you pitch that count for a leaderboard).
-func _record_finished_game() -> void:
-	if acts.drill or acts.derby or _game_recorded or not (_mode.human_pitcher or manager.user_left or not _mode.human_fielders.is_empty() or _mode.human_batter):
-		return
-	_game_recorded = true
-	var cfg := _current_config()
-	if _career_game:
-		_profile.record_game(cfg, _game_line())          # counts in your lifetime totals, on no board
-		_profile.save()
-		_finish_career_start()
-		return
-	if not cfg.is_scored():
-		return
-	var line := _fielding_line() if not _mode.human_fielders.is_empty() else (_hitting_line() if _mode.human_batter else _game_line())
-	var r := _profile.record_game(cfg, line)
-	_profile.save()
-	var text := "Game Score %d" % int(r.score)
-	var bat_note := GameRecords.bat_text(line.get("bat", {}))
-	if bat_note != "":
-		text += "   " + bat_note
-	if int(r.rank) == 1:
-		text += " - best on this board!"
-	elif int(r.rank) > 0:
-		text += " - #%d on this board" % int(r.rank)
-	slog.record("game_recorded", {"score": r.score, "rank": r.rank, "key": r.key, "line": line})
-	hud.show_notice(text, true)
-
-
 ## How far the crowd gets to its feet for this event (0 for nothing special).
 func _crowd_excitement(ev: Dictionary) -> float:
 	match String(ev.get("result", "")):
@@ -2030,7 +1971,7 @@ func _after_event(ev: Dictionary, extra: Dictionary = {}) -> void:
 	manager.update_alignment()
 	manager.refresh_sign()
 	if ev.get("game_over", false):
-		_record_finished_game()
+		results.record_finished_game()
 		_game_over_timer = -1.0 if (acts.scenario != null or _career_game) else 8.0
 		slog.record("game_over", {"final": _game.final_text(), "line": _game.line_text(), "stats": {"k": _game.strikeouts,
 			"bb": _game.walks, "hits": _game.hits, "wp": _game.wild_pitches, "sb": _game.stolen_bases, "cs": _game.caught_stealing,
