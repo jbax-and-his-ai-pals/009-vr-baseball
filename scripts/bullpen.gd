@@ -241,6 +241,7 @@ var _play_labels: Array[Label3D] = []
 var _run_rng := RandomNumberGenerator.new()
 var _fx_rng := RandomNumberGenerator.new()   # presentation choices only: never shares a stream with the rules
 var _game_seed := 0
+var forced_seed := -1                       # tests and replays: use this seed (the --seed= flag does the same)
 var _last_report_extra := ""
 var _origin: XROrigin3D
 var _settings := Settings.new()
@@ -316,7 +317,7 @@ func _ready() -> void:
 	_defense = Defense.from_team(_home)
 	_ai_pitcher = AIPitcher.new(_home.player_at(1))
 	_new_game()
-	_game_seed = randi()
+	_game_seed = forced_seed if forced_seed >= 0 else randi()
 	for sa in OS.get_cmdline_user_args():
 		if sa.begins_with("--seed="):
 			_game_seed = int(sa.substr(7))
@@ -384,6 +385,7 @@ func _ready() -> void:
 			_demo_interval = float(a.substr(16))
 	_batter_ai = BatterAI.new(BatterProfile.by_name(batter_profile))
 	_batter_player = _player_named(batter_profile)
+	_seed_rules()
 	_sync_batter()
 	if not _xr_active:
 		_governor.set_refresh_rate(60.0)  # a desktop window is judged against 60 Hz, not a headset's 90
@@ -465,6 +467,7 @@ func _maybe_change_pitcher() -> void:
 		"runs_since": _game.runs - _runs_at_pitcher_change})
 	var rp := Team.relief_pitcher(50.0 + 2.0 * _relievers_used, 4000 + _relievers_used * 31)
 	_ai_pitcher = AIPitcher.new(rp)
+	_ai_pitcher.rng.seed = _run_rng.randi()
 	_runs_at_pitcher_change = _game.runs
 	_show_notice("New pitcher: %s" % rp.name)
 	_sfx_later(1.0, "pa_pitching_change")
@@ -873,7 +876,7 @@ func _doll_style(key: int) -> int:
 		if a == "--doll-style=paper":
 			return Doll.Style.PAPER
 	if not _doll_styles.has(key):
-		_doll_styles[key] = randi() % 2
+		_doll_styles[key] = _fx_rng.randi() % 2
 	return _doll_styles[key]
 
 
@@ -1588,9 +1591,19 @@ func _ensure_bat_view() -> void:
 	add_child(_bat_view)
 
 
+## Every random stream of the rules comes from the game seed, so a seed replays a game exactly.
+func _seed_rules() -> void:
+	_ai_pitcher.rng.seed = _game_seed ^ 0xA17C
+	_batter_ai.rng.seed = _game_seed ^ 0xBA77
+	_defense.rng.seed = _game_seed ^ 0xDEF5
+	_game.rng.seed = _game_seed ^ 0x6A3E
+
+
 func _new_game() -> void:
 	var order: Array[Player] = _away.lineup
 	_game = GameState.new(order, game_innings)
+	if _game_seed != 0:
+		_game.rng.seed = _run_rng.randi()
 	_game.allow_extra = true
 	_game.bottom_live = _two_way and _mode.human_pitcher
 	_top_game = null
@@ -2553,7 +2566,7 @@ func _begin_walk_on() -> void:
 	_crew.return_to_plate()      # the umpire is back behind the plate for the next batter
 	if _game != null and not _game.over:
 		_sfx("pa_now_batting")
-		if randf() < 0.4:
+		if _fx_rng.randf() < 0.4:
 			_sfx("organ_stinger", null, -6.0)
 	if _game != null and _game.over:
 		_batter_ready = true
@@ -2565,7 +2578,7 @@ func _begin_walk_on() -> void:
 	_refresh_hud()
 	var duration := _presenter.begin_walk_on(_batter_is_lefty())
 	_log("walk_on", {"duration": snappedf(duration, 0.01), "batter": _batter_player.name if _batter_player else ""})
-	if _game != null and not _game.over and randf() < 0.5:
+	if _game != null and not _game.over and _fx_rng.randf() < 0.5:
 		_sfx("music_walkup", null, -10.0)
 
 
@@ -2633,7 +2646,7 @@ func _on_batter_hidden(plan: Dictionary) -> void:
 func _on_batter_arrived() -> void:
 	_refresh_sign()
 	_sfx("batter_step_dirt", _batter_home.origin)
-	if randf() < 0.5:
+	if _fx_rng.randf() < 0.5:
 		_sfx_later(0.5, "bat_tap_plate", Vector3(0.0, 0.1, 0.0), -4.0)
 	_batter_ready = true
 	_refresh_hud()
@@ -2831,6 +2844,7 @@ func _leave_game() -> void:
 	_relievers_used += 1
 	var rp := Team.relief_pitcher(52.0, 5000 + _relievers_used * 31)
 	_ai_pitcher = AIPitcher.new(rp)
+	_ai_pitcher.rng.seed = _run_rng.randi()
 	_runs_at_pitcher_change = _game.runs
 	_mode = GameMode.spectate()
 	_sound.mode = _mode
@@ -3142,6 +3156,7 @@ func _enter_bottom() -> void:
 	_bat_view.visible = true
 	if _opp_pitcher == null:
 		_opp_pitcher = AIPitcher.new(_away.player_at(1))
+		_opp_pitcher.rng.seed = _run_rng.randi()
 	_ai_pitcher = _opp_pitcher
 	_ensure_pitcher_doll()
 	(_field_nodes[1] as Node3D).visible = true

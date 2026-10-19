@@ -68,9 +68,9 @@ criteria for each phase are in section 5; this is the at-a-glance view. Updated 
 - [ ] `GameDirector` (game flow, AI pitcher pacing, steals, menu hooks) and the other pieces still in the scene (pitch flight and contact, human fielding, HUD and boards, log snapshots); `bullpen.gd` under 800 lines (now about 2,700)
 - [ ] Event bus: typed events (`pitch_arrived`, `contact`, `play_event`, `pa_over`, `half_over`, `game_over`) replacing the remaining direct calls
 - [ ] Typed plans (`PlayPlan`, `RunnerPlan`, `ThrowPlan`) instead of dictionaries
-- [~] One RNG per concern: gameplay, cosmetic and bottom-half generators are separate and seeded; the AI classes (`AIPitcher`, `BatterAI`, `Defense`, `GameState`) still self-seed for the half you pitch
-- [~] Test: a seed replays the game (only the bottom half is covered so far)
-- [~] Each presenter has a test (`PlateCrew`, `FieldProps`, `BatterPresenter` do; `SoundDirector` and `PlayDirector` are covered only through the full-game tests)
+- [x] One RNG per concern: gameplay, cosmetic, bottom-half and every AI class (`AIPitcher`, `BatterAI`, `Defense`, `GameState`) draw from streams seeded by the game seed (`_seed_rules`); cosmetic choices (walk-up music, doll styles) use the cosmetic stream
+- [x] Test: a seed replays the game (tests/replay_test.gd: same seed, same final score and line; different seed, different game)
+- [x] Each presenter has a test (`PlateCrew`, `FieldProps`, `BatterPresenter`, and `SoundDirector` / `PlayDirector` in tests/directors_test.gd)
 
 ### Phase 4 - Core VR feel (M4) - MOSTLY DONE (open: hands and glove models)
 - [x] Controller haptics (event table, Options > Haptics, menu pulses in the pointing hand)
