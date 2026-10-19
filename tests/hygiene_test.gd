@@ -41,16 +41,20 @@ func _init() -> void:
 		"arm_", "corner_", "zone_", "cloth_", "fireworks", "home_run_", "seventh_"]
 	var calls := ["_sfx(", "_sfx_later(", "play_later(", "loop_on(", "play_music(", "ui_sound.emit("]
 	var unknown: Array = []
-	for f in ["res://scripts/bullpen.gd", "res://scripts/game_menu.gd", "res://scripts/audio_manager.gd", "res://scripts/sound_director.gd"]:
-		for line in _src(f).split("
-"):
-			var is_call := false
+	var sources: Array = []
+	for fname in DirAccess.get_files_at("res://scripts"):
+		if fname.ends_with(".gd"):
+			sources.append("res://scripts/" + fname)           # every script: the sounds are played from many classes now
+	for f in sources:
+		for line in _src(f).split("\n"):
+			var from := -1
 			for c in calls:
-				if line.contains(c):
-					is_call = true
-			if not is_call:
+				var at: int = line.find(c)
+				if at >= 0 and (from < 0 or at < from):
+					from = at
+			if from < 0:
 				continue
-			for m in re.search_all(line):
+			for m in re.search_all(line.substr(from)):          # only what comes after the call
 				var id: String = m.get_string(1)
 				for p in prefixes:
 					if id.begins_with(p) and not ids.has(id):
@@ -60,8 +64,9 @@ func _init() -> void:
 
 	# Cosmetic choices use their own random numbers.
 	var bp_src := _src("res://scripts/bullpen.gd")
-	_check(not _body(bp_src, "_batter_takes").contains("_run_rng"), "the check swing does not draw from the gameplay random numbers")
-	_check(not _body(bp_src, "_simulate_bottom_half").contains("get_ticks"), "the off-screen half inning is not seeded from the clock")
+	var takes := _body(_src("res://scripts/pitch_flight.gd"), "batter_takes")
+	_check(takes != "" and not takes.contains("_run_rng"), "the check swing does not draw from the gameplay random numbers")
+	_check(_body(bp_src, "_simulate_bottom_half") != "" and not _body(bp_src, "_simulate_bottom_half").contains("get_ticks"), "the off-screen half inning is not seeded from the clock")
 
 	var bp: Node3D = load("res://scenes/bullpen.tscn").instantiate()
 	bp.menu_on_start = false

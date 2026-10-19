@@ -66,8 +66,7 @@ func _rows_text(lines: PackedStringArray, pos: Vector3, align: int, color: Color
 	var font_h := ThemeDB.fallback_font.get_height(size)
 	var spacing := int(round(row_h / PIXEL - font_h))
 	# The text block's top is the board row's top; the glyphs sit in the middle of the line.
-	_text("
-".join(lines), size, pos, align, color, VERTICAL_ALIGNMENT_TOP, spacing)
+	_text("\n".join(lines), size, pos, align, color, VERTICAL_ALIGNMENT_TOP, spacing)
 
 
 func _quad(m: MeshMerger, w: float, h: float, x: float, y: float, color: Color, z: float = 0.0) -> void:
