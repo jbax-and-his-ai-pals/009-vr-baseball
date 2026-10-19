@@ -67,7 +67,8 @@ func _init() -> void:
 	_check(m.config.position == 3, "and wraps to first base")
 	m.activate(_find(m, "activity"))
 	m.activate(_find(m, "activity"))
-	_check(m.config.activity == "Game", "fielding sessions are game or practice only")
+	m.activate(_find(m, "activity"))
+	_check(m.config.activity == "Game", "fielding sessions cycle Game, Practice, Drill and back (no Bullpen)")
 	ev = m.activate(_find(m, "start"))
 	_check(ev.config.mode == "Fielding" and ev.config.position == 3, "Start carries the position")
 
