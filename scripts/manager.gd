@@ -241,3 +241,13 @@ func update_alignment() -> void:
 ## A career pitcher's command narrows or widens the aim funnel (1.0 for everyone else).
 func command_scale() -> float:
 	return host._career.funnel_factor() if host._career_game and host._career != null else 1.0
+
+
+## The sign you were given is graded on every pitch; the infield and the next sign follow every event.
+func on_pitch_resolved(pitch: LivePitch, _outcome: String) -> void:
+	grade_sign(pitch, pitch.analysis.get("plate_pos", Vector3.ZERO))
+
+
+func on_event_settled(_ev: Dictionary) -> void:
+	update_alignment()
+	refresh_sign()

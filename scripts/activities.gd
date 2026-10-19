@@ -144,3 +144,23 @@ func tutorial_pitch(pitch: LivePitch) -> void:
 		host._sfx("corner_chime")
 		host._haptics.play("ui_select")
 	host.hud.refresh_hud()
+
+
+## A pitch had its result (the derby counts it, the lesson watches it); one that reached the plate may also be a challenge's pitch.
+func on_pitch_resolved(pitch: LivePitch, outcome: String) -> void:
+	if outcome in ["in_play", "foul"]:
+		derby_tally(pitch, bool(pitch.sim.get("home_run", false)), false)
+	else:
+		derby_tally(pitch, false, outcome in ["called_strike", "swinging_strike"])
+	tutorial_pitch(pitch)
+
+
+func on_pitch_arrived(pitch: LivePitch, outcome: String) -> void:
+	var a: Dictionary = pitch.analysis
+	var plate: Vector3 = a.get("plate_pos", Vector3.ZERO)
+	if scenario != null and a.get("reached", false):
+		scenario.on_pitch(String(PitchLocation.classify(plate.x, plate.y).kind), bool(a.get("strike", false)) and outcome != "hit_by_pitch")
+
+
+func on_event_settled(ev: Dictionary) -> void:
+	update_scenario(ev)

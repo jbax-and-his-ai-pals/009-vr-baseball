@@ -181,6 +181,8 @@ var world := WorldBuilder.new()                 # builds the park, the people an
 var flight := PitchFlight.new()                 # pitches and batted balls: launch, flight, landing, contact, the play
 var flow := GameFlow.new()                 # the batter's turn, the play's end and what follows an event
 var menus := MenuHost.new()                 # opening, closing and answering the menus
+var bus := GameBus.new()                 # what happens in the game, announced for whoever cares (see GameBus)
+var reactions := Reactions.new()                 # what you see, hear and feel about it
 var _game_seed := 0
 var forced_seed := -1                       # tests and replays: use this seed (the --seed= flag does the same)
 var _origin: XROrigin3D
@@ -194,6 +196,8 @@ const SWING_RECOVERY := 0.75
 
 
 func _init() -> void:
+	reactions.host = self
+	_wire_bus()
 	menus.host = self
 	flow.host = self
 	flight.host = self
@@ -207,6 +211,21 @@ func _init() -> void:
 	roles.host = self
 	fielding.host = self
 	# --- directors are wired to the scene here
+
+
+## Who listens to what (see GameBus). The code that makes things happen does not know these connections exist.
+func _wire_bus() -> void:
+	reactions.wire(bus)
+	bus.pitch_arrived.connect(acts.on_pitch_arrived)
+	bus.pitch_resolved.connect(acts.on_pitch_resolved)
+	bus.pitch_resolved.connect(manager.on_pitch_resolved)
+	bus.contact_made.connect(results.on_contact_made)
+	bus.event_settled.connect(acts.on_event_settled)
+	bus.event_settled.connect(manager.on_event_settled)
+	bus.game_over.connect(results.on_game_over)
+	bus.game_over.connect(slog.on_game_over)
+	bus.half_over.connect(slog.on_half_over)
+	bus.play_announced.connect(slog.on_play_announced)
 
 
 func _ready() -> void:

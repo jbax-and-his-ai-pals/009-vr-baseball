@@ -99,3 +99,21 @@ func log_throw(pitch: LivePitch, from: Vector3, release_t: float, latency: float
 			"bases": [host._game.bases[0] != null, host._game.bases[1] != null, host._game.bases[2] != null],
 			"batter": host._batter_player.name if host._batter_player else ""}}
 	logger.record(host._human.log_entry(ctx, pitch, from, release_t, latency, r.est, r.scaled, r.spin, r.funnel, r.shape))
+
+
+func on_game_over(_ev: Dictionary) -> void:
+	var g: GameState = host._game
+	record("game_over", {"final": g.final_text(), "line": g.line_text(), "stats": {"k": g.strikeouts,
+		"bb": g.walks, "hits": g.hits, "wp": g.wild_pitches, "sb": g.stolen_bases, "cs": g.caught_stealing,
+		"po": g.pickoffs, "balks": g.balks, "hbp": g.hit_by_pitches, "sac": g.sacrifices}})
+
+
+func on_half_over(ev: Dictionary) -> void:
+	record("half_over", {"inning": ev.get("inning_ended", 0), "home_runs_scored": ev.get("home_runs_scored", -1),
+		"runs": host._game.runs, "home": host._game.home_score})
+
+
+func on_play_announced(h: LiveHit, text: String, ev: Dictionary) -> void:
+	record("play_result", {"text": text, "result": ev.get("result", ""), "runs": ev.get("runs", 0), "outs_added": ev.get("outs_added", 0),
+		"pa_over": ev.get("pa_over", false), "half_over": ev.get("half_over", false), "game_over": ev.get("game_over", false),
+		"state_text": ev.get("text", ""), "duration": snappedf(h.t, 0.01)})

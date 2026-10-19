@@ -66,3 +66,11 @@ func record_finished_game() -> void:
 		text += " - #%d on this board" % int(r.rank)
 	host.slog.record("game_recorded", {"score": r.score, "rank": r.rank, "key": r.key, "line": line})
 	host.hud.show_notice(text, true)
+
+
+func on_contact_made(pitch: LivePitch) -> void:
+	best_ev = maxf(best_ev, float(pitch.bat.get("ev", 0.0)))
+
+
+func on_game_over(_ev: Dictionary) -> void:
+	record_finished_game()

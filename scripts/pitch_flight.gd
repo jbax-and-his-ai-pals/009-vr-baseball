@@ -281,28 +281,8 @@ func land(pitch: LivePitch) -> void:
 	if host.fielding.is_catcher() and a.get("reached", false) and outcome in ["ball", "called_strike"]:
 		outcome = host.fielding.receive(pitch, plate, outcome)
 	mark_pitch(a, outcome)
-	host.acts.derby_tally(pitch, false, outcome in ["called_strike", "swinging_strike"])
-	host.acts.tutorial_pitch(pitch)
-	host.manager.grade_sign(pitch, plate)
-	if host.acts.scenario != null and a.get("reached", false):
-		host.acts.scenario.on_pitch(String(PitchLocation.classify(plate.x, plate.y).kind), bool(a.get("strike", false)) and outcome != "hit_by_pitch")
-	if host._sound != null:
-		host._sound.pitch_arrives(a, outcome, plate)
-	if a.get("reached", false) and outcome != "hit_by_pitch":
-		# The mitt: felt less when it was in the dirt.
-		host._haptics.play("pop", clampf(float(a.get("plate_mph", 60.0)) / 90.0, 0.0, 1.0) * (0.3 if plate.y < 0.18 else 1.0))
-		if host._dust != null and plate.y >= 0.18 and float(a.get("plate_mph", 0.0)) >= 62.0 and not host.fielding.is_catcher():
-			host._dust.flash(Vector3(clampf(plate.x, -1.0, 1.0), plate.y, -0.75), 0.22)       # the mitt's pop
-	var third = host._game.strikes >= 2              # this strike is the third: the call is the strikeout's
-	match outcome:
-		"ball":
-			host._sound.umpire_says_later(0.4, "ump_ball", -8.0)
-		"called_strike":
-			host._crew.call_it("ump_strike", 0.3, 0.9, "" if third else "ump_strike")
-		"swinging_strike":
-			host._crew.call_it("ump_strike", 0.35, 0.7, "" if third else "ump_strike")
-		"hit_by_pitch":
-			host._crew.call_it("ump_point", 0.3, 1.0)
+	host.bus.pitch_arrived.emit(pitch, outcome)
+	host.bus.pitch_resolved.emit(pitch, outcome)
 	if host._runners_on() and host.plays.steal.is_empty():
 		host.hud.last_report_extra = "Delivery %.2f s with runners on" % host._last_delivery
 	host.plays.resolve_steal(a)
@@ -391,19 +371,12 @@ func contact(pitch: LivePitch) -> void:
 	if in_play:
 		host.flow.batter_ready = false
 	mark_pitch(a, "in_play" if in_play else "foul")
-	host.acts.derby_tally(pitch, bool(sim.get("home_run", false)), false)
-	host.acts.tutorial_pitch(pitch)
-	host.manager.grade_sign(pitch, a.get("plate_pos", Vector3.ZERO))
 	stat_pitch(pitch.label, a.speed_mph, "in_play" if in_play else "foul")
 	if in_play:
 		in_play_count += 1
-	host.results.best_ev = maxf(host.results.best_ev, b.ev)
 	host._batter.snap_to_contact()
-	if host._sound != null:
-		host._sound.contact(b, sim, pitch.pos)
-	host._haptics.play("contact", clampf(float(b.ev) / 110.0, 0.0, 1.0))
-	if host._dust != null and float(b.ev) > 55.0:
-		host._dust.flash(pitch.pos, clampf(float(b.ev) / 250.0, 0.15, 0.45))        # the bat meets the ball
+	host.bus.contact_made.emit(pitch)
+	host.bus.pitch_resolved.emit(pitch, "in_play" if in_play else "foul")
 	var head = host.hud.format_report(pitch.label, a)
 	if "--contact-demo" in OS.get_cmdline_user_args():
 		var gap = host._batter.sweet_spot_world().distance_to(pitch.pos)
@@ -574,27 +547,7 @@ func update_hit(h: LiveHit, delta: float) -> void:
 
 func show_landing(h: LiveHit) -> void:
 	var sim = h.summary
-	var bounce: Vector3 = sim.get("landing_pos", Vector3.ZERO)
-	if sim.home_run:
-		var fc: Vector3 = sim.get("fence_cross", bounce)
-		host._sfx("ball_into_stands", fc)
-		if absf(absf(fc.x) - fc.z) < 1.5:
-			host._sfx_later(0.05, "ball_hits_pole", fc + Vector3(0.0, 2.0, 0.0))         # right down the line: off the pole
-	elif sim.wall:
-		host._sfx("ball_hits_wall", sim.get("rest_pos", bounce) as Vector3)
-		host._sfx_later(0.12, "fence_rattle", sim.get("rest_pos", bounce) as Vector3)
-	elif not sim.fair:
-		host._sfx_later(0.1, "seat_flip_clatter", bounce, -4.0)               # a foul into the seats
-	elif sim.fair:
-		var dirt = Vector2(bounce.x, bounce.z - 14.0).length() < 26.0
-		host._sfx("ball_bounce_dirt" if dirt else "ball_bounce_grass", bounce, -3.0)
-	if host._dust != null and not sim.home_run and Vector2(bounce.x, bounce.z - 14.0).length() < 26.0:
-		host._dust.puff(Vector3(bounce.x, 0.0, bounce.z), 0.5, 3)           # it came down in the infield dirt
-	elif host._dust != null and not sim.home_run and not sim.wall and bounce.z > 0.0:
-		if host.foul_line_distance(bounce) < 0.6:
-			host._dust.puff(Vector3(bounce.x, 0.0, bounce.z), 0.4, 4, DustPuffs.CHALK)      # it hit the chalk
-		else:
-			host._dust.puff(Vector3(bounce.x, 0.0, bounce.z), 0.3, 4, DustPuffs.GRASS, 0.5) # it kicked up the outfield grass
+	host.bus.ball_landed.emit(h)
 	var spot: Vector3 = sim.landing_pos
 	var shown_distance: float = sim.distance
 	if sim.wall or (sim.apex < 2.0 and not sim.home_run):

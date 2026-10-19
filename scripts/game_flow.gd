@@ -189,22 +189,8 @@ func announce_play(h: LiveHit) -> void:
 	host.hud.last_report = lines
 	after_event(ev, {"ev": float(h.summary.get("ev_mph", 0.0)), "dist": float(h.summary.get("distance", 0.0))})
 	host.hud.refresh_hud()
-	host.slog.record("play_result", {"text": text, "result": ev.get("result", ""), "runs": ev.get("runs", 0), "outs_added": ev.get("outs_added", 0),
-		"pa_over": ev.get("pa_over", false), "half_over": ev.get("half_over", false), "game_over": ev.get("game_over", false),
-		"state_text": ev.get("text", ""), "duration": snappedf(h.t, 0.01)})
+	host.bus.play_announced.emit(h, text, ev)
 	print(host.hud.last_report.replace("\n", " | "))
-
-
-## How far the crowd gets to its feet for this event (0 for nothing special).
-func crowd_excitement(ev: Dictionary) -> float:
-	match String(ev.get("result", "")):
-		"home_run":
-			return 1.0
-		"triple", "double":
-			return 0.5
-		"strikeout":
-			return 0.3
-	return 0.6 if int(ev.get("runs", 0)) > 0 else 0.0
 
 
 ## After anything that changes the game: next batter, runners, scoreboard, game over.
@@ -213,19 +199,7 @@ func after_event(ev: Dictionary, extra: Dictionary = {}) -> void:
 		return
 	if host.roles.top_game != null:
 		ev = host.roles.bottom_event(ev, extra)
-	if host._sound != null:
-		host._sound.crowd_react(ev, host._game)
-	if host._stadium != null:
-		host._stadium.pulse(crowd_excitement(ev))
-	if host._dugouts != null:
-		host._dugouts.react_event(ev, "home" if host.roles.top_game != null else "away")
-		if ev.get("game_over", false):
-			host._dugouts.cheer("home" if host._game.home_score > host._game.runs else "away", "celebrate", true)
-	match String(ev.get("result", "")):
-		"home_run":
-			host._haptics.play("rumble", 1.0)
-		"strikeout":
-			host._haptics.play("rumble", 0.3)
+	host.bus.event_happened.emit(ev, extra)
 	if ev.get("pa_over", false):
 		if host._batter_player and host.roles.top_game == null:
 			host._stats.record_result(host._batter_player.name, String(ev.get("result", "out")),
@@ -243,18 +217,14 @@ func after_event(ev: Dictionary, extra: Dictionary = {}) -> void:
 		host._game.strikes = 0
 		host._game.inning = 1
 		host._game.over = false
-	host.acts.update_scenario(ev)
-	host.manager.update_alignment()
-	host.manager.refresh_sign()
+	host.bus.event_settled.emit(ev)
+	if ev.get("pa_over", false):
+		host.bus.pa_over.emit(ev)
 	if ev.get("game_over", false):
-		host.results.record_finished_game()
+		host.bus.game_over.emit(ev)
 		game_over_timer = -1.0 if (host.acts.scenario != null or host._career_game) else 8.0
-		host.slog.record("game_over", {"final": host._game.final_text(), "line": host._game.line_text(), "stats": {"k": host._game.strikeouts,
-			"bb": host._game.walks, "hits": host._game.hits, "wp": host._game.wild_pitches, "sb": host._game.stolen_bases, "cs": host._game.caught_stealing,
-			"po": host._game.pickoffs, "balks": host._game.balks, "hbp": host._game.hit_by_pitches, "sac": host._game.sacrifices}})
 	if ev.get("half_over", false):
-		host.slog.record("half_over", {"inning": ev.get("inning_ended", 0), "home_runs_scored": ev.get("home_runs_scored", -1),
-			"runs": host._game.runs, "home": host._game.home_score})
+		host.bus.half_over.emit(ev)
 	if aux_play.is_empty():
 		refresh_base_runners()
 	host.hud.refresh_scoreboard()
