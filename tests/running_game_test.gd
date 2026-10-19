@@ -43,18 +43,18 @@ func _init() -> void:
 		var who: Player = fast if trial % 2 == 0 else middling
 		bp._game.bases = [who, null, null]
 		bp._game.outs = 0
-		bp._steal = {}
+		bp.plays.steal = {}
 		bp._batter_free_at = 1e9          # he takes every pitch, so only the steal happens
 		bp._aux_play = {}
 		bp._refresh_base_runners()
 		bp._batter_ready = true
 		bp._last_delivery = 0.45 + 0.07 * (trial % 12)
 		for k in 1500:
-			bp._on_delivery_start()
-			if not bp._steal.is_empty():
+			bp.plays.on_delivery_start()
+			if not bp.plays.steal.is_empty():
 				break
-		_check(not bp._steal.is_empty(), "a fast, aggressive runner eventually breaks (trial %d)" % trial) if trial == 0 else null
-		if bp._steal.is_empty():
+		_check(not bp.plays.steal.is_empty(), "a fast, aggressive runner eventually breaks (trial %d)" % trial) if trial == 0 else null
+		if bp.plays.steal.is_empty():
 			continue
 		went += 1
 		var sb: int = bp._game.stolen_bases
@@ -78,10 +78,10 @@ func _init() -> void:
 		bp._game.bases = [fast, null, null]
 		bp._game.outs = 0
 		bp._aux_play = {}
-		bp._since_throw = [8, 8, 8]
+		bp.plays.since_throw = [8, 8, 8]
 		bp._refresh_base_runners()
 		var before: int = bp._game.pickoffs
-		bp._do_pickoff(1, Vector3(0.0, 2.1, 17.0), Vector3(-26.0, 0.0, 3.0), 2.0)
+		bp.plays.do_pickoff(1, Vector3(0.0, 2.1, 17.0), Vector3(-26.0, 0.0, 3.0), 2.0)
 		if bp._game.pickoffs > before:
 			picked += 1
 		_settle(bp, 1.5)
@@ -94,17 +94,17 @@ func _init() -> void:
 	bp._aux_play = {}
 	bp._refresh_base_runners()
 	var balks_before: int = bp._game.balks
-	bp._do_pickoff(3, Vector3(0.0, 2.1, 17.0), Vector3(26.0, 0.0, 3.0), 2.0)
+	bp.plays.do_pickoff(3, Vector3(0.0, 2.1, 17.0), Vector3(26.0, 0.0, 3.0), 2.0)
 	_check(bp._game.balks == balks_before + 1 and bp._game.bases[1] != null, "throwing to an empty base with a runner on is a balk and he moves up")
 
 	# --- The leads grow while you ignore the runners.
 	bp._game.bases = [fast, null, null]
-	bp._since_throw = [0, 0, 0]
+	bp.plays.since_throw = [0, 0, 0]
 	bp._refresh_base_runners()
-	var short_lead: float = bp._leads[0]
-	bp._since_throw = [7, 7, 7]
+	var short_lead: float = bp.plays.leads[0]
+	bp.plays.since_throw = [7, 7, 7]
 	bp._refresh_base_runners()
-	_check(bp._leads[0] > short_lead + 0.5, "his lead grows when you stop throwing over (%.1f -> %.1f m)" % [short_lead, bp._leads[0]])
+	_check(bp.plays.leads[0] > short_lead + 0.5, "his lead grows when you stop throwing over (%.1f -> %.1f m)" % [short_lead, bp.plays.leads[0]])
 
 	print("FAILURES: %d" % _failures)
 	quit(1 if _failures > 0 else 0)

@@ -69,7 +69,7 @@ func _init() -> void:
 	var p1 := _play_pitch(bp, seen, 0.0, 1.5)
 	_check(p1 != null and p1.landed and not p1.bat.get("contact", false) and not p1.bat.get("swing", false), "a bat held still takes the pitch")
 	var counted: int = bp._game.pitch_count
-	_check(counted >= 1 and (bp._game.balls + bp._game.strikes >= 1 or bp._game.outs > 0 or bp._game.walks > 0), "and it is a ball or a strike on the count")
+	_check(counted >= 1 and (bp._game.balls + bp._game.strikes >= 1 or bp._game.outs > 0 or bp._game.walks > 0 or bp._game.hit_by_pitches > 0), "and it is a ball or a strike on the count")
 
 	# 2. Swing and miss (the bat goes well over it).
 	var strikes_before: int = bp._game.strikes

@@ -80,11 +80,11 @@ func _init() -> void:
 		var r: Player = bp._away.lineup[2]
 		bp._game.bases = [r, null, null]
 		bp._aux_play = {}
-		bp._steal = {}
+		bp.plays.steal = {}
 		bp._refresh_base_runners()
-		bp._pickoff_override = outcome
-		bp._do_pickoff(1, Vector3(0.0, 1.5, 16.7), Vector3(-15.0, 2.0, 10.0), 2.0)
-		var flights_started: int = bp._flights.size()
+		bp.plays.pickoff_override = outcome
+		bp.plays.do_pickoff(1, Vector3(0.0, 1.5, 16.7), Vector3(-15.0, 2.0, 10.0), 2.0)
+		var flights_started: int = bp.plays.flights.size()
 		var moved: bool = not bp._aux_play.is_empty()
 		for i in 60 * 16:
 			bp._process(1.0 / 60.0)

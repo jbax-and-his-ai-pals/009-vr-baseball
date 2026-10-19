@@ -146,8 +146,6 @@ var _call_label: Label3D                    # the umpire's call as words, above 
 var _call_label_until := 0.0
 var _seat_done := false
 var _gestures := Gestures.new()
-var _pickoff_override := ""                 # tests: force a throw over's outcome
-var _node_moves: Array = []                 # fielders walking into position for a rundown
 var _tracker := SwingTracker.new()          # your controller as a bat (Hitting)
 var _bat_view: MeshInstance3D               # the bat in your hand
 var _bat_call := ""                         # a play called with this pitch: "squeeze" or "hit_and_run" ("" for none)
@@ -178,10 +176,6 @@ var _mark_pressed := false
 var _delivery_start: float:               # when your motion began (seconds), -1 if it has not
 	get: return _human.delivery_start
 var _last_delivery := 0.9            # how long the last delivery took, motion start to release
-var _steal := {}                     # a runner who is going: {from, runner, run_t, plan, apply_at, done}
-var _leads := [2.4, 2.4, 2.4]        # meters each runner stands off his base
-var _since_throw := [5, 5, 5]        # pitches since you last threw over, per base
-var _flights: Array = []             # balls in the air that are not a pitch or a hit (throws)
 var _tired_notice := false
 var _relievers_used := 0
 var _runs_at_pitcher_change := 0
@@ -238,6 +232,7 @@ var _run_rng := RandomNumberGenerator.new()
 var _fx_rng := RandomNumberGenerator.new()   # presentation choices only: never shares a stream with the rules
 var fielding := FieldingControl.new()                 # human fielding, catching and the catcher's throw
 var roles := RoleSwitch.new()                 # pitch the top halves, bat the bottom halves
+var plays := RunnerPlays.new()                 # steals, throws over, rundowns, balks and the balls in the air that are not pitches
 var _game_seed := 0
 var forced_seed := -1                       # tests and replays: use this seed (the --seed= flag does the same)
 var _last_report_extra := ""
@@ -263,6 +258,7 @@ var _best_ev := 0.0
 
 
 func _init() -> void:
+	plays.host = self
 	roles.host = self
 	fielding.host = self
 	# --- directors are wired to the scene here
@@ -274,7 +270,7 @@ func _ready() -> void:
 		if _career != null:
 			_career.save_path = "user://test_career.json"
 	_human.knobs = self
-	_director.leads = _leads          # the scene asks where a runner stands before the world is built
+	_director.leads = plays.leads          # the scene asks where a runner stands before the world is built
 	_demo = "--demo" in OS.get_cmdline_user_args()
 	_settings = Settings.new() if "--no-settings" in OS.get_cmdline_user_args() else Settings.load_from()
 	apply_settings(_settings)
@@ -356,7 +352,7 @@ func _ready() -> void:
 	_director.base_runners = _base_runners
 	_director.leavers = _leavers
 	_director.play_labels = _play_labels
-	_director.leads = _leads
+	_director.leads = plays.leads
 	_director.presenter = _presenter
 	_director.crew = _crew
 	_base_umps = BaseUmpires.new()
@@ -547,281 +543,6 @@ func _runners_on() -> bool:
 	return _game != null and (_game.bases[0] != null or _game.bases[1] != null or _game.bases[2] != null)
 
 
-## Your motion has started (or an AI pitcher is about to throw): a runner may break for the next
-## base. Only one runner goes at a time.
-func _on_delivery_start() -> void:
-	if _runners_on():
-		GameLog.event("delivery_start", {"s": _brief(), "t_hand": _delivery_start})
-	if _game == null or not _runners_on() or not _steal.is_empty() or not _aux_play.is_empty() or _game.over:
-		return
-	var tired := 0.0
-	if _mode.human_pitcher:
-		tired = _arm_fatigue()
-	for base in [2, 1]:
-		var runner = _game.bases[base - 1]
-		if not (runner is Player):
-			continue
-		var p := StealModel.steal_chance(runner as Player, base, _game.outs, _game.bases, tired)
-		if _run_rng.randf() >= p:
-			continue
-		var lead: float = float(_leads[base - 1])
-		var run_t := StealModel.run_time(runner as Player, base, lead)
-		var plan := Baserunning.plan_steal(base, runner, run_t)
-		_aux_play = {"plan": plan, "t": 0.0}
-		_steal = {"from": base, "runner": runner, "run_t": run_t, "plan": plan}
-		_log("steal_break", {"base": base, "runner": (runner as Player).name, "chance": snappedf(p, 0.001), "lead": lead,
-			"run_t": run_t, "delivery_so_far": _last_delivery})
-		_refresh_base_runners()
-		return
-	# No steal: perhaps a play is on (squeeze, hit and run).
-	var call := StealModel.play_call(_game.bases, _game.outs, _game.strikes, _game.inning, _game.runs - _game.home_score,
-		_batter_ai.profile, _run_rng)
-	if call == "":
-		return
-	var from_base := 3 if call == "squeeze" else 1
-	var rnr = _game.bases[from_base - 1]
-	if not (rnr is Player):
-		return
-	var lead_c: float = float(_leads[from_base - 1])
-	var run_c := StealModel.run_time(rnr as Player, from_base, lead_c)
-	var plan_c := Baserunning.plan_steal(from_base, rnr, run_c)
-	_aux_play = {"plan": plan_c, "t": 0.0}
-	_steal = {"from": from_base, "runner": rnr, "run_t": run_c, "plan": plan_c, "call": call}
-	_bat_call = call
-	_log("play_call", {"call": call, "base": from_base, "runner": (rnr as Player).name, "batter": _batter_ai.profile.name})
-	_show_notice("%s!" % call.replace("_", " ").to_upper(), true)
-	_refresh_base_runners()
-
-
-## The pitch is in the catcher's glove (or it was hit and the steal was cancelled elsewhere):
-## did the runner make it? When you are the catcher the throw is yours (see _catcher_release).
-func _resolve_steal(a: Dictionary) -> void:
-	if _steal.is_empty() or _steal.has("apply_at") or _steal.has("await"):
-		return
-	var base := int(_steal.from)
-	var t_now := float(_aux_play.get("t", 0.0)) if not _aux_play.is_empty() else 0.0
-	if fielding.is_catcher() and base < 3 and not _steal.has("call"):
-		# He is going: get the ball out of the glove with your throwing hand and throw it to the base.
-		_steal["await"] = {"left": maxf(float(_steal.run_t) - t_now - 0.2, 0.8), "a_time": float(a.get("time", 0.5))}
-		fielding.field_samples.clear()
-		_show_notice("THROW HIM OUT!", true)
-		_haptics.play("ui_error", 0.5)
-		return
-	var res := StealModel.resolve(_last_delivery, float(a.get("time", 0.5)), float(_steal.run_t), _run_rng,
-		0.4 if base == 3 else StealModel.POP_TIME)       # at the plate the catcher just tags him
-	_apply_steal(bool(res.safe), float(res.t_ball), float(a.get("time", 0.0)), {"t_ball": res.t_ball, "t_run": res.t_run, "delivery": _last_delivery})
-
-
-## Put a steal's result in the picture and in the book (_finish_steal does the book when the picture gets there).
-func _apply_steal(safe: bool, t_ball_raw: float, flight: float, info: Dictionary) -> void:
-	var plan: Dictionary = _steal.plan
-	var t_now := float(_aux_play.get("t", 0.0)) if not _aux_play.is_empty() else 0.0
-	var base := int(_steal.from)
-	var t_ball: float = maxf(t_ball_raw, t_now + 0.3)
-	if safe:
-		Baserunning.steal_safe(plan)
-	else:
-		Baserunning.steal_out(plan, t_ball)
-	# The catcher's throw: from the plate to the glove of the man covering the base.
-	var cover: int = RECEIVE_FOR_STEAL.get(base, 2)
-	var glove: Vector3 = (Baserunning.RECEIVE_SPOT[base + 1] as Vector3) + Vector3(0.0, 1.15, 0.0)
-	var dur := Vector2(0.0 - glove.x, -1.35 - glove.z).length() / 33.0 + 0.1
-	if base < 3:
-		_spawn_flight(Vector3(0.0, 1.5, -1.2), glove, maxf(t_ball - dur - t_now, 0.05), dur, cover, not safe)
-		if not fielding.is_catcher():
-			# He comes up out of the crouch and throws; the arm starts early enough that the ball leaves on time.
-			_crew.pop_throw_in(maxf(maxf(t_ball - dur - t_now, 0.05) - 0.42, 0.0), glove)
-	_steal["safe"] = safe
-	_steal["apply_at"] = t_ball
-	var entry := {"base": base, "safe": safe, "flight": flight}
-	entry.merge(info)
-	_log("steal_resolve", entry)
-	_last_report_extra = "STEAL ATTEMPT: %s" % ("safe" if safe else "OUT")
-
-
-func _finish_steal() -> void:
-	if _steal.is_empty() or _steal.get("done", false):
-		return
-	_steal["done"] = true
-	var base := int(_steal.from)
-	# The scorebook only changes if he is still on that base (a walk or an inning change may have moved him).
-	if _game.bases[base - 1] == _steal.runner:
-		var ev := _game.steal(base, bool(_steal.safe))
-		_last_report = ("STOLEN BASE\n" if _steal.safe else "CAUGHT STEALING\n") + _event_text(ev)
-		_after_event(ev)
-		_refresh_hud()
-	_steal = {}
-	_bat_call = ""
-
-
-const RECEIVE_FOR_STEAL := {1: 6, 2: 5}
-
-
-## A throw to a base (not a pitch): where it goes, whether it gets him, or a balk.
-func _do_pickoff(base: int, from: Vector3, vel: Vector3, err: float, quick: float = 0.7) -> void:
-	if _mode.human_pitcher:
-		_haptics.play("release", 0.5)
-	var runner = _game.bases[base - 1]
-	var glove: Vector3 = (Baserunning.RECEIVE_SPOT[base] as Vector3) + Vector3(0.0, 1.15, 0.0)
-	var speed := clampf(vel.length() * 0.85, 12.0, 30.0)
-	var dist := Vector2(from.x - glove.x, from.z - glove.z).length()
-	var dur := dist / speed + 0.1
-	var receiver := HumanFielding.receiver(base, 1)
-	_spawn_flight(from, glove, 0.0, dur, receiver)
-	for i in 3:
-		_since_throw[i] = 0
-	if runner == null:
-		if _runners_on():
-			_call_balk("Threw to an empty base")
-		else:
-			_show_notice("Throw to %s" % ["", "first", "second", "third"][base])
-		return
-	var lefty: bool = (throwing_hand == &"left_hand") if _mode.human_pitcher else not _ai_pitcher.player.throws_right
-	var chance := StealModel.pickoff_chance(float(_leads[base - 1]), err, vel.length(), runner as Player, quick, base, lefty)
-	var lead_now := float(_leads[base - 1])
-	var outcome := _pickoff_override if _pickoff_override != "" else StealModel.pickoff_outcome(chance, lead_now, _run_rng)
-	if outcome == "rundown_safe_ahead" and base < 3 and _game.bases[base] != null:
-		outcome = "rundown_safe_back"                 # the next base is taken
-	var out := outcome == "out"
-	_log("pickoff", {"base": base, "runner": (runner as Player).name, "lead": lead_now, "err_deg": err, "quick": snappedf(quick, 0.01), "lefty": lefty,
-		"speed": vel.length(), "chance": snappedf(chance, 0.001), "outcome": outcome})
-	if outcome.begins_with("rundown") and _aux_play.is_empty():
-		_start_rundown(base, runner, outcome)
-		return
-	if _aux_play.is_empty():
-		var bag := Baserunning.BASE_POS[base] as Vector3
-		var plan := Baserunning.plan_dive_back(base, runner, _director.stand_for(base), PlayDirector.BASE_STANDS[base - 1], dur + 0.25, out)
-		_aux_play = {"plan": plan, "t": 0.0}
-	_leads[base - 1] = StealModel.lead_after_throw()
-	if out:
-		var ev := _game.pickoff(base)
-		_last_report = "PICKED OFF at %s\n" % ["", "first", "second", "third"][base] + _event_text(ev)
-		_after_event(ev)
-	else:
-		_last_report = "Throw over to %s: safe" % ["", "first", "second", "third"][base]
-	_refresh_hud()
-
-
-## A throw over catches him between the bases: two fielders run him back and forth. The book is settled
-## now (out, back safe, or on to the next base); the picture plays it out.
-func _start_rundown(base: int, runner, outcome: String) -> void:
-	var before := _game.bases.duplicate()
-	var plan := Baserunning.plan_rundown(base, runner, outcome)
-	_aux_play = {"plan": plan, "t": 0.0}
-	_leads[base - 1] = StealModel.lead_after_throw()
-	var behind := int(HumanFielding.receiver(base, 1))
-	var ahead := 2 if base >= 3 else (5 if base == 2 else 4)
-	if base == 2:
-		ahead = 5
-	elif base == 1:
-		ahead = 6 if behind == 4 else 4
-	var spot_b: Vector3 = Baserunning.RECEIVE_SPOT[base]
-	var spot_a: Vector3 = Baserunning.RECEIVE_SPOT[mini(base + 1, 4)]
-	# The fielders move to their bags, and the ball goes back and forth as the runner turns.
-	_move_node(_field_nodes.get(behind), spot_b, 0.5)
-	_move_node(_field_nodes.get(ahead), spot_a, 0.6)
-	var hand := Vector3(0.0, 1.5, 0.0)
-	var throws: Array = [0.4] + (plan.turns as Array).map(func(t): return float(t) - 0.2)
-	var holder_is_behind := true
-	for tt in throws:
-		var from_spot: Vector3 = (spot_b if holder_is_behind else spot_a) + hand
-		var to_spot: Vector3 = (spot_a if holder_is_behind else spot_b) + Vector3(0.0, 1.15, 0.0)
-		_spawn_flight(from_spot, to_spot, float(tt), 0.42, ahead if holder_is_behind else behind)
-		holder_is_behind = not holder_is_behind
-	var text := ""
-	match outcome:
-		"rundown_out":
-			var ev := _game.pickoff(base)
-			text = "RUN DOWN between %s and %s\n" % [["", "first", "second", "third"][base], ["", "second", "third", "home"][base]] + _event_text(ev)
-			_after_event(ev)
-		"rundown_safe_ahead":
-			var ev2 := _game.advance_runner(base)
-			text = "Beats the rundown!\n" + _event_text(ev2)
-			_after_event(ev2)
-		_:
-			text = "In a rundown, but he gets back safe"
-	_last_report = text
-	_haptics.play("buzz", 0.3)
-	_refresh_base_runners(before)             # the figure keeps running until the picture is done
-	_refresh_hud()
-
-
-func _move_node(node: Node3D, to: Vector3, seconds: float) -> void:
-	if node == null:
-		return
-	_node_moves.append({"node": node, "from": node.position, "to": Vector3(to.x, 0.0, to.z), "t": 0.0, "dur": seconds})
-
-
-func _call_balk(why: String) -> void:
-	_haptics.play("buzz")
-	_log("balk", {"why": why})
-	_sound.umpire_says_later(0.2, "ump_balk")
-	var before := _game.bases.duplicate()
-	var ev := _game.balk()
-	if ev.get("result", "") == "":
-		return
-	if _aux_play.is_empty():
-		var plan := Baserunning.plan_advance(before)
-		(plan["events"] as Array).append({"t": 0.1, "base": 0, "text": "BALK", "kind": "out", "at": Vector3(0.0, 0.0, 0.0)})
-		_aux_play = {"plan": plan, "t": 0.0}
-		_refresh_base_runners(before)
-	_last_report = "BALK - %s\n" % why + _event_text(ev)
-	_after_event(ev)
-	_refresh_hud()
-
-
-## A ball in the air that is a throw: spawn it with a delay and a duration; the receiver puts his
-## glove up as it arrives.
-func _spawn_flight(from: Vector3, to: Vector3, delay: float, dur: float, receiver: int, tag: bool = false) -> void:
-	var b := _make_ball()
-	b.visible = false
-	_flights.append({"ball": b, "from": from, "to": to, "t": 0.0, "delay": delay, "dur": maxf(dur, 0.1),
-		"receiver": receiver, "caught": false, "tag": tag})
-
-
-func _update_flights(delta: float) -> void:
-	for i in range(_node_moves.size() - 1, -1, -1):
-		var nm: Dictionary = _node_moves[i]
-		nm.t += delta
-		var nn: Node3D = nm.node
-		if not is_instance_valid(nn):
-			_node_moves.remove_at(i)
-			continue
-		var u := clampf(float(nm.t) / float(nm.dur), 0.0, 1.0)
-		var dir: Vector3 = (nm.to as Vector3) - (nm.from as Vector3)
-		nn.position = (nm.from as Vector3).lerp(nm.to, u)
-		if u < 1.0 and dir.length() > 0.2:
-			nn.rotation.y = atan2(dir.x, dir.z)
-		if u >= 1.0:
-			_node_moves.remove_at(i)
-	for i in range(_flights.size() - 1, -1, -1):
-		var f: Dictionary = _flights[i]
-		f.t += delta
-		var local := float(f.t) - float(f.delay)
-		var ball: Node3D = f.ball
-		if local < 0.0:
-			continue
-		var u := clampf(local / float(f.dur), 0.0, 1.0)
-		var from: Vector3 = f.from
-		var to: Vector3 = f.to
-		var d := Vector2(from.x - to.x, from.z - to.z).length()
-		ball.visible = true
-		var bpos := from.lerp(to, u) + Vector3(0.0, clampf(0.07 * d, 0.2, 4.0) * 4.0 * u * (1.0 - u), 0.0)
-		var catcher_node = _field_nodes.get(int(f.receiver))
-		if catcher_node is Doll:
-			bpos = bpos.lerp((catcher_node as Doll).glove_world(), smoothstep(0.75, 0.97, u))
-		ball.global_position = bpos
-		if local >= float(f.dur) - 0.25 and not f.caught:
-			f.caught = true
-			var rec = _field_nodes.get(int(f.receiver))
-			if rec is Doll:
-				(rec as Doll).play("tag" if bool(f.get("tag", false)) else "catch", 0.6)
-				_sfx_later(0.25, "tag_slap" if bool(f.get("tag", false)) else "glove_catch_throw", (rec as Node3D).global_position + Vector3(0.0, 1.0, 0.0))
-		if local >= float(f.dur) + 1.0:
-			ball.queue_free()
-			_flights.remove_at(i)
-
-
 # ------------------------------------------------------------------ session log (see GameLog)
 ## A short picture of the game for a log line: inning, outs, count, who is on.
 func _brief() -> Dictionary:
@@ -849,15 +570,15 @@ func _snapshot() -> Dictionary:
 	d["batter_visible"] = _batter.visible if _batter else null
 	d["walk_on"] = not _walk_on.is_empty()
 	d["aux"] = not _aux_play.is_empty()
-	d["steal"] = not _steal.is_empty()
+	d["steal"] = not plays.steal.is_empty()
 	d["hits_alive"] = _hits.size()
 	d["plays_open"] = _play_in_progress()
-	d["flights"] = _flights.size()
+	d["flights"] = plays.flights.size()
 	d["unready_for"] = snappedf(_unready_for, 0.01)
 	d["delivery_start"] = _delivery_start
 	d["last_delivery"] = snappedf(_last_delivery, 0.01)
-	d["leads"] = _leads
-	d["since_throw"] = _since_throw
+	d["leads"] = plays.leads
+	d["since_throw"] = plays.since_throw
 	d["mode"] = _mode.name if _mode else ""
 	d["game_time"] = snappedf(_game_time, 0.01)
 	d["frame_ms"] = snappedf(_governor.ema_ms, 0.1)
@@ -1270,28 +991,6 @@ func _setup_xr() -> void:
 		_camera = cam
 
 
-## With a runner leading off, the AI pitcher sometimes steps off and throws over instead of pitching.
-## Returns true if he did (the pitch waits a moment).
-func _ai_throw_over() -> bool:
-	if _derby or _game == null or not _runners_on() or not _steal.is_empty() or not _aux_play.is_empty():
-		return false
-	for b in [1, 2, 3]:
-		var runner = _game.bases[b - 1]
-		if runner == null or (b < 3 and _game.bases[b] != null):
-			continue              # nobody there, or he cannot go anywhere
-		if not StealModel.ai_throws_over(float(_leads[b - 1]), int(_since_throw[b - 1]), _run_rng):
-			continue
-		_spectate_timer = 1.6
-		var from := Vector3(0.0, PitchPhysics.MOUND_H + 1.55, PitchPhysics.MOUND_Z - 1.1)
-		var cmd: float = _ai_pitcher.player.command
-		var mound_man = _field_nodes.get(1)
-		if mound_man is Doll:
-			(mound_man as Doll).throw_to(Vector3.ZERO, "sidearm", 0.6)
-		_do_pickoff(b, from, Vector3(0.0, 0.0, -25.0), _run_rng.randf_range(0.0, 9.0) * (1.6 - cmd / 100.0), 0.6)
-		return true
-	return false
-
-
 ## An AI pitcher throws when the previous play is over and the interval has passed.
 func _run_ai_pitcher(delta: float) -> void:
 	_spectate_timer -= delta
@@ -1305,12 +1004,12 @@ func _run_ai_pitcher(delta: float) -> void:
 	if _wants_intentional_walk():
 		_issue_intentional_walk()
 		return
-	if _ai_throw_over():
+	if plays.ai_throw_over():
 		return
 	_spectate_timer = spectate_interval
 	var release := Vector3(0.0, PitchPhysics.MOUND_H + 1.85, PitchPhysics.MOUND_Z - 1.7)
 	_last_delivery = clampf(_run_rng.randfn(1.05, 0.15) - 0.2 * (_ai_pitcher.player.command - 50.0) / 50.0, 0.7, 1.5)
-	_on_delivery_start()
+	plays.on_delivery_start()
 	var pitch := _derby_pitch(release) if _derby else _ai_pitcher.next_pitch(release)
 	var mound_man = _field_nodes.get(1)
 	if mound_man is Doll:
@@ -1744,11 +1443,11 @@ func _release_from_hand(release_t: float, vel_latency: float, spin_latency: floa
 	match String(r.kind):
 		"drop":
 			if bool(r.started):
-				_call_balk("Dropped the ball")
+				plays.call_balk("Dropped the ball")
 			else:
 				_show_notice("Too soft - that was a drop. Throw it!")
 		"pickoff":
-			_do_pickoff(int(r.base), from, r.vel as Vector3, float(r.err), float(r.quick))
+			plays.do_pickoff(int(r.base), from, r.vel as Vector3, float(r.err), float(r.quick))
 		"pitch":
 			_last_delivery = float(r.delivery)
 			var pitch := _launch(from, r.vel, r.spin, "Your pitch", float(r.flutter), _run_rng.randf() * 100.0)
@@ -1778,7 +1477,7 @@ func _poll_hand(now: float) -> void:
 				_haptics.play("grab")
 				_held_ball.visible = true
 			"delivery_start":
-				_on_delivery_start()
+				plays.on_delivery_start()
 			"release":
 				_release_from_hand(float(e.t), float(e.vel_latency), float(e.spin_latency))
 			"drop":
@@ -1996,11 +1695,11 @@ func _land(pitch: LivePitch) -> void:
 			_crew.call_it("ump_strike", 0.35, 0.7, "" if third else "ump_strike")
 		"hit_by_pitch":
 			_crew.call_it("ump_point", 0.3, 1.0)
-	if _runners_on() and _steal.is_empty():
+	if _runners_on() and plays.steal.is_empty():
 		_last_report_extra = "Delivery %.2f s with runners on" % _last_delivery
-	_resolve_steal(a)
+	plays.resolve_steal(a)
 	for i in 3:
-		_since_throw[i] = int(_since_throw[i]) + 1
+		plays.since_throw[i] = int(plays.since_throw[i]) + 1
 	# A pitch the catcher cannot handle: every runner moves up a base.
 	var wild_ev := {}
 	var wild_plan := {}
@@ -2041,8 +1740,8 @@ func _land(pitch: LivePitch) -> void:
 		_refresh_base_runners(shown_from)
 	_begin_pa_exit(ev, bases_before)
 	# The at-bat ended on a pitch a runner was running on (strike 'em out, throw 'em out).
-	if ev.get("pa_over", false) and not _steal.is_empty() and _steal.has("apply_at"):
-		_finish_steal()
+	if ev.get("pa_over", false) and not plays.steal.is_empty() and plays.steal.has("apply_at"):
+		plays.finish_steal()
 	_stat_pitch(pitch.label, a.speed_mph, outcome)
 	var loc := PitchLocation.classify(plate.x, plate.y)
 	_log("pitch", {"n": _game.pitch_count, "label": pitch.label, "mph": a.speed_mph, "plate": plate,
@@ -2050,7 +1749,7 @@ func _land(pitch: LivePitch) -> void:
 		"swing": pitch.bat.get("swing", false), "bat": pitch.bat.get("kind", ""), "p_swing": pitch.bat.get("p_swing", 0.0),
 		"t_err": pitch.bat.get("t_err", 0.0), "bunt": pitch.bat.get("bunt", false), "busy": pitch.bat.get("busy", false),
 		"result": ev.get("result", ""), "text": ev.get("text", ""), "wild": wild_ev.get("result", ""),
-		"delivery": _last_delivery if _runners_on() else null, "steal": not _steal.is_empty(),
+		"delivery": _last_delivery if _runners_on() else null, "steal": not plays.steal.is_empty(),
 		"fatigue": snappedf(_home.player_at(1).fatigue(_game.pitch_count), 0.01) if _home else 0.0,
 		"on_before": bases_before.map(func(x): return x != null)})
 	if ev.get("result", "") == "strikeout":
@@ -2138,9 +1837,9 @@ func _contact(pitch: LivePitch) -> void:
 			_haptics.play("ui_error", 0.6)
 		# Everyone on base runs on the same physics as the fielders.
 		var head_start := {}
-		if not _steal.is_empty():
-			head_start[int(_steal.from)] = float(_aux_play.get("t", 0.0)) if not _aux_play.is_empty() else 0.0
-			_steal = {}
+		if not plays.steal.is_empty():
+			head_start[int(plays.steal.from)] = float(_aux_play.get("t", 0.0)) if not _aux_play.is_empty() else 0.0
+			plays.steal = {}
 			_bat_call = ""
 			_aux_play = {}
 		h.plan = Baserunning.plan(h.play, _game.bases, _game.outs, _batter_player, _run_rng, head_start)
@@ -2368,18 +2067,18 @@ func _play_in_progress() -> bool:
 
 
 func _update_batter_lifecycle(delta: float) -> void:
-	_update_flights(delta)
+	plays.update_flights(delta)
 	if _play_hit == null or _play_hit.done:
 		_director.drift_to_homes(delta)        # between plays the fielders walk to where they should stand
-	if not _steal.is_empty():
-		if _steal.has("apply_at") and not _steal.get("done", false):
+	if not plays.steal.is_empty():
+		if plays.steal.has("apply_at") and not plays.steal.get("done", false):
 			# Decided on the base: put it in the book (also if the run animation has already ended).
-			if _aux_play.is_empty() or float(_aux_play.t) >= float(_steal.apply_at):
-				_finish_steal()
-		elif _steal.has("await") and _aux_play.is_empty():
+			if _aux_play.is_empty() or float(_aux_play.t) >= float(plays.steal.apply_at):
+				plays.finish_steal()
+		elif plays.steal.has("await") and _aux_play.is_empty():
 			fielding.catcher_release(Vector3.ZERO)       # the run is over and you never threw
 		elif _aux_play.is_empty():
-			_steal = {}            # the delivery never became a pitch: nothing to resolve
+			plays.steal = {}            # the delivery never became a pitch: nothing to resolve
 			_bat_call = ""
 	# Safety net: if nothing is happening that could make the batter ready, make him ready.
 	var busy := not _aux_play.is_empty() or not _walk_on.is_empty()
@@ -2950,7 +2649,7 @@ func _refresh_base_runners(bases: Array = []) -> void:
 			_base_runners.append(fig)
 	for i in 3:
 		var who = on[i]
-		_leads[i] = StealModel.lead(who as Player, int(_since_throw[i])) if who is Player else 2.4
+		plays.leads[i] = StealModel.lead(who as Player, int(plays.since_throw[i])) if who is Player else 2.4
 		_base_runners[i].visible = on[i] != null
 		(_base_runners[i] as Doll).watching = false
 		_base_runners[i].position = _director.stand_for(i + 1)

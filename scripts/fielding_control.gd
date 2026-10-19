@@ -21,7 +21,7 @@ var receive_cover := 0.0
 ## You are the catcher and a runner is going: every frame, wait for you to take the ball out of the glove with
 ## your throwing hand and let it go toward the base (or for the time to run out).
 func poll_catcher_throw(delta: float, now: float) -> void:
-	var w: Dictionary = host._steal.get("await", {}) if not host._steal.is_empty() else {}
+	var w: Dictionary = host.plays.steal.get("await", {}) if not host.plays.steal.is_empty() else {}
 	if w.is_empty():
 		return
 	w["left"] = float(w.left) - delta
@@ -49,9 +49,9 @@ func poll_catcher_throw(delta: float, now: float) -> void:
 ## The ball leaves your hand with this velocity (zero: you never threw). Fast and straight at the base gets him
 ## when it beats his run; anything else, or too slow, and he is safe.
 func catcher_release(vel: Vector3) -> void:
-	var w: Dictionary = host._steal.get("await", {})
-	host._steal.erase("await")
-	var target = int(host._steal.from) + 1
+	var w: Dictionary = host.plays.steal.get("await", {})
+	host.plays.steal.erase("await")
+	var target = int(host.plays.steal.from) + 1
 	var t_rel = float(host._aux_play.get("t", 0.0)) if not host._aux_play.is_empty() else 0.0
 	var from = glove_pos(null)
 	if from.y < -10.0:
@@ -68,12 +68,12 @@ func catcher_release(vel: Vector3) -> void:
 		err = float(choice.err)
 		if int(choice.base) == target:
 			t_ball = t_rel + HumanFielding.arrival_delay(from, target, speed, err) + host._run_rng.randfn(0.0, 0.04)
-			safe = float(host._steal.run_t) <= t_ball
+			safe = float(host.plays.steal.run_t) <= t_ball
 			why = "on the bag"
 		else:
 			why = "wild"
 	host._haptics.play("throw", clampf(speed / 35.0, 0.2, 1.0))
-	host._apply_steal(safe, t_ball, float(w.get("a_time", 0.0)), {"t_ball": t_ball, "t_run": host._steal.run_t, "human": true, "why": why, "speed": speed, "err": err})
+	host.plays.apply_steal(safe, t_ball, float(w.get("a_time", 0.0)), {"t_ball": t_ball, "t_run": host.plays.steal.run_t, "human": true, "why": why, "speed": speed, "err": err})
 	if not safe:
 		fld.assists += 1
 		host._show_notice("Caught him!", true)

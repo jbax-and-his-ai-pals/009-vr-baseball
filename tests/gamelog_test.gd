@@ -33,7 +33,7 @@ func _init() -> void:
 			if i % 7 == 0:
 				bp._game.bases = [fast, null, null]
 				bp._refresh_base_runners()
-			bp._on_delivery_start()
+			bp.plays.on_delivery_start()
 			bp._debug_throw()
 		if i == 60 * 40:
 			bp._mark_moment()

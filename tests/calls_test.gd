@@ -155,24 +155,24 @@ func _init() -> void:
 		bp._game.bases = [null, null, bp._away.lineup[0]]
 		bp._batter_ai.profile = BatterProfile.by_name("Contact Hitter")
 		bp._batter_ready = true
-		bp._steal = {}
+		bp.plays.steal = {}
 		bp._aux_play = {}
 		bp._refresh_base_runners()
 		var tries := 0
-		while bp._steal.is_empty() and tries < 200:
-			bp._on_delivery_start()
+		while bp.plays.steal.is_empty() and tries < 200:
+			bp.plays.on_delivery_start()
 			tries += 1
-		if bp._steal.is_empty():
+		if bp.plays.steal.is_empty():
 			continue
 		called += 1
 		if called == 1:
-			_check(bp._steal.call == "squeeze" and int(bp._steal.from) == 3 and bp._bat_call == "squeeze", "a squeeze breaks the runner from third")
+			_check(bp.plays.steal.call == "squeeze" and int(bp.plays.steal.from) == 3 and bp._bat_call == "squeeze", "a squeeze breaks the runner from third")
 		bp._debug_throw()
 		for i in 60 * 12:
 			bp._process(1.0 / 60.0)
-			if bp._steal.is_empty() and bp._aux_play.is_empty() and bp._hits.all(func(h): return h.result_shown):
+			if bp.plays.steal.is_empty() and bp._aux_play.is_empty() and bp._hits.all(func(h): return h.result_shown):
 				break
-		if bp._steal.is_empty() and bp._bat_call == "":
+		if bp.plays.steal.is_empty() and bp._bat_call == "":
 			finished += 1
 		if called >= 6:
 			break
