@@ -597,17 +597,31 @@ func _on_delivery_start() -> void:
 
 
 ## The pitch is in the catcher's glove (or it was hit and the steal was cancelled elsewhere):
-## did the runner make it?
+## did the runner make it? When you are the catcher the throw is yours (see _catcher_release).
 func _resolve_steal(a: Dictionary) -> void:
-	if _steal.is_empty() or _steal.has("apply_at"):
+	if _steal.is_empty() or _steal.has("apply_at") or _steal.has("await"):
 		return
-	var plan: Dictionary = _steal.plan
+	var base := int(_steal.from)
+	var t_now := float(_aux_play.get("t", 0.0)) if not _aux_play.is_empty() else 0.0
+	if _is_catcher() and base < 3 and not _steal.has("call"):
+		# He is going: get the ball out of the glove with your throwing hand and throw it to the base.
+		_steal["await"] = {"left": maxf(float(_steal.run_t) - t_now - 0.2, 0.8), "a_time": float(a.get("time", 0.5))}
+		_field_samples.clear()
+		_show_notice("THROW HIM OUT!", true)
+		_haptics.play("ui_error", 0.5)
+		return
 	var res := StealModel.resolve(_last_delivery, float(a.get("time", 0.5)), float(_steal.run_t), _run_rng,
-		0.4 if int(_steal.from) == 3 else StealModel.POP_TIME)       # at the plate the catcher just tags him
+		0.4 if base == 3 else StealModel.POP_TIME)       # at the plate the catcher just tags him
+	_apply_steal(bool(res.safe), float(res.t_ball), float(a.get("time", 0.0)), {"t_ball": res.t_ball, "t_run": res.t_run, "delivery": _last_delivery})
+
+
+## Put a steal's result in the picture and in the book (_finish_steal does the book when the picture gets there).
+func _apply_steal(safe: bool, t_ball_raw: float, flight: float, info: Dictionary) -> void:
+	var plan: Dictionary = _steal.plan
 	var t_now := float(_aux_play.get("t", 0.0)) if not _aux_play.is_empty() else 0.0
 	var base := int(_steal.from)
-	var t_ball: float = maxf(float(res.t_ball), t_now + 0.3)
-	if res.safe:
+	var t_ball: float = maxf(t_ball_raw, t_now + 0.3)
+	if safe:
 		Baserunning.steal_safe(plan)
 	else:
 		Baserunning.steal_out(plan, t_ball)
@@ -616,14 +630,79 @@ func _resolve_steal(a: Dictionary) -> void:
 	var glove: Vector3 = (Baserunning.RECEIVE_SPOT[base + 1] as Vector3) + Vector3(0.0, 1.15, 0.0)
 	var dur := Vector2(0.0 - glove.x, -1.35 - glove.z).length() / 33.0 + 0.1
 	if base < 3:
-		_spawn_flight(Vector3(0.0, 1.5, -1.2), glove, maxf(t_ball - dur - t_now, 0.05), dur, cover, not res.safe)
-		# He comes up out of the crouch and throws; the arm starts early enough that the ball leaves on time.
-		_crew.pop_throw_in(maxf(maxf(t_ball - dur - t_now, 0.05) - 0.42, 0.0), glove)
-	_steal["safe"] = res.safe
+		_spawn_flight(Vector3(0.0, 1.5, -1.2), glove, maxf(t_ball - dur - t_now, 0.05), dur, cover, not safe)
+		if not _is_catcher():
+			# He comes up out of the crouch and throws; the arm starts early enough that the ball leaves on time.
+			_crew.pop_throw_in(maxf(maxf(t_ball - dur - t_now, 0.05) - 0.42, 0.0), glove)
+	_steal["safe"] = safe
 	_steal["apply_at"] = t_ball
-	_log("steal_resolve", {"base": base, "safe": res.safe, "delivery": _last_delivery, "flight": a.get("time", 0.0),
-		"t_ball": res.t_ball, "t_run": res.t_run})
-	_last_report_extra = "STEAL ATTEMPT: %s" % ("safe" if res.safe else "OUT")
+	var entry := {"base": base, "safe": safe, "flight": flight}
+	entry.merge(info)
+	_log("steal_resolve", entry)
+	_last_report_extra = "STEAL ATTEMPT: %s" % ("safe" if safe else "OUT")
+
+
+## You are the catcher and a runner is going: every frame, wait for you to take the ball out of the glove with
+## your throwing hand and let it go toward the base (or for the time to run out).
+func _poll_catcher_throw(delta: float, now: float) -> void:
+	var w: Dictionary = _steal.get("await", {}) if not _steal.is_empty() else {}
+	if w.is_empty():
+		return
+	w["left"] = float(w.left) - delta
+	if _xr_active and _hand != null and _hand.get_is_active():
+		_field_samples.append([now, _hand.global_position])
+		while _field_samples.size() > 2 and now - float(_field_samples[0][0]) > 0.15:
+			_field_samples.pop_front()
+		var grip := _hand.get_float("grip")
+		if not w.get("gripped", false):
+			if grip > HumanPitcher.GRAB_THRESHOLD and _hand.global_position.distance_to(_glove_pos(null)) < 0.45:
+				w["gripped"] = true
+				_field_samples.clear()
+		elif grip < HumanPitcher.RELEASE_THRESHOLD and _field_samples.size() >= 2:
+			var first: Array = _field_samples[0]
+			var last: Array = _field_samples[_field_samples.size() - 1]
+			var dt := maxf(float(last[0]) - float(first[0]), 0.02)
+			var vel: Vector3 = ((last[1] as Vector3) - (first[1] as Vector3)) / dt * velocity_gain
+			_field_samples.clear()
+			_catcher_release(vel)
+			return
+	if float(w.left) <= 0.0:
+		_catcher_release(Vector3.ZERO)
+
+
+## The ball leaves your hand with this velocity (zero: you never threw). Fast and straight at the base gets him
+## when it beats his run; anything else, or too slow, and he is safe.
+func _catcher_release(vel: Vector3) -> void:
+	var w: Dictionary = _steal.get("await", {})
+	_steal.erase("await")
+	var target := int(_steal.from) + 1
+	var t_rel := float(_aux_play.get("t", 0.0)) if not _aux_play.is_empty() else 0.0
+	var from := _glove_pos(null)
+	if from.y < -10.0:
+		from = Vector3(0.0, 1.2, -1.0)                  # no controller: the throw starts from behind the plate
+	var safe := true
+	var t_ball := t_rel + 0.6
+	var why := "no throw"
+	var speed := 0.0
+	var err := 0.0
+	if vel.length() >= HumanFielding.MIN_THROW_SPEED:
+		var arm := float(_defense.fielder_by_num(2).get("arm", 33.0))
+		speed = HumanFielding.throw_speed(vel.length(), 1.0, arm)
+		var choice := HumanFielding.pick_base(from, vel, _throw_cone)
+		err = float(choice.err)
+		if int(choice.base) == target:
+			t_ball = t_rel + HumanFielding.arrival_delay(from, target, speed, err) + _run_rng.randfn(0.0, 0.04)
+			safe = float(_steal.run_t) <= t_ball
+			why = "on the bag"
+		else:
+			why = "wild"
+	_haptics.play("throw", clampf(speed / 35.0, 0.2, 1.0))
+	_apply_steal(safe, t_ball, float(w.get("a_time", 0.0)), {"t_ball": t_ball, "t_run": _steal.run_t, "human": true, "why": why, "speed": speed, "err": err})
+	if not safe:
+		_fld.assists += 1
+		_show_notice("Caught him!", true)
+	else:
+		_show_notice("Wild throw - safe!" if why == "wild" else ("Too slow - safe" if why == "on the bag" else "No throw - he is safe"), true)
 
 
 func _finish_steal() -> void:
@@ -1334,6 +1413,7 @@ func _process(delta: float) -> void:
 	_update_human_bat(Time.get_ticks_usec() / 1_000_000.0)
 	if _is_catcher():
 		_sample_glove(_game_time)
+		_poll_catcher_throw(delta, _game_time)
 	_poll_gestures(delta)
 	_run_drill(delta)
 	if _visit_timer > 0.0:
@@ -2633,6 +2713,8 @@ func _update_batter_lifecycle(delta: float) -> void:
 			# Decided on the base: put it in the book (also if the run animation has already ended).
 			if _aux_play.is_empty() or float(_aux_play.t) >= float(_steal.apply_at):
 				_finish_steal()
+		elif _steal.has("await") and _aux_play.is_empty():
+			_catcher_release(Vector3.ZERO)       # the run is over and you never threw
 		elif _aux_play.is_empty():
 			_steal = {}            # the delivery never became a pitch: nothing to resolve
 			_bat_call = ""
