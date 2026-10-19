@@ -1297,6 +1297,7 @@ func _process(delta: float) -> void:
 			_poll_hand(now)
 		if not _mode.human_fielders.is_empty():
 			_move_fielder(delta)
+		if not _mode.human_fielders.is_empty() or _mode.human_pitcher:
 			_poll_fielding(now)
 	elif _demo:
 		_demo_timer -= delta
@@ -2079,6 +2080,8 @@ func _update_hit(h: LiveHit, delta: float) -> void:
 
 # ------------------------------------------------------------------ human fielding
 func _human_num() -> int:
+	if _mode.human_pitcher:
+		return 1                          # a ball hit back at you is yours to field
 	return int(_mode.human_fielders[0]) if not _mode.human_fielders.is_empty() else 0
 
 
@@ -2921,6 +2924,13 @@ func _resolve_ball(pitch: LivePitch) -> void:
 	pitch.play = _defense.resolve(pitch.sim, run_f, skip)
 	if pitch.bat.get("bunt", false):
 		pitch.play["bunt"] = true
+	if _mode.human_pitcher and _mode.human_fielders.is_empty() and pitch.sim.get("fair", false) and not pitch.sim.get("home_run", false):
+		# A comebacker: if the pitcher is the one who would get to it, the ball is yours (your glove, your throw).
+		var with_pitcher := _defense.resolve(pitch.sim, run_f, [])
+		if int(with_pitcher.get("fielder", 0)) == 1 and with_pitcher.get("result", "") not in ["home_run", "foul"]:
+			pitch.human_chance = true
+			pitch.play = with_pitcher
+			pitch.play_fallback = _defense.resolve(pitch.sim, run_f, [1])
 	if not _mode.human_fielders.is_empty():
 		var hn: int = _mode.human_fielders[0]
 		if int(pitch.play.get("fielder", 0)) == hn and pitch.play.get("result", "") != "home_run":
