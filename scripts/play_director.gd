@@ -94,7 +94,7 @@ func ball_with_fielder(h: LiveHit) -> Vector3:
 func receiver_candidates(base: int, thrower: int, from: Vector3) -> Array:
 	match base:
 		1:
-			return [3, 4, 1]
+			return [3, 1, 4]                # the first baseman, then the pitcher covering, then the second baseman
 		2:
 			if thrower == 6:
 				return [4]
@@ -199,6 +199,8 @@ func drift_to_homes(delta: float) -> void:
 		if d.length() > 0.05:
 			node.position += d.normalized() * minf(d.length(), 6.0 * delta)
 			node.rotation.y = atan2(d.x, d.z)
+			if int(f.num) == 1:
+				node.position.y = PitchPhysics.MOUND_H * clampf(1.0 - d.length() / 3.0, 0.0, 1.0)
 		else:
 			node.rotation.y = atan2(-home.x, -home.z)
 
@@ -209,7 +211,7 @@ func reset_fielders() -> void:
 		if node == null:
 			continue
 		var home: Vector3 = f.home
-		node.position = Vector3(home.x, 0.0, home.z if f.num != 2 else -1.35)
+		node.position = Vector3(home.x, PitchPhysics.MOUND_H if f.num == 1 else 0.0, home.z if f.num != 2 else -1.35)
 		node.rotation = Vector3.ZERO
 		node.rotation.y = 0.0 if f.num == 2 else atan2(-home.x, -home.z)
 	if runner:

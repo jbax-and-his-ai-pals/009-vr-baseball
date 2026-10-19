@@ -849,6 +849,17 @@ func _doll_style(key: int) -> int:
 	return _doll_styles[key]
 
 
+## The pitcher as a person on the mound (only when you are not him): he throws each pitch and covers first.
+func _ensure_pitcher_doll() -> void:
+	if _field_nodes.has(1):
+		return
+	var home: Vector3 = _defense.fielder_by_num(1).home
+	var d := Doll.create(self, Vector3(home.x, PitchPhysics.MOUND_H, home.z), _home.jersey, Color(0.62, 0.64, 0.70), _home.jersey, true, _doll_style(1))
+	d.footstep.connect(_on_footstep)
+	d.rotation.y = PI                    # facing home plate
+	_field_nodes[1] = d
+
+
 func _runner_doll(at: Vector3) -> Doll:
 	_runner_styles += 1
 	var d := Doll.create(self, at, Color(0.84, 0.16, 0.18), Color(0.95, 0.95, 0.97), Color(0.12, 0.17, 0.50), false,
@@ -943,6 +954,8 @@ func _build_world() -> void:
 			node.footstep.connect(_on_footstep)
 			node.rotation.y = atan2(-f.home.x, -f.home.z)
 			_field_nodes[f.num] = node
+	if not _mode.human_pitcher:
+		_ensure_pitcher_doll()           # nobody to throw for you: the pitcher is a person on the mound
 	if not _mode.human_fielders.is_empty():
 		var me: Node3D = _field_nodes.get(int(_mode.human_fielders[0]))
 		if me:
@@ -1183,7 +1196,15 @@ func _run_ai_pitcher(delta: float) -> void:
 	_last_delivery = clampf(_run_rng.randfn(1.05, 0.15) - 0.2 * (_ai_pitcher.player.command - 50.0) / 50.0, 0.7, 1.5)
 	_on_delivery_start()
 	var pitch := _ai_pitcher.next_pitch(release)
-	_launch(release, pitch.vel, pitch.spin, pitch.kind)
+	var mound_man = _field_nodes.get(1)
+	if mound_man is Doll:
+		# He winds up and throws: the ball leaves his hand as the arm comes through.
+		(mound_man as Doll).throw_to(Vector3(0.0, 1.0, 0.0), "overhand", 0.75)
+		_props.later(0.45, func():
+			if _game != null and not _game.over and _batter_ready:
+				_launch(release, pitch.vel, pitch.spin, pitch.kind))
+	else:
+		_launch(release, pitch.vel, pitch.spin, pitch.kind)
 
 
 func _on_quality_changed(level: int) -> void:
@@ -2470,6 +2491,7 @@ func _leave_game() -> void:
 	_runs_at_pitcher_change = _game.runs
 	_mode = GameMode.spectate()
 	_sound.mode = _mode
+	_ensure_pitcher_doll()
 	_spectate_timer = 2.0
 	_log("leave_game", {"line": _left_line, "reliever": rp.name})
 	_show_notice("%s takes over" % rp.name)
