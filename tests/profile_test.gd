@@ -104,5 +104,42 @@ func _init() -> void:
 	_check(MenuModel.key_label("Pitching/9inn/Standard") == "Pitching, 9 inn, Standard", "board names read as words")
 	_check(m.items()[0].enabled == false and m.items()[m.items().size() - 1].id == "back", "info lines are not buttons")
 
+	# Pitch types, box scores and fielding.
+	var pt := PlayerProfile.new()
+	var gl := _line(27, 8, 4, 1, 2)
+	gl["types"] = {"Fastball": {"n": 60, "strikes": 40, "whiffs": 6, "swings": 20, "mph_sum": 5100.0, "mph_max": 91.0},
+		"Curveball": {"n": 20, "strikes": 11, "whiffs": 4, "swings": 8, "mph_sum": 1500.0, "mph_max": 80.0}}
+	gl["opp"] = "Harbor Gulls"
+	gl["score_for"] = 3
+	gl["score_against"] = 1
+	pt.record_game(GameConfig.new(), gl, 1.0)
+	pt.record_game(GameConfig.new(), gl, 2.0)
+	var tl := pt.type_lines()
+	_check(tl.size() == 2 and tl[0].kind == "Fastball" and tl[0].n == 120 and absf(tl[0].strike_pct - 66.67) < 0.1 and tl[0].mph_max == 91.0 and absf(tl[0].mph_avg - 85.0) < 0.1,
+		"pitch types add up over games, most thrown first (%s)" % str(tl[0]))
+	_check(tl[1].whiff_pct > 40.0 and tl[1].whiff_pct < 60.0, "whiff rate is whiffs per swing (%.0f%%)" % tl[1].whiff_pct)
+	_check(pt.recent(1)[0].t == 2.0 and pt.recent(5).size() == 2, "recent games come newest first")
+	var fcfg := GameConfig.new()
+	fcfg.mode = "Fielding"
+	fcfg.position = 6
+	var fl := {"kind": "fielding", "position": 6, "chances": 8, "caught": 6, "missed": 2, "errors": 1, "assists": 3, "r": 2, "won": true}
+	_check(PlayerProfile.fielding_score(fl) == 50 + 36 + 15 - 16 - 10 - 4, "fielding score rewards catches and assists, punishes misses and errors (%d)" % PlayerProfile.fielding_score(fl))
+	var fr := pt.record_game(fcfg, fl, 3.0)
+	_check(fr.key == "Fielding6/9inn/Standard" and fr.rank == 1 and pt.keys_played().has("Fielding6/9inn/Standard"), "a fielding game has its own board per position")
+	_check(int(pt.totals.games) == 2 and int(pt.totals.f_games) == 1 and int(pt.totals.f_caught) == 6, "and its own totals, apart from pitching")
+	_check(pt.lifetime_lines().any(func(x): return String(x).begins_with("Fielding")), "the stats screen shows them")
+	var m2 := MenuModel.new(Settings.new())
+	m2.profile = pt
+	m2.stack = ["main", "stats"]
+	var ids := m2.items().map(func(r): return r.id)
+	_check(ids.has("stats_types") and ids.has("stats_games"), "the Stats screen links to pitch types and recent games")
+	m2.activate(ids.find("stats_types"))
+	var trows := m2.items()
+	_check(m2.screen() == "stats_types" and trows[0].label.begins_with("Fastball") and trows[0].value.contains("str"), "the pitch type screen lists what you throw (%s | %s)" % [trows[0].label, trows[0].value])
+	m2.back()
+	m2.activate(m2.items().map(func(r): return r.id).find("stats_games"))
+	var grows := m2.items()
+	_check(m2.screen() == "stats_games" and grows[0].label.contains("caught") or grows[0].value.contains("caught") or grows[0].label.begins_with("W"), "recent games read like box scores (%s | %s)" % [grows[0].label, grows[0].value])
+
 	print("FAILURES: %d" % _failures)
 	quit(1 if _failures > 0 else 0)

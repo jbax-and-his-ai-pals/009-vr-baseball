@@ -77,6 +77,10 @@ func title() -> String:
 			return "Leave the game?"
 		"stats":
 			return "Stats"
+		"stats_types":
+			return "Pitch types"
+		"stats_games":
+			return "Recent games"
 		"pause":
 			return "Paused" if current_game == null else "Paused - " + current_game.title()
 	return ""
@@ -194,9 +198,25 @@ func items() -> Array[Dictionary]:
 				var rank := 1
 				for entry in profile.top(stats_key, 5):
 					var ln: Dictionary = entry.line
-					rows.append(_row("info", "#%d   score %d" % [rank, int(entry.score)],
-						"%s IP, %d K, %d R" % [PlayerProfile.ip_text(int(ln.get("outs", 0))), int(ln.get("k", 0)), int(ln.get("r", 0))], false))
+					rows.append(_row("info", "#%d   score %d" % [rank, int(entry.score)], _line_text(ln), false))
 					rank += 1
+			if not profile.type_lines(1).is_empty():
+				rows.append(_row("stats_types", "Pitch types", "", true, "what you throw, how often, how well"))
+			if not profile.games.is_empty():
+				rows.append(_row("stats_games", "Recent games", "", true, "your last box scores"))
+			rows.append(_row("back", "Back"))
+		"stats_types":
+			for t in profile.type_lines(8):
+				rows.append(_row("info", "%s  %d" % [t.kind, int(t.n)], "%.0f%% str  %s  %.0f avg  %.0f top" % [
+					t.strike_pct, ("%.0f%% whf" % t.whiff_pct) if float(t.whiff_pct) >= 0.0 else "- whf", t.mph_avg, t.mph_max], false))
+			rows.append(_row("back", "Back"))
+		"stats_games":
+			for g in profile.recent(8):
+				var gl: Dictionary = g.line
+				var result := "W" if bool(gl.get("won", false)) else ("L" if bool(gl.get("lost", false)) else "-")
+				var opp := String(gl.get("opp", ""))
+				rows.append(_row("info", "%s %s%s" % [result, "%d-%d" % [int(gl.get("score_for", 0)), int(gl.get("score_against", 0))] if gl.has("score_for") else "", (" vs " + opp) if opp != "" else ""],
+					_line_text(gl), false))
 			rows.append(_row("back", "Back"))
 		"audio":
 			for bus in VOLUME_ROWS:
@@ -305,6 +325,10 @@ func activate(index: int) -> Dictionary:
 			stack.append("audio")
 		"stats":
 			stack.append("stats")
+		"stats_types":
+			stack.append("stats_types")
+		"stats_games":
+			stack.append("stats_games")
 		"challenges":
 			stack.append("challenges")
 		"stats_key":
@@ -389,6 +413,13 @@ func back() -> Dictionary:
 	if stack.size() > 1:
 		stack.pop_back()
 	return {}
+
+
+## One game line as words: a pitcher's (IP, K, R) or a fielder's (caught of chances).
+static func _line_text(ln: Dictionary) -> String:
+	if String(ln.get("kind", "pitching")) == "fielding":
+		return "%d of %d caught, %d err" % [int(ln.get("caught", 0)), int(ln.get("chances", 0)), int(ln.get("errors", 0))]
+	return "%s IP, %d K, %d R" % [PlayerProfile.ip_text(int(ln.get("outs", 0))), int(ln.get("k", 0)), int(ln.get("r", 0))]
 
 
 func _build_note(b: String) -> String:

@@ -31,6 +31,12 @@ static func game_score(line: Dictionary) -> int:
 		- 4 * int(line.get("r", 0)) - int(line.get("bb", 0))
 
 
+## Fielding Score for one game at one position: catches and assists up, misses, errors and runs against down.
+static func fielding_score(line: Dictionary) -> int:
+	return 50 + 6 * int(line.get("caught", 0)) + 5 * int(line.get("assists", 0)) - 8 * int(line.get("missed", 0)) \
+		- 10 * int(line.get("errors", 0)) - 2 * int(line.get("r", 0))
+
+
 static func ip_text(outs: int) -> String:
 	return "%d.%d" % [outs / 3, outs % 3]
 
@@ -39,7 +45,8 @@ static func ip_text(outs: int) -> String:
 ## "personal_best": bool, "key"}.
 func record_game(config: GameConfig, line: Dictionary, when: float = -1.0) -> Dictionary:
 	var key := config.leaderboard_key()
-	var score := game_score(line)
+	var fielding := String(line.get("kind", "pitching")) == "fielding"
+	var score := fielding_score(line) if fielding else game_score(line)
 	var t := when if when >= 0.0 else Time.get_unix_time_from_system()
 	games.append({"t": t, "key": key, "title": config.title(), "line": line, "score": score})
 	while games.size() > MAX_GAMES:
@@ -62,7 +69,26 @@ func record_game(config: GameConfig, line: Dictionary, when: float = -1.0) -> Di
 
 
 func _add_totals(line: Dictionary) -> void:
+	if String(line.get("kind", "pitching")) == "fielding":
+		totals["f_games"] = int(totals.get("f_games", 0)) + 1
+		for k in ["chances", "caught", "missed", "errors", "assists"]:
+			totals["f_" + k] = int(totals.get("f_" + k, 0)) + int(line.get(k, 0))
+		return
 	totals["games"] = int(totals.get("games", 0)) + 1
+	var types: Dictionary = totals.get("types", {})
+	var lt = line.get("types", {})
+	if lt is Dictionary:
+		for kind in lt:
+			var t: Dictionary = types.get(kind, {"n": 0, "strikes": 0, "whiffs": 0, "swings": 0, "mph_sum": 0.0, "mph_max": 0.0})
+			var x: Dictionary = lt[kind]
+			t["n"] = int(t.n) + int(x.get("n", 0))
+			t["strikes"] = int(t.strikes) + int(x.get("strikes", 0))
+			t["whiffs"] = int(t.whiffs) + int(x.get("whiffs", 0))
+			t["swings"] = int(t.swings) + int(x.get("swings", 0))
+			t["mph_sum"] = float(t.mph_sum) + float(x.get("mph_sum", 0.0))
+			t["mph_max"] = maxf(float(t.mph_max), float(x.get("mph_max", 0.0)))
+			types[kind] = t
+		totals["types"] = types
 	if bool(line.get("won", false)):
 		totals["wins"] = int(totals.get("wins", 0)) + 1
 	elif bool(line.get("lost", false)):
@@ -70,6 +96,27 @@ func _add_totals(line: Dictionary) -> void:
 	for k in ["outs", "pitches", "strikes", "k", "bb", "h", "r", "hr"]:
 		totals[k] = int(totals.get(k, 0)) + int(line.get(k, 0))
 	totals["max_mph"] = maxf(float(totals.get("max_mph", 0.0)), float(line.get("max_mph", 0.0)))
+
+
+## Lifetime numbers per pitch type, most thrown first: [{"kind", "n", "strike_pct", "whiff_pct", "mph_avg", "mph_max"}].
+func type_lines(n: int = 6) -> Array:
+	var out: Array = []
+	var types: Dictionary = totals.get("types", {})
+	for kind in types:
+		var t: Dictionary = types[kind]
+		var cnt := maxi(int(t.n), 1)
+		out.append({"kind": kind, "n": int(t.n), "strike_pct": 100.0 * float(t.strikes) / cnt,
+			"whiff_pct": 100.0 * float(t.whiffs) / maxf(float(t.swings), 1.0) if int(t.swings) > 0 else -1.0,
+			"mph_avg": float(t.mph_sum) / cnt, "mph_max": float(t.mph_max)})
+	out.sort_custom(func(a, b): return int(a.n) > int(b.n))
+	return out.slice(0, n)
+
+
+## The last `n` finished games, newest first: {"t", "key", "title", "line", "score"}.
+func recent(n: int = 8) -> Array:
+	var out: Array = games.duplicate()
+	out.reverse()
+	return out.slice(0, n)
 
 
 func top(key: String, n: int = 5) -> Array:
@@ -86,8 +133,11 @@ func keys_played() -> Array:
 ## A one-line summary of the lifetime totals for the stats screen.
 func lifetime_lines() -> Array:
 	var g := int(totals.get("games", 0))
-	if g == 0:
+	var fg := int(totals.get("f_games", 0))
+	if g == 0 and fg == 0:
 		return ["No games finished yet"]
+	if g == 0:
+		return ["Fielding: %d games, %d of %d caught, %d errors" % [fg, int(totals.get("f_caught", 0)), int(totals.get("f_chances", 0)), int(totals.get("f_errors", 0))]]
 	var pitches := int(totals.get("pitches", 0))
 	var strike_pct := 100.0 * float(totals.get("strikes", 0)) / maxf(pitches, 1)
 	return [
@@ -95,7 +145,7 @@ func lifetime_lines() -> Array:
 		"%s IP, %d K, %d BB" % [ip_text(int(totals.get("outs", 0))), int(totals.get("k", 0)), int(totals.get("bb", 0))],
 		"%d H, %d R, %d HR" % [int(totals.get("h", 0)), int(totals.get("r", 0)), int(totals.get("hr", 0))],
 		"%d pitches, %.0f%% strikes, top %.0f mph" % [pitches, strike_pct, float(totals.get("max_mph", 0.0))],
-	]
+	] + ([] if fg == 0 else ["Fielding: %d games, %d of %d caught, %d errors" % [fg, int(totals.get("f_caught", 0)), int(totals.get("f_chances", 0)), int(totals.get("f_errors", 0))]])
 
 
 ## Stars (0-3) and tries for a challenge, 0 / 0 if never tried.

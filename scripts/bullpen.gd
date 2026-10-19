@@ -136,6 +136,7 @@ var _visit_timer := 0.0                      # seconds left of a visit (no pitch
 var _fatigue_credit := 0                     # pitches your arm is rested by (a mound visit)
 var _user_left := false                      # you handed the ball to the bullpen
 var _left_line := {}                         # your line at that moment
+var _fld := {"chances": 0, "caught": 0, "missed": 0, "errors": 0, "assists": 0}   # your fielding this game
 var _game_recorded := false
 var _call_label: Label3D                    # the umpire's call as words, above the plate
 var _call_label_until := 0.0
@@ -1392,6 +1393,7 @@ func _new_game() -> void:
 	if _sound != null:
 		_sound.new_game()
 	_game_recorded = false
+	_fld = {"chances": 0, "caught": 0, "missed": 0, "errors": 0, "assists": 0}
 	_visit_used = false
 	_visit_timer = 0.0
 	_fatigue_credit = 0
@@ -2007,6 +2009,8 @@ func _fielder_play(h: LiveHit, result: String, text: String, extra: Dictionary) 
 
 func _human_catch(h: LiveHit, ball: Vector3) -> void:
 	_haptics.play("catch")
+	_fld.chances += 1
+	_fld.caught += 1
 	print("FIELDING: caught at t=%.2f y=%.2f" % [h.t, ball.y])
 	h.catch_pos = ball
 	h.catch_t = h.t
@@ -2038,6 +2042,8 @@ func _human_catch(h: LiveHit, ball: Vector3) -> void:
 
 ## The ball got past you (or you never reached it): the rest of the defense plays it.
 func _human_miss(h: LiveHit) -> void:
+	_fld.chances += 1
+	_fld.missed += 1
 	print("FIELDING: missed at t=%.2f" % h.t)
 	h.human_state = "done"
 	h.play = h.fallback if not h.fallback.is_empty() else {"result": "single", "text": "Single", "bases": 1,
@@ -2052,6 +2058,7 @@ func _human_miss(h: LiveHit) -> void:
 
 
 func _human_hold_too_long(h: LiveHit) -> void:
+	_fld.errors += 1
 	h.human_state = "done"
 	h.play = _fielder_play(h, "single", "Infield single (held the ball)", {"bases": 1})
 	Baserunning.apply_throw(h.plan, 0, 0.0, _game.outs, h.catch_pos, _run_rng)
@@ -2076,6 +2083,7 @@ func _human_throw(h: LiveHit, vel: Vector3) -> void:
 		h.plan = Baserunning.plan(wild, _game.bases, _game.outs, _batter_player, _run_rng)
 		h.play_end = maxf(h.t + 0.8, float(h.plan.end_time))
 		_last_report_extra = "Wild throw!"
+		_fld.errors += 1
 		return
 	var base: int = choice.base
 	print("FIELDING: throw to base %d at %.1f m/s (%.0f deg off)" % [base, speed, choice.err])
@@ -2105,6 +2113,8 @@ func _human_throw(h: LiveHit, vel: Vector3) -> void:
 	h.plan["text"] = text
 	h.play_end = maxf(t_arrive + 0.6, float(h.plan.end_time))
 	_last_report_extra = ("Throw to %s: %s" % [["", "first", "second", "third", "home"][base], "OUT" if outs > 0 else "safe"])
+	if outs > 0:
+		_fld.assists += 1
 
 
 ## Thumbstick locomotion: you run to the ball. Speed is your fielder's.
@@ -2437,6 +2447,21 @@ func _update_alignment() -> void:
 			_show_notice("Infield in", true)
 
 
+## What you did as a fielder this game (see PlayerProfile.fielding_score).
+func _fielding_line() -> Dictionary:
+	var l := _fld.duplicate()
+	l["kind"] = "fielding"
+	l["position"] = _human_num()
+	l["r"] = _game.runs
+	l["opp"] = _away.name
+	l["innings"] = _game.innings
+	l["won"] = _game.home_score > _game.runs
+	l["lost"] = _game.home_score < _game.runs
+	l["score_for"] = _game.home_score
+	l["score_against"] = _game.runs
+	return l
+
+
 ## A career pitcher's command narrows or widens the aim funnel (1.0 for everyone else).
 func _command_scale() -> float:
 	return _career.funnel_factor() if _career_game and _career != null else 1.0
@@ -2470,7 +2495,12 @@ func _game_line() -> Dictionary:
 		return l
 	var t := _stats.pitch_totals()
 	var n := maxi(int(t.n), 1)
-	return {"outs": _game.outs_recorded, "pitches": _game.pitch_count, "strikes": int(t.strikes), "k": _game.strikeouts,
+	var types := {}
+	for kind in _stats.by_type:
+		var x: Dictionary = _stats.by_type[kind]
+		types[kind] = {"n": int(x.n), "strikes": int(x.strikes), "whiffs": int(x.whiffs), "swings": int(x.swings),
+			"mph_sum": float(x.mph_sum), "mph_max": float(x.mph_max)}
+	return {"opp": _away.name, "innings": _game.innings, "types": types, "outs": _game.outs_recorded, "pitches": _game.pitch_count, "strikes": int(t.strikes), "k": _game.strikeouts,
 		"bb": _game.walks, "h": _game.hits, "r": _game.runs, "hr": _game.home_runs,
 		"max_mph": float(t.mph_max), "avg_mph": float(t.mph_sum) / n,
 		"won": _game.home_score > _game.runs, "lost": _game.home_score < _game.runs,
@@ -2479,7 +2509,7 @@ func _game_line() -> Dictionary:
 
 ## A finished game goes in the book (only games you pitch that count for a leaderboard).
 func _record_finished_game() -> void:
-	if _game_recorded or not (_mode.human_pitcher or _user_left):
+	if _game_recorded or not (_mode.human_pitcher or _user_left or not _mode.human_fielders.is_empty()):
 		return
 	_game_recorded = true
 	var cfg := _current_config()
@@ -2490,7 +2520,7 @@ func _record_finished_game() -> void:
 		return
 	if not cfg.is_scored():
 		return
-	var line := _game_line()
+	var line := _fielding_line() if not _mode.human_fielders.is_empty() else _game_line()
 	var r := _profile.record_game(cfg, line)
 	_profile.save()
 	var text := "Game Score %d" % int(r.score)
