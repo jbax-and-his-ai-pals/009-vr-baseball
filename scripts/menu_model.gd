@@ -383,7 +383,7 @@ func activate(index: int) -> Dictionary:
 		"leave_game":
 			return {"type": "leave_game"}
 		"position":
-			config.position = 3 if config.position >= 9 else config.position + 1
+			config.position = 2 if config.position >= 9 else config.position + 1
 		"activity":
 			config.activity = _cycle(_activities(), config.activity)
 		"innings":

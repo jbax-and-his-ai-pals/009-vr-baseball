@@ -27,7 +27,7 @@ enum SpinMode { RAW, WRIST_MODEL }
 @export var menu_on_start := true
 @export_enum("Pitching", "Spectate", "Fielding", "Hitting") var game_mode_name: String = "Pitching"
 ## The position you play in Fielding mode (3 first base ... 9 right field; 6 is shortstop).
-@export_range(3, 9, 1) var fielding_position := 6
+@export_range(2, 9, 1) var fielding_position := 6
 ## Game: a nine-inning game against a nine-man lineup, with the count, outs and runners.
 ## Practice: one batter you choose (Y / P cycles them), the count still counts but nobody new comes up.
 @export_enum("Game", "Practice") var lineup_mode: String = "Game"
@@ -136,7 +136,7 @@ var _visit_timer := 0.0                      # seconds left of a visit (no pitch
 var _fatigue_credit := 0                     # pitches your arm is rested by (a mound visit)
 var _user_left := false                      # you handed the ball to the bullpen
 var _left_line := {}                         # your line at that moment
-var _fld := {"chances": 0, "caught": 0, "missed": 0, "errors": 0, "assists": 0}   # your fielding this game
+var _fld := {"chances": 0, "caught": 0, "missed": 0, "errors": 0, "assists": 0, "frames": 0, "lost": 0, "blocks": 0, "passed": 0}   # your fielding this game
 var _game_recorded := false
 var _sign := {}                              # the catcher's call for the next pitch ({} when none)
 var _sign_tally := {"called": 0, "perfect": 0, "type": 0, "loc": 0, "shaken": 0}
@@ -249,6 +249,8 @@ var _menu_button_was := false
 var _config := GameConfig.new()
 var _catch_radius := HumanFielding.CATCH_RADIUS
 var _throw_cone := HumanFielding.THROW_CONE_DEG
+var _glove_hist: Array = []                 # [time, glove position] for the last moments (the catcher judges them)
+var _glove_override := Vector3.INF          # debug / tests: a glove that is exactly here
 var _auto_field := false          # debug: the glove finds the ball and throws to first on its own
 var _field_samples: Array = []    # [time, hand position] while holding a ball to throw
 const FIELD_LOCOMOTION_MIN := 0.15
@@ -294,7 +296,7 @@ func _ready() -> void:
 			game_mode_name = a.substr(7)
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--field-pos="):
-			fielding_position = clampi(int(a.substr(12)), 3, 9)
+			fielding_position = clampi(int(a.substr(12)), 2, 9)
 	_auto_field = "--auto-field" in OS.get_cmdline_user_args()
 	apply_config(_current_config())
 	_mode = GameMode.by_name(game_mode_name)
@@ -1275,6 +1277,8 @@ func _process(delta: float) -> void:
 	if _mode.human_batter and _batter != null:
 		_batter.visible = false              # you are the batter
 	_update_human_bat(Time.get_ticks_usec() / 1_000_000.0)
+	if _is_catcher():
+		_sample_glove(_game_time)
 	_poll_gestures(delta)
 	_run_drill(delta)
 	if _visit_timer > 0.0:
@@ -1567,7 +1571,7 @@ func _new_game() -> void:
 	if _sound != null:
 		_sound.new_game()
 	_game_recorded = false
-	_fld = {"chances": 0, "caught": 0, "missed": 0, "errors": 0, "assists": 0}
+	_fld = {"chances": 0, "caught": 0, "missed": 0, "errors": 0, "assists": 0, "frames": 0, "lost": 0, "blocks": 0, "passed": 0}
 	_derby_outs = 0
 	_derby_hr = 0
 	_derby_done = false
@@ -1872,6 +1876,8 @@ func _land(pitch: LivePitch) -> void:
 		_strikes += 1
 	var outcome := "ball"
 	var plate: Vector3 = a.get("plate_pos", Vector3.ZERO)
+	if _is_catcher():
+		_receive_cover = float(Framing.assess(_glove_hist, plate).cover)
 	if _mode.human_batter and not pitch.bat.get("contact", false) and pitch.swing_peak > 8.0:
 		pitch.bat = {"swing": true, "contact": false, "kind": "whiff", "p_swing": 1.0}      # you swung and missed
 	if pitch.bat.get("swing", false):
@@ -1880,6 +1886,8 @@ func _land(pitch: LivePitch) -> void:
 		outcome = "called_strike"
 	elif a.get("reached", false) and PitchLocation.hits_batter(plate.x, plate.y, _batter_is_lefty()):
 		outcome = "hit_by_pitch"
+	if _is_catcher() and a.get("reached", false) and outcome in ["ball", "called_strike"]:
+		outcome = _receive(pitch, plate, outcome)
 	_mark_pitch(a, outcome)
 	_derby_tally(pitch, false, outcome in ["called_strike", "swinging_strike"])
 	_tutorial_pitch(pitch)
@@ -1916,7 +1924,14 @@ func _land(pitch: LivePitch) -> void:
 			p_wild = 0.04 + 0.5 * clampf((off - 0.25) / 1.0, 0.0, 1.0)
 		else:
 			p_wild = 0.008                    # the odd passed ball
+		if _is_catcher():
+			p_wild = Framing.gets_away(p_wild, _receive_cover)
+			if off > 0.25 and _receive_cover > 0.6:
+				_fld.blocks += 1
+				_show_notice("Blocked!", false)
 		if _run_rng.randf() < p_wild:
+			if _is_catcher():
+				_fld.passed += 1
 			var before := _game.bases.duplicate()
 			wild_ev = _game.wild_pitch(off <= 0.25)
 			if wild_ev.get("result", "") != "":
@@ -2202,8 +2217,43 @@ func _human_num() -> int:
 	return int(_mode.human_fielders[0]) if not _mode.human_fielders.is_empty() else 0
 
 
+## ---------------------------------------------------------------- the catcher (Fielding at position 2)
+var _receive_cover := 0.0
+
+
+func _is_catcher() -> bool:
+	return _mode != null and _mode.human_fielders.has(2)
+
+
+func _sample_glove(now: float) -> void:
+	var g := _glove_pos(null)
+	_glove_hist.append([now, g])
+	while _glove_hist.size() > 2 and now - float(_glove_hist[0][0]) > 0.6:
+		_glove_hist.pop_front()
+
+
+## A pitch the batter took arrives in your mitt: the umpire's call depends on how you caught it.
+func _receive(pitch: LivePitch, plate: Vector3, outcome: String) -> String:
+	var q := Framing.assess(_glove_hist, plate)
+	_receive_cover = float(q.cover)
+	var c := Framing.call_strike(plate, float(q.quality), _run_rng.randf())
+	var result := "called_strike" if c.strike else "ball"
+	if c.framed:
+		_fld.frames += 1
+		_show_notice("Framed it!", true)
+		_haptics.play("catch", 0.8)
+	elif c.lost:
+		_fld.lost += 1
+		_show_notice("Lost the call - too much glove movement" if float(q.speed) > Framing.STILL_SPEED else "Lost the call - get the glove on it", false)
+	_log("receive", {"miss": snappedf(float(q.miss), 0.001), "speed": snappedf(float(q.speed), 0.01), "quality": snappedf(float(q.quality), 0.01),
+		"p": snappedf(float(c.p), 0.01), "call": result, "was": outcome})
+	return result
+
+
 ## Where your glove is: the off-hand controller, a little in front of it.
 func _glove_pos(h: LiveHit) -> Vector3:
+	if _glove_override != Vector3.INF:
+		return _glove_override
 	if _xr_active and _off_hand and _off_hand.get_is_active():
 		return _off_hand.global_transform * Vector3(0.0, 0.0, -0.12)
 	if _auto_field and h != null:

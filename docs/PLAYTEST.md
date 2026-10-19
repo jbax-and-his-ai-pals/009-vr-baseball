@@ -216,3 +216,11 @@ Play > Pitching > setup > **Also bat: On**, then Start. Check in the headset:
 - Three outs, or a walk-off in the last inning, hand you back to the mound; the walk to the mound/box is instant (no transition yet) - note if it is disorienting.
 - Leaving the game (pause menu) switches the bottoms back to simulated.
 - Not done yet: your batting line is not saved to the profile (only counted in the game), and the fielders keep your jerseys in the bottom.
+
+## 18. Playing catcher
+
+Play > Fielding > Position: C. You crouch behind the plate with a mitt on the glove hand.
+- Take the pitches in the glove. On a pitch near the edge the umpire's call follows how you caught it: glove on the ball and still = a pitch an inch or two off can be a strike ("Framed it!"); a glove thrashing about or off the ball loses real strikes ("Lost the call").
+- Pitches in the dirt: get the glove down on them ("Blocked!") or runners advance on the wild pitch/passed ball.
+- Tune: `Framing.MAX_BONUS` (2.5 in), `SOFT`, `NEUTRAL` quality; whether your head/eye height behind the plate is comfortable; whether the batter standing beside you is in the way.
+- Not done: your own throw to second on a steal (the steal is still resolved by the AI at a fixed pop time); popups and bunts use the general fielding code and are untested from this spot.

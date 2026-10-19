@@ -34,7 +34,8 @@ static func game_score(line: Dictionary) -> int:
 ## Fielding Score for one game at one position: catches and assists up, misses, errors and runs against down.
 static func fielding_score(line: Dictionary) -> int:
 	return 50 + 6 * int(line.get("caught", 0)) + 5 * int(line.get("assists", 0)) - 8 * int(line.get("missed", 0)) \
-		- 10 * int(line.get("errors", 0)) - 2 * int(line.get("r", 0))
+		- 10 * int(line.get("errors", 0)) - 2 * int(line.get("r", 0)) \
+		+ 4 * int(line.get("frames", 0)) - 3 * int(line.get("lost", 0)) + 2 * int(line.get("blocks", 0)) - 8 * int(line.get("passed", 0))
 
 
 ## Hitting Score for one game: hits, homers, walks and runs up, strikeouts down.
