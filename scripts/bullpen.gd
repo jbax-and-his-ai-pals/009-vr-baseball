@@ -124,6 +124,7 @@ var _catcher: Doll
 var _umpire: Doll
 var _base_ump_dolls: Array[Doll] = []
 var _director := PlayDirector.new()   # puts a play on the field: fielders, ball, runners, callouts
+var _dugouts: Dugouts               # teammates at the rails and the coaches
 var _base_umps: BaseUmpires   # the three umpires at the bases
 var _crew: PlateCrew          # drives the catcher and the umpire
 var _props: FieldProps        # dust, dropped bats, and calls that wait for their moment
@@ -316,6 +317,9 @@ func _ready() -> void:
 	else:
 		_home = Team.generate("Home", 55.0, 7)
 		_away = Team.generate("Away", 52.0, 14)
+		_away.jersey = Color(0.84, 0.16, 0.18)          # the visitors wear red (the runners and the batter already do)
+		_away.pants = Color(0.95, 0.95, 0.97)
+		_away.cap = Color(0.12, 0.17, 0.50)
 	_batting = Team.archetype_roster()
 	_defense = Defense.from_team(_home)
 	_ai_pitcher = AIPitcher.new(_home.player_at(1))
@@ -359,6 +363,8 @@ func _ready() -> void:
 	add_child(_base_umps)
 	_base_umps.setup(_base_ump_dolls[0], _base_ump_dolls[1], _base_ump_dolls[2])
 	_base_umps.umpire_voice.connect(func(id: String, at: Vector3): _sound.umpire_says_at(id, at))
+	_dugouts = Dugouts.new()
+	_dugouts.setup(self, _home, _away, Callable(self, "_doll_style"))
 	_sound.umpire_spoke.connect(_on_umpire_spoke)
 	_director.base_umps = _base_umps
 	_director.props = _props
@@ -3251,6 +3257,10 @@ func _after_event(ev: Dictionary, extra: Dictionary = {}) -> void:
 		_sound.crowd_react(ev, _game)
 	if _stadium != null:
 		_stadium.pulse(_crowd_excitement(ev))
+	if _dugouts != null:
+		_dugouts.react_event(ev, "home" if _top_game != null else "away")
+		if ev.get("game_over", false):
+			_dugouts.cheer("home" if _game.home_score > _game.runs else "away", "celebrate", true)
 	match String(ev.get("result", "")):
 		"home_run":
 			_haptics.play("rumble", 1.0)
