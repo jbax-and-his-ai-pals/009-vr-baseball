@@ -72,10 +72,10 @@ criteria for each phase are in section 5; this is the at-a-glance view. Updated 
 - [x] Test: a seed replays the game (tests/replay_test.gd: same seed, same final score and line; different seed, different game)
 - [x] Each presenter has a test (`PlateCrew`, `FieldProps`, `BatterPresenter`, and `SoundDirector` / `PlayDirector` in tests/directors_test.gd)
 
-### Phase 4 - Core VR feel (M4) - MOSTLY DONE (open: hands and glove models)
+### Phase 4 - Core VR feel (M4) - MOSTLY DONE (open: a grip shape that teaches the pitch)
 - [x] Controller haptics (event table, Options > Haptics, menu pulses in the pointing hand)
-- [ ] Hand model holding the ball; grip shape that teaches the recognised pitch at easier assists
-- [ ] Glove model on the off hand
+- [~] Hand model (`HandModels.hand_mesh`: a cartoon hand with a cuff on the throwing hand and on both hands when batting); a grip shape that teaches the recognised pitch at easier assists is still open
+- [x] Glove model on the off hand (`HandModels.glove_mesh`: leather pad, pocket, fingers, thumb, web, laces; tools/hand_preview.gd renders both; tests/hand_models_test.gd)
 - [x] Pitch lab (Bullpen mode rebuilt): recognised pitch, spin axis, break, speed, location, "what made it a slider" (done: the report explains each pitch in words, `PitchLab`)
 - [x] First-run tutorial: calibrate your normal throw, then one gesture per pitch type (done: `Tutorial`, five lessons from Play > Learn to pitch)
 - [x] Catcher signs: a pitch and a spot called from the count, runners and batter side, shown by the catcher's knee and a marker on the zone; Y shakes him off; sign hits are graded, notified, and counted in your line and lifetime totals (a gameplay bonus for hitting the sign is not added)

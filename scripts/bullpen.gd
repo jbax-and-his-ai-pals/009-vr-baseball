@@ -1172,18 +1172,16 @@ func _setup_xr() -> void:
 			var ctrl := XRController3D.new()
 			ctrl.tracker = hand_name
 			origin.add_child(ctrl)
-			var vis := BoxMesh.new()
-			vis.size = Vector3(0.04, 0.04, 0.12)
-			_add_mesh(vis, Color(0.2, 0.4, 0.9), Vector3.ZERO, ctrl)
+			var is_right: bool = hand_name == &"right_hand"
 			if hand_name == throwing_hand:
 				_hand = ctrl
+				HandModels.attach(ctrl, HandModels.hand_mesh(is_right))
 			else:
 				_off_hand = ctrl
-				if not _mode.human_fielders.is_empty():
-					# The glove: a big brown mitt where the hand is.
-					var mitt := BoxMesh.new()
-					mitt.size = Vector3(0.20, 0.06, 0.24)
-					_add_mesh(mitt, Color(0.45, 0.28, 0.12), Vector3(0.0, 0.0, -0.10), ctrl)
+				if _mode.human_batter:
+					HandModels.attach(ctrl, HandModels.hand_mesh(is_right))         # both hands are on the bat
+				else:
+					HandModels.attach(ctrl, HandModels.glove_mesh(is_right))        # the glove goes on the hand that does not throw
 	else:
 		var cam := Camera3D.new()
 		var args := OS.get_cmdline_user_args()

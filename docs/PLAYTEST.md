@@ -242,3 +242,7 @@ Play > Fielding > Position: P. The AI throws every pitch; you stand beside the r
 ## 21. Parks
 
 Play > any mode > setup > Park: Harbor Field (the old park), Cozy Yard (84 m short porch in left, 94 in right, 2.4 m wall, warm colors) or Canyon Park (108 m lines, 135 to center, 4.6 m wall, night). Check the homer rate feels different, that the night park is readable (ambient 0.34, sun 0.45), and that the foul poles and chalk line up with the fence. Career games are always at Harbor Field.
+
+## 22. Hands and glove
+
+Your controllers are now a cartoon hand (throwing hand; both hands when batting) and a leather glove (the other hand). Check: scale and comfort (hand about 17 cm long, glove 30 cm), that the glove's pocket (12 cm in front of the controller) is where the catch feels like it happens, that the hand does not hide the ball you are holding, and left-handed mirroring. `tools/hand_preview.gd` renders them (see its header).
