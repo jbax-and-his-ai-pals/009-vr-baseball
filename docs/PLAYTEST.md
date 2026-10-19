@@ -232,3 +232,9 @@ Play > Fielding > Position: P. The AI throws every pitch; you stand beside the r
 - "COVER FIRST!" flashes when the first baseman is pulled away from the bag on a grounder: run (thumbstick) to the bag. Be within about 1.6 m of it when the batter arrives or he is safe.
 - Check: is the run to first reachable at your fielder's speed (about 19 m in 3 s)? Is COVER_RADIUS (1.6) fair? Does the ball visibly go to nobody when you cover (the animation still sends it to a hidden figure)?
 - Standing spot beside the rubber (1.4 m to the side): does the pitch release read as coming from "someone else"?
+
+## 20. Pickoff moves and backing up
+
+- Pitching with a runner on: throw over fast (start your motion and release within about half a second) and it gets more runners than a slow lob; a left-hander's throws to first and a right-hander's to third are the best (the log line `pickoff` has `quick` and `lefty`).
+- Watch the AI pitcher in Spectate or Fielding: with a runner leading far off he sometimes steps off and throws over; the runner's lead shrinks after.
+- On a ball hit to the infield the right fielder jogs in behind first; on a steal the center fielder does not (not wired for steals). Tune `Backup.DEPTH`, and whether the outfielders should creep in with runners on.

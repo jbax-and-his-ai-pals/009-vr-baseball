@@ -101,7 +101,7 @@ criteria for each phase are in section 5; this is the at-a-glance view. Updated 
 - [~] League data: eight fictional teams with names, colours and a double round-robin schedule done; parks and per-team rosters beyond generated ones are open
 - [~] Exit: a season is playable with saved progress, standings and a stats screen (tested in the scene; not played in the headset)
 
-### Phase 6 - More roles (M6) - MOSTLY DONE (open: a human catcher throw on steals, backing up bases)
+### Phase 6 - More roles (M6) - MOSTLY DONE (open: a human catcher throw on steals)
 - [~] Human fielding: 1B to RF exist (`--field-pos`); open: first base taking throws, tuning in the headset
 - [x] Wild throws let runners advance (AI throwing errors by arm and distance; your own wild throws already did)
 - [x] Fielding drills (Fielding > Drill: ten balls hit to your position, stars by catches and errors)
@@ -111,13 +111,15 @@ criteria for each phase are in section 5; this is the at-a-glance view. Updated 
 - [x] Home run derby (ten outs of easy pitches, homers counted, stars saved); Practice in Hitting mode is the ordinary game loop
 - [x] Role switching in a game (pitch your half, hit in the bottom, or field) (done: Play > Pitching > Also bat; `GameState.bottom_live`, tests/two_way_test.gd)
 
-### Phase 7 - Rest of the rulebook and the manager (M7) - MOSTLY DONE (open: pickoff moves from the stretch, backing up bases)
+### Phase 7 - Rest of the rulebook and the manager (M7) - DONE except headset tuning (open: a human duty to back up a base - the outfielders start too far away without creeping in)
 - [x] Intentional walk (pause menu, pitching mode)
 - [x] Rundowns (a throw over can catch a runner between the bases: run down, back safe, or on to the next; fielders and ball play it out)
 - [x] Squeeze play, hit-and-run (called per pitch by situation, the batter bunts / protects, the runner from third can score or be out) and infield in (late, close, runner on third; fielders walk to position)
 - [x] Base umpires (three dolls at first, second and third give the out/safe call with gesture and voice)
 - [x] Pause menu: Mound visit (once a game, rests the arm 15 pitches, the catcher walks out) and Take me out (a reliever finishes, your line is closed) are in; hand signals are in too: a hand overhead for the intentional walk, a hand at the ear calls the bullpen (Options > Hand signals)
-- [~] Pitcher covering first is in (a pitcher figure stands on the mound when you are not him, throws each pitch, covers first); backing up bases and pickoff moves from the stretch are open
+- [x] Pitcher covering first is in (a pitcher figure stands on the mound when you are not him, throws each pitch, covers first)
+- [x] Pickoff moves from the stretch: a quicker move gets more, a lefty owns first and a righty third (`StealModel.pickoff_chance`/`deception`), and AI pitchers step off and throw over to hold a runner who leads far off (`ai_throws_over`)
+- [x] Backing up bases: the AI sends a fielder behind the bag on every throw (`Backup`: RF behind first, CF second, LF third, pitcher home), as far as he can get in the time; tests/stretch_test.gd. A human back-up duty is open
 - [x] Platoon effects, and left-handed batters now hit the mirror image (pull to the other field)
 - [x] Pitching change PA call (`pa_pitching_change`); `pa_number_digits` stays unwired on purpose
 

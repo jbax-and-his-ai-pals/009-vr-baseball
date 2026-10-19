@@ -78,7 +78,7 @@ func poll(now: float, hand: XRController3D, can_grab: bool, auto_release: bool) 
 ## The ball leaves your hand (or is dropped). Clears the holding state and returns:
 ##   {"kind": "invalid"}                               nothing readable
 ##   {"kind": "drop", "started": bool}                 too soft to be a throw (a balk if you had started)
-##   {"kind": "pickoff", "base", "err", "vel"}         thrown toward a base
+##   {"kind": "pickoff", "base", "err", "vel", "quick"} thrown toward a base ("quick": seconds from the start of the move)
 ##   {"kind": "pitch", "vel", "spin", "scaled", "est", "shape", "funnel", "hand_sign", "delivery",
 ##    "flutter", "knuckle"}                            a pitch for the scene to launch
 ## `tired` is your arm's fatigue 0..1, `command_scale` the career pitcher's aim factor (1.0 otherwise),
@@ -98,7 +98,8 @@ func throw(release_t: float, vel_latency: float, spin_latency: float, from: Vect
 	if from.z > 8.0:
 		var pk := HumanFielding.pick_base(from, est.velocity, 26.0)
 		if int(pk.base) in [1, 2, 3]:
-			return {"kind": "pickoff", "base": int(pk.base), "err": float(pk.err), "vel": est.velocity as Vector3}
+			return {"kind": "pickoff", "base": int(pk.base), "err": float(pk.err), "vel": est.velocity as Vector3,
+				"quick": clampf(release_t - began_at, 0.2, 2.0) if started else 0.7}
 	var delivery := clampf(release_t - began_at, 0.25, 3.0) if started else 0.9
 	var vel: Vector3 = (est.velocity as Vector3) * float(knobs.velocity_gain) * (1.0 - 0.06 * tired)
 	var max_speed := float(knobs.max_mph) / PitchPhysics.MPS_TO_MPH

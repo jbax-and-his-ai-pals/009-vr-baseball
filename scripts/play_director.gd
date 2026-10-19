@@ -170,6 +170,18 @@ func build_throws(h: LiveHit) -> Array:
 					"t1": maxf(t0 - 0.2, 0.9), "dive": false})
 				has_move[receiver] = true
 		thrower = receiver
+		# One more man goes behind the bag in case it gets by (the AI ones; you decide for yourself).
+		var asg := Backup.assignment(base, int(h.play.get("fielder", 0)), from_p)
+		var bnum := int(asg.fielder)
+		var bnode: Node3D = field_nodes.get(bnum)
+		if bnode != null and bnode.visible and not has_move.has(bnum) and bnum != receiver and bnum != int(human_num.call() if human_num.is_valid() else 0) \
+				and t1 - t0 >= Backup.MIN_SECONDS:
+			var bf := defense.fielder_by_num(bnum)
+			if not bf.is_empty():
+				var go_t := maxf(t1 - 0.2, 1.0)
+				moves.append({"fielder": bnum, "from": bf.home, "to": Backup.reach(bf.home, asg.spot, float(bf.speed) * 0.9, go_t - 0.3),
+					"t0": 0.3, "t1": go_t, "dive": false})
+				has_move[bnum] = true
 	h.play.movements = moves
 	return out
 

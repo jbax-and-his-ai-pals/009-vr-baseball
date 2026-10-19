@@ -622,8 +622,9 @@ const RECEIVE_FOR_STEAL := {1: 6, 2: 5}
 
 
 ## A throw to a base (not a pitch): where it goes, whether it gets him, or a balk.
-func _do_pickoff(base: int, from: Vector3, vel: Vector3, err: float) -> void:
-	_haptics.play("release", 0.5)
+func _do_pickoff(base: int, from: Vector3, vel: Vector3, err: float, quick: float = 0.7) -> void:
+	if _mode.human_pitcher:
+		_haptics.play("release", 0.5)
 	var runner = _game.bases[base - 1]
 	var glove: Vector3 = (Baserunning.RECEIVE_SPOT[base] as Vector3) + Vector3(0.0, 1.15, 0.0)
 	var speed := clampf(vel.length() * 0.85, 12.0, 30.0)
@@ -639,13 +640,14 @@ func _do_pickoff(base: int, from: Vector3, vel: Vector3, err: float) -> void:
 		else:
 			_show_notice("Throw to %s" % ["", "first", "second", "third"][base])
 		return
-	var chance := StealModel.pickoff_chance(float(_leads[base - 1]), err, vel.length(), runner as Player)
+	var lefty: bool = (throwing_hand == &"left_hand") if _mode.human_pitcher else not _ai_pitcher.player.throws_right
+	var chance := StealModel.pickoff_chance(float(_leads[base - 1]), err, vel.length(), runner as Player, quick, base, lefty)
 	var lead_now := float(_leads[base - 1])
 	var outcome := _pickoff_override if _pickoff_override != "" else StealModel.pickoff_outcome(chance, lead_now, _run_rng)
 	if outcome == "rundown_safe_ahead" and base < 3 and _game.bases[base] != null:
 		outcome = "rundown_safe_back"                 # the next base is taken
 	var out := outcome == "out"
-	_log("pickoff", {"base": base, "runner": (runner as Player).name, "lead": lead_now, "err_deg": err,
+	_log("pickoff", {"base": base, "runner": (runner as Player).name, "lead": lead_now, "err_deg": err, "quick": snappedf(quick, 0.01), "lefty": lefty,
 		"speed": vel.length(), "chance": snappedf(chance, 0.001), "outcome": outcome})
 	if outcome.begins_with("rundown") and _aux_play.is_empty():
 		_start_rundown(base, runner, outcome)
@@ -1232,6 +1234,28 @@ func _setup_xr() -> void:
 		_camera = cam
 
 
+## With a runner leading off, the AI pitcher sometimes steps off and throws over instead of pitching.
+## Returns true if he did (the pitch waits a moment).
+func _ai_throw_over() -> bool:
+	if _derby or _game == null or not _runners_on() or not _steal.is_empty() or not _aux_play.is_empty():
+		return false
+	for b in [1, 2, 3]:
+		var runner = _game.bases[b - 1]
+		if runner == null or (b < 3 and _game.bases[b] != null):
+			continue              # nobody there, or he cannot go anywhere
+		if not StealModel.ai_throws_over(float(_leads[b - 1]), int(_since_throw[b - 1]), _run_rng):
+			continue
+		_spectate_timer = 1.6
+		var from := Vector3(0.0, PitchPhysics.MOUND_H + 1.55, PitchPhysics.MOUND_Z - 1.1)
+		var cmd: float = _ai_pitcher.player.command
+		var mound_man = _field_nodes.get(1)
+		if mound_man is Doll:
+			(mound_man as Doll).throw_to(Vector3.ZERO, "sidearm", 0.6)
+		_do_pickoff(b, from, Vector3(0.0, 0.0, -25.0), _run_rng.randf_range(0.0, 9.0) * (1.6 - cmd / 100.0), 0.6)
+		return true
+	return false
+
+
 ## An AI pitcher throws when the previous play is over and the interval has passed.
 func _run_ai_pitcher(delta: float) -> void:
 	_spectate_timer -= delta
@@ -1244,6 +1268,8 @@ func _run_ai_pitcher(delta: float) -> void:
 	# The manager's call: with first base open and a dangerous hitter up, put him on.
 	if _wants_intentional_walk():
 		_issue_intentional_walk()
+		return
+	if _ai_throw_over():
 		return
 	_spectate_timer = spectate_interval
 	var release := Vector3(0.0, PitchPhysics.MOUND_H + 1.85, PitchPhysics.MOUND_Z - 1.7)
@@ -1667,7 +1693,7 @@ func _release_from_hand(release_t: float, vel_latency: float, spin_latency: floa
 			else:
 				_show_notice("Too soft - that was a drop. Throw it!")
 		"pickoff":
-			_do_pickoff(int(r.base), from, r.vel as Vector3, float(r.err))
+			_do_pickoff(int(r.base), from, r.vel as Vector3, float(r.err), float(r.quick))
 		"pitch":
 			_last_delivery = float(r.delivery)
 			var pitch := _launch(from, r.vel, r.spin, "Your pitch", float(r.flutter), _run_rng.randf() * 100.0)

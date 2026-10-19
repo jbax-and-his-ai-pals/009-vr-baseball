@@ -84,12 +84,37 @@ static func lead_after_throw() -> float:
 
 ## Probability a throw over gets him: a bigger lead and a more accurate, harder throw both
 ## help. angle_error is how many degrees the throw was off the line to the base.
-static func pickoff_chance(lead_m: float, angle_error: float, throw_speed: float, runner: Player) -> float:
+## `quick` is how long the move took from the start of his motion to the release (a snap throw is
+## about half a second; a slow, telegraphed one a full second), `base` and `lefty` decide how well
+## he hides it (see deception()).
+static func pickoff_chance(lead_m: float, angle_error: float, throw_speed: float, runner: Player,
+		quick: float = 0.7, base: int = 2, lefty: bool = false) -> float:
 	var reach := clampf((lead_m - 1.8) / 2.2, 0.0, 1.0)             # no chance on a short lead
 	var accuracy := clampf(1.0 - angle_error / 22.0, 0.0, 1.0)
 	var arm := clampf(throw_speed / 28.0, 0.3, 1.0)
 	var jump := clampf(1.15 - 0.15 * (runner.run_factor() if runner != null else 1.0) * 1.0, 0.7, 1.1)
-	return clampf(0.32 * reach * accuracy * arm * jump, 0.0, 0.35)
+	var snap := clampf(1.3 - 0.6 * quick, 0.7, 1.2)
+	return clampf(0.32 * reach * accuracy * arm * jump * snap * deception(base, lefty), 0.0, 0.42)
+
+
+## A left-hander faces first base, so the runner there cannot see the move start; a right-hander faces
+## third. The other way round the runner reads the shoulder turn.
+static func deception(base: int, lefty: bool) -> float:
+	match base:
+		1:
+			return 1.25 if lefty else 0.95
+		3:
+			return 0.85 if lefty else 1.1
+	return 1.0
+
+
+## Does the AI pitcher step off or throw over before this pitch? More when a runner has wandered off
+## and he has not been held on lately; almost never right after a throw.
+static func ai_throws_over(lead_m: float, pitches_since_throw: int, rng: RandomNumberGenerator) -> bool:
+	var p := clampf((lead_m - 2.8) * 0.10, 0.0, 0.30)
+	if pitches_since_throw <= 1:
+		p *= 0.15
+	return rng.randf() < p
 
 
 ## What a throw over does, given the chance it gets him (`p_out`) and how far off the bag he was:
