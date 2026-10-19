@@ -260,6 +260,20 @@ func _ready() -> void:
 	_build()
 
 
+## Put him in a different uniform (a team that changes sides, as in a two-way game's bottom half): the body is
+## rebuilt, the pose and the clips carry on.
+func recolor(jersey_c: Color, pants_c: Color, cap_c: Color) -> void:
+	if jersey_c == jersey and pants_c == pants and cap_c == cap:
+		return
+	jersey = jersey_c
+	pants = pants_c
+	cap = cap_c
+	if _visual != null:
+		remove_child(_visual)
+		_visual.queue_free()
+	_build()
+
+
 # ------------------------------------------------------------------ the body
 func _global_rest() -> Array[Transform3D]:
 	var out: Array[Transform3D] = []

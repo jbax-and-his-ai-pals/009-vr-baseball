@@ -103,6 +103,9 @@ func _init() -> void:
 			break
 	_check(bp._top_game != null and bp._mode.human_batter and not bp._mode.human_pitcher, "then you are the batter")
 	_check(bp._game.innings == 1 and bp._game.lineup == bp._home.lineup, "against your own lineup in a one-inning half")
+	var fielder: Doll = bp._field_nodes[6]
+	_check(fielder.jersey == bp._away.jersey and bp._field_nodes[1].jersey == bp._away.jersey, "the visitors take the field in their uniforms")
+	_check(bp._runner.jersey == bp._home.jersey, "and your runners wear yours")
 	bp._after_event(bp._game.pitch("called_strike"))
 	_check(bp._top_game != null, "a strike changes nothing")
 	for i in 60 * 6:
@@ -121,6 +124,10 @@ func _init() -> void:
 		if bp._top_game == null:
 			break
 	_check(bp._top_game == null and bp._mode.human_pitcher and not bp._mode.human_batter, "and you are back on the mound")
+	_check(bp._field_nodes[6].jersey == bp._home.jersey and bp._runner.jersey == bp._away.jersey, "in your own uniforms again")
+	bp._field_nodes[6].play("catch", 0.4)
+	bp._field_nodes[6]._process(0.1)
+	_check(bp._field_nodes[6].busy(), "and a recolored fielder still animates")
 	_check(bp._game.over and bp._game.walk_off and bp._game.home_score == 2 and bp._game.runs == 1, "with the game won (%s)" % bp._game.final_text())
 	_check(bp._bat_log.rbi == 2 and bp._bat_log.h == 0, "your batting is tallied")
 	bp.queue_free()

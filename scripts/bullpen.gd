@@ -3149,6 +3149,23 @@ func _place_for_role() -> void:
 			_camera.look_at(Vector3(0.0, 1.0, 0.0))
 
 
+## Who wears what: the home team fields in the top halves, the visitors in the bottoms (and the other way
+## round for the men on the bases).
+func _dress_teams(bottom: bool) -> void:
+	var fielding: Team = _away if bottom else _home
+	var batting: Team = _home if bottom else _away
+	for n in _field_nodes:
+		var d = _field_nodes[n]
+		if d is Doll:
+			(d as Doll).recolor(fielding.jersey, fielding.pants, fielding.cap)
+	var runners: Array = [_runner]
+	runners.append_array(_base_runners)
+	runners.append_array(_leavers)
+	for r in runners:
+		if r is Doll:
+			(r as Doll).recolor(batting.jersey, batting.pants, batting.cap)
+
+
 func _enter_bottom() -> void:
 	_top_game = _game
 	var half := GameState.new(_home.lineup, 1)
@@ -3165,6 +3182,7 @@ func _enter_bottom() -> void:
 	_ai_pitcher = _opp_pitcher
 	_ensure_pitcher_doll()
 	(_field_nodes[1] as Node3D).visible = true
+	_dress_teams(true)
 	_place_for_role()
 	_spectate_timer = 2.5
 	if _zone_markers:
@@ -3193,6 +3211,7 @@ func _finish_bottom_half() -> void:
 	_top_game = null
 	_mode = GameMode.pitching()
 	_sound.mode = _mode
+	_dress_teams(false)
 	if _bat_view != null:
 		_bat_view.visible = false
 	if _field_nodes.has(1):
