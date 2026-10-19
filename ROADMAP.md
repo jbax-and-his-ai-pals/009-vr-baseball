@@ -36,14 +36,14 @@ criteria for each phase are in section 5; this is the at-a-glance view. Updated 
 - [x] `ROADMAP.md` at the project root
 
 ### Phase 1 - Run standalone on a Quest 3 (M1) - SKIPPED FOR NOW (needs the headset and an export setup)
-- [ ] Android export preset, arm64, OpenXR vendors plugin for Meta; `tools/deploy.sh`
+- [~] Android export: `tools/deploy.sh` and `docs/QUEST.md` (the checklist) are written but never run; the preset and the vendors plugin need the device and toolchain
 - [ ] Measure on the device: frame time, draw calls, a busy play (double play with dust and sound)
 - [ ] Measure the third-out frame (off-screen bottom half) on the device
 - [ ] Measure the 71 `Label3D` nodes (boards) and audio memory (24 MB of PCM)
 - [ ] If the numbers ask: spread `HalfInningSim` over frames or a thread
 - [ ] If the numbers ask: bake board text into textures / cut the label count
 - [ ] If the numbers ask: convert loops and music to Ogg; reduce per-frame Doll work for far dolls
-- [ ] `--quest-budget` mode in `perf.sh` with device-calibrated limits
+- [~] `--quest-budget` mode in `perf.sh` (provisional limits: 120 draw calls, 250k triangles, 80 Label3D, 160 MB video memory; to be calibrated on the device)
 - [ ] Exit: a 3-inning game runs at the headset's refresh rate in busy plays, or a written PC-VR-only decision
 
 ### Phase 2 - Playtest and tune what exists (M2) - NEXT, needs you in the headset

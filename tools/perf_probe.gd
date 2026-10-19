@@ -13,6 +13,7 @@ const WARMUP := 40
 var _frames := 0
 var _total := 150
 var _check_budget := false
+var _quest := false                 # the stricter, provisional budget for a standalone Quest (until it is measured on the device)
 var _stats := {"draw": [], "objects": [], "tris": [], "frame_ms": []}
 var _scene: Node
 var _start_ms := 0
@@ -24,6 +25,9 @@ func _initialize() -> void:
 			_total = int(a.substr(9))
 		if a == "--budget":
 			_check_budget = true
+		if a == "--quest-budget":
+			_check_budget = true
+			_quest = true
 	_scene = load("res://scenes/bullpen.tscn").instantiate()
 	_scene.menu_on_start = false
 	root.add_child(_scene)
@@ -82,12 +86,24 @@ func _report() -> void:
 		Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0])
 	if _check_budget:
 		var ok := true
-		# Conservative Quest 3 targets at 90 Hz with MSAA on the mobile renderer.
-		if _max(_stats.draw) > 220.0:
-			print("OVER BUDGET: draw calls %.0f > 220" % _max(_stats.draw))
+		# Conservative Quest 3 targets at 90 Hz with MSAA on the mobile renderer. --quest-budget is stricter: the
+		# numbers to stay under for a standalone Quest until they are calibrated on the device (ROADMAP Phase 1).
+		var max_draw := 120.0 if _quest else 220.0
+		var max_tris := 250000.0 if _quest else 350000.0
+		var max_labels := 80 if _quest else 100000
+		var max_vram := 160.0 if _quest else 1.0e9
+		if _max(_stats.draw) > max_draw:
+			print("OVER BUDGET: draw calls %.0f > %.0f" % [_max(_stats.draw), max_draw])
 			ok = false
-		if _max(_stats.tris) > 350000.0:
-			print("OVER BUDGET: triangles %.0f > 350000" % _max(_stats.tris))
+		if _max(_stats.tris) > max_tris:
+			print("OVER BUDGET: triangles %.0f > %.0f" % [_max(_stats.tris), max_tris])
+			ok = false
+		if int(by_class.get("Label3D", 0)) > max_labels:
+			print("OVER BUDGET: Label3D nodes %d > %d" % [int(by_class.get("Label3D", 0)), max_labels])
+			ok = false
+		var vram: float = Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0
+		if vram > max_vram:
+			print("OVER BUDGET: video memory %.1f MB > %.0f MB" % [vram, max_vram])
 			ok = false
 		print("BUDGET OK" if ok else "BUDGET FAILED")
 		quit(0 if ok else 1)
