@@ -433,7 +433,24 @@ Options > Sound screen.
 
 ## Scene script split (in progress)
 
-`bullpen.gd` is being broken up (see `ROADMAP.md`, M3). Extracted so far: `SoundDirector` (decides what is heard; owns the `AudioManager`), `PlateCrew` (catcher and umpire; reports what happened through signals), `FieldProps` (dust, dropped bats, a game-time delay queue). The scene still owns the rest and passes them what happened.
+`bullpen.gd` is the composition root (about 750 lines: exports, settings, `_ready`, `_process`, new game, config). The work is in classes it owns, each a `RefCounted` with a `host` reference to the scene (a deliberate, simple coupling: the class reads and writes scene members by name, `host.name`; the scene reaches the class as `instance.name`):
+
+| Instance | Class | What it does |
+|---|---|---|
+| `flight` | `PitchFlight` | pitch launch, flight, landing, contact, the play, your swing and release |
+| `flow` | `GameFlow` | the batter's walk-up and exit, announcing a play, what follows every event |
+| `fielding` | `FieldingControl` | glove and throwing hand, covering first, the catcher's framing and throw |
+| `plays` | `RunnerPlays` | steals, throws over (yours and the AI's), rundowns, balks, balls in the air |
+| `roles` | `RoleSwitch` | two-way games: pitch the top, bat the bottom |
+| `acts` | `Activities` | derby, drills, challenges, the lesson and the pitch lab |
+| `manager` | `Manager` | signs, hand gestures, mound visits, pitching changes, the alignment |
+| `hud` | `HudText` | the boards, the scoreboard feed, notices, report text |
+| `slog` | `SessionRecorder` | event log, snapshots, frame spikes, throw lines |
+| `results` | `GameResults` | a finished game's line, the book, the career |
+| `world` | `WorldBuilder` | the park, the people, the camera and controllers |
+| `menus` | `MenuHost` | opening, closing and answering the menus |
+
+Older pieces with their own signals and tests: `SoundDirector`, `PlateCrew`, `FieldProps`, `BatterPresenter`, `PlayDirector`, `BaseUmpires`, `HumanPitcher`, `Dugouts`. Not done: a typed event bus (the classes still call each other through the host) and typed plans instead of dictionaries.
 
 ## Career (built, first version)
 
