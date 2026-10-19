@@ -97,7 +97,6 @@ var _hand: XRController3D
 var _human := HumanPitcher.new()          # you throwing: the controller, the release, your usual aim
 var _detector: ThrowDetector:
 	get: return _human.detector
-var _logger := ThrowLogger.new()
 ## Learned usual aim direction (degrees right / up of straight at the plate) and how much
 ## it scatters. Start from a recorded player; the first throws calibrate them quickly.
 var _aim_mu: Vector2:
@@ -141,11 +140,6 @@ var _haptics := Haptics.new()     # controller vibration
 var _sound: SoundDirector
 var _audio: AudioManager          # _sound.audio, for the loops that follow the ball
 var _was_in_menu := true
-var _perf_sum := 0.0
-var _perf_frames := 0
-var _perf_max := 0.0
-var _perf_spikes := 0
-var _mark_pressed := false
 # The running game.
 var _delivery_start: float:               # when your motion began (seconds), -1 if it has not
 	get: return _human.delivery_start
@@ -202,6 +196,7 @@ var plays := RunnerPlays.new()                 # steals, throws over, rundowns, 
 var acts := Activities.new()                 # derby, drills, challenges and the pitching lesson
 var manager := Manager.new()                 # the pitcher's side of managing: signs, gestures, visits, changes, the infield alignment
 var hud := HudText.new()                 # the stat boards, the scoreboard feed, notices and the words of a report
+var slog := SessionRecorder.new()                 # the session log: events, snapshots, frame spikes, your throws
 var _game_seed := 0
 var forced_seed := -1                       # tests and replays: use this seed (the --seed= flag does the same)
 var _origin: XROrigin3D
@@ -226,6 +221,7 @@ var _best_ev := 0.0
 
 
 func _init() -> void:
+	slog.host = self
 	hud.host = self
 	manager.host = self
 	acts.host = self
@@ -453,81 +449,6 @@ func _runners_on() -> bool:
 
 
 # ------------------------------------------------------------------ session log (see GameLog)
-## A short picture of the game for a log line: inning, outs, count, who is on.
-func _brief() -> Dictionary:
-	if _game == null:
-		return {}
-	var on := ""
-	for i in 3:
-		on += str(i + 1) if _game.bases[i] != null else "-"
-	return {"inn": _game.inning, "outs": _game.outs, "count": "%d-%d" % [_game.balls, _game.strikes], "on": on,
-		"score": "%d-%d" % [_game.runs, _game.home_score]}
-
-
-## Everything a bug report might need.
-func _snapshot() -> Dictionary:
-	var d := _brief()
-	if _game == null:
-		return d
-	var names := []
-	for i in 3:
-		names.append(_game.bases[i].name if _game.bases[i] is Player else ("?" if _game.bases[i] != null else ""))
-	d["bases"] = names
-	d["batter"] = _batter_player.name if _batter_player else ""
-	d["pitches"] = _game.pitch_count
-	d["ready"] = _batter_ready
-	d["batter_visible"] = _batter.visible if _batter else null
-	d["walk_on"] = not _walk_on.is_empty()
-	d["aux"] = not _aux_play.is_empty()
-	d["steal"] = not plays.steal.is_empty()
-	d["hits_alive"] = _hits.size()
-	d["plays_open"] = _play_in_progress()
-	d["flights"] = plays.flights.size()
-	d["unready_for"] = snappedf(_unready_for, 0.01)
-	d["delivery_start"] = _delivery_start
-	d["last_delivery"] = snappedf(_last_delivery, 0.01)
-	d["leads"] = plays.leads
-	d["since_throw"] = plays.since_throw
-	d["mode"] = _mode.name if _mode else ""
-	d["game_time"] = snappedf(_game_time, 0.01)
-	d["frame_ms"] = snappedf(_governor.ema_ms, 0.1)
-	d["quality_level"] = _governor.level
-	return d
-
-
-func _log(kind: String, data: Dictionary = {}) -> void:
-	data["s"] = _brief()
-	GameLog.event(kind, data)
-
-
-## Flag this moment in the log (B on your throwing hand, F on a desktop).
-func _mark_moment() -> void:
-	GameLog.mark("player_flag", _snapshot())
-	_sfx("ui_mark_moment")
-	hud.show_notice("Marked this moment in the log", true)
-
-
-## Frame times: a line every five seconds, and one for any frame over 60 ms with what was going on.
-func _log_frame(delta: float) -> void:
-	_perf_sum += delta
-	_perf_frames += 1
-	_perf_max = maxf(_perf_max, delta)
-	if delta > 0.06 and _game_time > 3.0:
-		_perf_spikes += 1
-		var d := _snapshot()
-		d["ms"] = snappedf(delta * 1000.0, 0.1)
-		GameLog.event("spike", d)
-	if _perf_sum >= 5.0:
-		GameLog.event("perf", {"fps": snappedf(_perf_frames / _perf_sum, 0.1),
-			"ms_avg": snappedf(_perf_sum / _perf_frames * 1000.0, 0.1), "ms_max": snappedf(_perf_max * 1000.0, 0.1),
-			"spikes": _perf_spikes, "draw_calls": int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)),
-			"nodes": int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)),
-			"mem_mb": snappedf(Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0, 0.1),
-			"level": _governor.level, "xr": _xr_active, "hits": _hits.size(), "pitches": _pitches.size(), "s": _brief()})
-		_perf_sum = 0.0
-		_perf_frames = 0
-		_perf_max = 0.0
-		_perf_spikes = 0
 
 
 ## Soft or paper, decided once per player so a person always looks the same. `--doll-style=soft`
@@ -932,12 +853,12 @@ func _process(delta: float) -> void:
 	_props.update(delta)
 	if _sound != null:
 		_sound.update(delta, _game)
-	_log_frame(delta)
+	slog.log_frame(delta)
 	if _xr_active and _hand != null and _hand.get_is_active():
 		var flag := _hand.is_button_pressed("by_button")
-		if flag and not _mark_pressed:
-			_mark_moment()
-		_mark_pressed = flag
+		if flag and not slog.mark_pressed:
+			slog.mark_moment()
+		slog.mark_pressed = flag
 	_update_batter_lifecycle(delta)
 	roles.update_roles(delta)
 	if _game_over_timer > 0.0:
@@ -1006,7 +927,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
 		_toggle_pause()
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F:
-		_mark_moment()
+		slog.mark_moment()
 
 
 func _poll_tag() -> void:
@@ -1155,7 +1076,7 @@ func _poll_menu_button() -> void:
 
 
 func _on_menu_event(ev: Dictionary) -> void:
-	_log("menu", {"event": ev.get("type", ""), "config": (ev.config as GameConfig).to_dict() if ev.has("config") else {}})
+	slog.record("menu", {"event": ev.get("type", ""), "config": (ev.config as GameConfig).to_dict() if ev.has("config") else {}})
 	match String(ev.get("type", "")):
 		"career_changed":
 			_career = _menu.model.career
@@ -1332,18 +1253,7 @@ func _release_from_hand(release_t: float, vel_latency: float, spin_latency: floa
 			pitch.shape = r.shape
 			pitch.label = PitchNamer.name_pitch(pitch.analysis, _human.wrist.typical_mph(velocity_gain), float(r.hand_sign), bool(r.knuckle))
 			_haptics.play("release", clampf(float(pitch.analysis.get("speed_mph", 60.0)) / 90.0, 0.0, 1.0))
-			_log_throw(pitch, from, release_t, vel_latency, r)
-
-
-## One JSON line per throw (see HumanPitcher.log_entry): the scene supplies what only it knows.
-func _log_throw(pitch: LivePitch, from: Vector3, release_t: float, latency: float, r: Dictionary) -> void:
-	var ctx := {"head_pos": _camera.global_position, "head_fwd": -_camera.global_transform.basis.z,
-		"hand_fwd": (_hand.global_transform.basis * HumanPitcher.FORWARD) if _hand else HumanPitcher.FORWARD,
-		"tag": _current_tag(), "auto": release_mode == ReleaseMode.AUTO_PEAK, "batter_profile": _batter_ai.profile.name,
-		"game": {"inning": _game.inning, "outs": _game.outs, "balls": _game.balls, "strikes": _game.strikes,
-			"bases": [_game.bases[0] != null, _game.bases[1] != null, _game.bases[2] != null],
-			"batter": _batter_player.name if _batter_player else ""}}
-	_logger.record(_human.log_entry(ctx, pitch, from, release_t, latency, r.est, r.scaled, r.spin, r.funnel, r.shape))
+			slog.log_throw(pitch, from, release_t, vel_latency, r)
 
 
 ## Read the controller each frame: the ball in your hand follows it; grabs, the start of your delivery and
@@ -1622,7 +1532,7 @@ func _land(pitch: LivePitch) -> void:
 		plays.finish_steal()
 	_stat_pitch(pitch.label, a.speed_mph, outcome)
 	var loc := PitchLocation.classify(plate.x, plate.y)
-	_log("pitch", {"n": _game.pitch_count, "label": pitch.label, "mph": a.speed_mph, "plate": plate,
+	slog.record("pitch", {"n": _game.pitch_count, "label": pitch.label, "mph": a.speed_mph, "plate": plate,
 		"reached": a.get("reached", false), "loc": loc.kind, "strike_zone": a.get("strike", false), "outcome": outcome,
 		"swing": pitch.bat.get("swing", false), "bat": pitch.bat.get("kind", ""), "p_swing": pitch.bat.get("p_swing", 0.0),
 		"t_err": pitch.bat.get("t_err", 0.0), "bunt": pitch.bat.get("bunt", false), "busy": pitch.bat.get("busy", false),
@@ -1764,7 +1674,7 @@ func _contact(pitch: LivePitch) -> void:
 	for r in pn.get("runners", []):
 		runner_moves.append({"who": r.who.name if r.who is Player else "?", "from": r.from, "to": r.to, "out": r.out,
 			"out_base": r.out_base, "hedge": r.has("hedge")})
-	_log("contact", {"contact_kind": b.kind, "bunt": b.get("bunt", false), "ev": b.ev, "la": b.la, "spray": b.get("spray", 0.0),
+	slog.record("contact", {"contact_kind": b.kind, "bunt": b.get("bunt", false), "ev": b.ev, "la": b.la, "spray": b.get("spray", 0.0),
 		"hit_kind": sim.get("kind", ""), "distance": sim.get("distance", 0.0), "apex": sim.get("apex", 0.0),
 		"hang": sim.get("hang_time", 0.0), "fair": sim.get("fair", false), "wall": sim.get("wall", false),
 		"home_run": sim.get("home_run", false), "ground_rule": sim.get("ground_rule", false),
@@ -1851,7 +1761,7 @@ func _begin_pa_exit(ev: Dictionary, bases_before: Array) -> void:
 	if not ev.get("pa_over", false):
 		return
 	_batter_ready = false
-	_log("pa_exit", {"result": ev.get("result", ""), "text": ev.get("text", "")})
+	slog.record("pa_exit", {"result": ev.get("result", ""), "text": ev.get("text", "")})
 	var plan: Dictionary
 	if String(ev.get("result", "")) in ["walk", "hit_by_pitch"] or ev.get("batter_reached", false):
 		plan = Baserunning.plan_hold(bases_before, _batter_player, true)
@@ -1889,7 +1799,7 @@ func _begin_walk_on() -> void:
 		_zone_markers.clear()
 	hud.refresh_hud()
 	var duration := _presenter.begin_walk_on(_batter_is_lefty())
-	_log("walk_on", {"duration": snappedf(duration, 0.01), "batter": _batter_player.name if _batter_player else ""})
+	slog.record("walk_on", {"duration": snappedf(duration, 0.01), "batter": _batter_player.name if _batter_player else ""})
 	if _game != null and not _game.over and _fx_rng.randf() < 0.5:
 		_sfx("music_walkup", null, -10.0)
 
@@ -1926,7 +1836,7 @@ func _update_batter_lifecycle(delta: float) -> void:
 	else:
 		_unready_for += delta
 		if _unready_for > 2.0:
-			GameLog.mark("watchdog: the batter was not ready for 2 s and nothing explained it", _snapshot())
+			GameLog.mark("watchdog: the batter was not ready for 2 s and nothing explained it", slog.snapshot())
 			_batter_ready = true
 			_batter.visible = true
 			_batter.set_carry(false, true)
@@ -2003,7 +1913,7 @@ func _announce_play(h: LiveHit) -> void:
 	hud.last_report = lines
 	_after_event(ev, {"ev": float(h.summary.get("ev_mph", 0.0)), "dist": float(h.summary.get("distance", 0.0))})
 	hud.refresh_hud()
-	_log("play_result", {"text": text, "result": ev.get("result", ""), "runs": ev.get("runs", 0), "outs_added": ev.get("outs_added", 0),
+	slog.record("play_result", {"text": text, "result": ev.get("result", ""), "runs": ev.get("runs", 0), "outs_added": ev.get("outs_added", 0),
 		"pa_over": ev.get("pa_over", false), "half_over": ev.get("half_over", false), "game_over": ev.get("game_over", false),
 		"state_text": ev.get("text", ""), "duration": snappedf(h.t, 0.01)})
 	print(hud.last_report.replace("\n", " | "))
@@ -2027,7 +1937,7 @@ func _finish_career_start() -> void:
 	var res := _career.finish_start(line, _game.home_score, _game.runs)
 	_career.save()
 	var d: Dictionary = res.deltas
-	_log("career_start", {"won": res.won, "rank": res.rank, "over": res.over, "deltas": d, "line": line})
+	slog.record("career_start", {"won": res.won, "rank": res.rank, "over": res.over, "deltas": d, "line": line})
 	hud.show_notice("%s %d-%d vs %s   CMD %+.1f  STA %+.1f   Rank #%d%s" % ["WIN" if res.won else "LOSS", _game.home_score, _game.runs,
 		res.opponent, float(d.command), float(d.stamina), int(res.rank), "   SEASON OVER" if res.over else ""], true)
 	_props.later(7.0, func():
@@ -2064,7 +1974,7 @@ func _record_finished_game() -> void:
 		text += " - best on this board!"
 	elif int(r.rank) > 0:
 		text += " - #%d on this board" % int(r.rank)
-	_log("game_recorded", {"score": r.score, "rank": r.rank, "key": r.key, "line": line})
+	slog.record("game_recorded", {"score": r.score, "rank": r.rank, "key": r.key, "line": line})
 	hud.show_notice(text, true)
 
 
@@ -2122,11 +2032,11 @@ func _after_event(ev: Dictionary, extra: Dictionary = {}) -> void:
 	if ev.get("game_over", false):
 		_record_finished_game()
 		_game_over_timer = -1.0 if (acts.scenario != null or _career_game) else 8.0
-		_log("game_over", {"final": _game.final_text(), "line": _game.line_text(), "stats": {"k": _game.strikeouts,
+		slog.record("game_over", {"final": _game.final_text(), "line": _game.line_text(), "stats": {"k": _game.strikeouts,
 			"bb": _game.walks, "hits": _game.hits, "wp": _game.wild_pitches, "sb": _game.stolen_bases, "cs": _game.caught_stealing,
 			"po": _game.pickoffs, "balks": _game.balks, "hbp": _game.hit_by_pitches, "sac": _game.sacrifices}})
 	if ev.get("half_over", false):
-		_log("half_over", {"inning": ev.get("inning_ended", 0), "home_runs_scored": ev.get("home_runs_scored", -1),
+		slog.record("half_over", {"inning": ev.get("inning_ended", 0), "home_runs_scored": ev.get("home_runs_scored", -1),
 			"runs": _game.runs, "home": _game.home_score})
 	if _aux_play.is_empty():
 		_refresh_base_runners()

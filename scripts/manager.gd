@@ -44,7 +44,7 @@ func wants_intentional_walk() -> bool:
 func issue_intentional_walk() -> void:
 	if host._game == null or not host._batter_ready or not host._aux_play.is_empty() or host._game.over:
 		return
-	host._log("intentional_walk", {"batter": host._batter_player.name if host._batter_player else ""})
+	host.slog.record("intentional_walk", {"batter": host._batter_player.name if host._batter_player else ""})
 	var before = host._game.bases.duplicate()
 	var ev = host._game.intentional_walk()
 	host._begin_pa_exit(ev, before)
@@ -76,7 +76,7 @@ func maybe_change_pitcher() -> void:
 	if host._game.outs != 0 or host._game.balls != 0 or host._game.strikes != 0:
 		return               # changes happen between batters
 	relievers_used += 1
-	host._log("pitcher_change", {"tired": snappedf(tired, 0.01), "pitches": host._ai_pitcher.pitches_thrown,
+	host.slog.record("pitcher_change", {"tired": snappedf(tired, 0.01), "pitches": host._ai_pitcher.pitches_thrown,
 		"runs_since": host._game.runs - runs_at_pitcher_change})
 	var rp = Team.relief_pitcher(50.0 + 2.0 * relievers_used, 4000 + relievers_used * 31)
 	host._ai_pitcher = AIPitcher.new(rp)
@@ -96,7 +96,7 @@ func mound_visit() -> void:
 	fatigue_credit = 15
 	visit_timer = 5.2
 	host._crew.visit_mound()
-	host._log("mound_visit", {"pitches": host._game.pitch_count})
+	host.slog.record("mound_visit", {"pitches": host._game.pitch_count})
 	host.hud.show_notice("Mound visit: you catch your breath", true)
 
 
@@ -118,7 +118,7 @@ func leave_game() -> void:
 	host._sound.mode = host._mode
 	host._ensure_pitcher_doll()
 	host._spectate_timer = 2.0
-	host._log("leave_game", {"line": left_line, "reliever": rp.name})
+	host.slog.record("leave_game", {"line": left_line, "reliever": rp.name})
 	host.hud.show_notice("%s takes over" % rp.name)
 	host._sfx_later(1.0, "pa_pitching_change")
 	host.hud.refresh_scoreboard()
@@ -147,11 +147,11 @@ func poll_gestures(delta: float) -> void:
 	var sig = gestures.update(delta, host._camera.global_position, host._off_hand.global_position, host._held)
 	match sig:
 		"intentional_walk":
-			host._log("gesture", {"signal": sig})
+			host.slog.record("gesture", {"signal": sig})
 			host._haptics.play("ui_select")
 			issue_intentional_walk()
 		"bullpen_phone":
-			host._log("gesture", {"signal": sig})
+			host.slog.record("gesture", {"signal": sig})
 			host._haptics.play("ui_select")
 			if host._menu != null and not host._menu.is_open() and host.lineup_mode == "Game":
 				host._toggle_pause()
@@ -169,7 +169,7 @@ func seat_check() -> void:
 	seat_done = true
 	var lift = Comfort.seated_offset(host._camera.position.y)
 	host._origin.position.y += lift
-	host._log("seated", {"head_y": snappedf(host._camera.position.y, 0.01), "lift": snappedf(lift, 0.01)})
+	host.slog.record("seated", {"head_y": snappedf(host._camera.position.y, 0.01), "lift": snappedf(lift, 0.01)})
 
 
 ## The catcher calls the next pitch (Options > Catcher signs): a pitch and a spot, shown by his knee and a
@@ -219,7 +219,7 @@ func grade_sign(pitch: LivePitch, plate: Vector3) -> void:
 		sign_tally.type += 1
 	if g.loc:
 		sign_tally.loc += 1
-	host._log("sign", {"sign": sign.words, "thrown": pitch.label, "type": g.type, "loc": g.loc, "perfect": g.perfect})
+	host.slog.record("sign", {"sign": sign.words, "thrown": pitch.label, "type": g.type, "loc": g.loc, "perfect": g.perfect})
 	if g.perfect:
 		host.hud.show_notice("SIGN HIT!", true)
 		host._sfx("corner_chime")
@@ -233,7 +233,7 @@ func update_alignment() -> void:
 	var want = Defense.wants_infield_in(host._game.outs, host._game.bases, host._game.inning, host._game.home_score - host._game.runs) and not host._game.over
 	if want != host._defense.infield_in:
 		host._defense.set_infield_in(want)
-		host._log("alignment", {"infield_in": want})
+		host.slog.record("alignment", {"infield_in": want})
 		if want:
 			host.hud.show_notice("Infield in", true)
 

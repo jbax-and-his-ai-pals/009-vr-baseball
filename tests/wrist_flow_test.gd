@@ -34,7 +34,7 @@ func _init() -> void:
 	_throw(bp, -3.9 * 12.0, usual_twist)                 # big snap
 	_throw(bp, usual_omega, usual_twist + 2.0 * 0.5 * 12.0)  # +2 sd of twist
 	_throw(bp, -0.2, 0.0)                                # nearly still wrist
-	var f := FileAccess.open(bp._logger.path, FileAccess.READ)
+	var f := FileAccess.open(bp.slog.logger.path, FileAccess.READ)
 	var lines: Array = []
 	while not f.eof_reached():
 		var l := f.get_line()

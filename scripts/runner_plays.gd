@@ -20,7 +20,7 @@ var flights: Array = []             # balls in the air that are not a pitch or a
 ## base. Only one runner goes at a time.
 func on_delivery_start() -> void:
 	if host._runners_on():
-		GameLog.event("delivery_start", {"s": host._brief(), "t_hand": host._delivery_start})
+		GameLog.event("delivery_start", {"s": host.slog.brief(), "t_hand": host._delivery_start})
 	if host._game == null or not host._runners_on() or not steal.is_empty() or not host._aux_play.is_empty() or host._game.over:
 		return
 	var tired = 0.0
@@ -38,7 +38,7 @@ func on_delivery_start() -> void:
 		var plan = Baserunning.plan_steal(base, runner, run_t)
 		host._aux_play = {"plan": plan, "t": 0.0}
 		steal = {"from": base, "runner": runner, "run_t": run_t, "plan": plan}
-		host._log("steal_break", {"base": base, "runner": (runner as Player).name, "chance": snappedf(p, 0.001), "lead": lead,
+		host.slog.record("steal_break", {"base": base, "runner": (runner as Player).name, "chance": snappedf(p, 0.001), "lead": lead,
 			"run_t": run_t, "delivery_so_far": host._last_delivery})
 		host._refresh_base_runners()
 		return
@@ -57,7 +57,7 @@ func on_delivery_start() -> void:
 	host._aux_play = {"plan": plan_c, "t": 0.0}
 	steal = {"from": from_base, "runner": rnr, "run_t": run_c, "plan": plan_c, "call": call}
 	host._bat_call = call
-	host._log("play_call", {"call": call, "base": from_base, "runner": (rnr as Player).name, "batter": host._batter_ai.profile.name})
+	host.slog.record("play_call", {"call": call, "base": from_base, "runner": (rnr as Player).name, "batter": host._batter_ai.profile.name})
 	host.hud.show_notice("%s!" % call.replace("_", " ").to_upper(), true)
 	host._refresh_base_runners()
 
@@ -104,7 +104,7 @@ func apply_steal(safe: bool, t_ball_raw: float, flight: float, info: Dictionary)
 	steal["apply_at"] = t_ball
 	var entry = {"base": base, "safe": safe, "flight": flight}
 	entry.merge(info)
-	host._log("steal_resolve", entry)
+	host.slog.record("steal_resolve", entry)
 	host.hud.last_report_extra = "STEAL ATTEMPT: %s" % ("safe" if safe else "OUT")
 
 
@@ -149,7 +149,7 @@ func do_pickoff(base: int, from: Vector3, vel: Vector3, err: float, quick: float
 	if outcome == "rundown_safe_ahead" and base < 3 and host._game.bases[base] != null:
 		outcome = "rundown_safe_back"                 # the next base is taken
 	var out = outcome == "out"
-	host._log("pickoff", {"base": base, "runner": (runner as Player).name, "lead": lead_now, "err_deg": err, "quick": snappedf(quick, 0.01), "lefty": lefty,
+	host.slog.record("pickoff", {"base": base, "runner": (runner as Player).name, "lead": lead_now, "err_deg": err, "quick": snappedf(quick, 0.01), "lefty": lefty,
 		"speed": vel.length(), "chance": snappedf(chance, 0.001), "outcome": outcome})
 	if outcome.begins_with("rundown") and host._aux_play.is_empty():
 		start_rundown(base, runner, outcome)
@@ -220,7 +220,7 @@ func move_node(node: Node3D, to: Vector3, seconds: float) -> void:
 
 func call_balk(why: String) -> void:
 	host._haptics.play("buzz")
-	host._log("balk", {"why": why})
+	host.slog.record("balk", {"why": why})
 	host._sound.umpire_says_later(0.2, "ump_balk")
 	var before = host._game.bases.duplicate()
 	var ev = host._game.balk()

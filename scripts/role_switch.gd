@@ -106,7 +106,7 @@ func enter_bottom() -> void:
 	host._batter_ready = false
 	host._sync_batter()
 	host._begin_walk_on()
-	host._log("role_switch", {"to": "batting", "inning": top_game.inning, "score": "%d-%d" % [top_game.runs, top_game.home_score]})
+	host.slog.record("role_switch", {"to": "batting", "inning": top_game.inning, "score": "%d-%d" % [top_game.runs, top_game.home_score]})
 	host.hud.show_notice("Bottom of %d: you are up to bat" % top_game.inning, true)
 	host._sfx("pa_pitching_change")
 	host._refresh_base_runners()
@@ -138,7 +138,7 @@ func finish_bottom_half() -> void:
 	if host._zone_markers:
 		host._zone_markers.clear()
 	var ev = host._game.finish_bottom(half.runs, half.hits)
-	host._log("role_switch", {"to": "pitching", "runs": half.runs, "hits": half.hits, "game_over": host._game.over})
+	host.slog.record("role_switch", {"to": "pitching", "runs": half.runs, "hits": half.hits, "game_over": host._game.over})
 	host.hud.show_notice("Bottom %d: Home %s" % [int(ev.get("inning_ended", 0)), "scores %d" % half.runs if half.runs > 0 else "goes down in order"], true)
 	host._after_event(ev)
 	if not host._game.over:

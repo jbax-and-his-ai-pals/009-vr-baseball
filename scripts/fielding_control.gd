@@ -111,7 +111,7 @@ func receive(pitch: LivePitch, plate: Vector3, outcome: String) -> String:
 	elif c.lost:
 		fld.lost += 1
 		host.hud.show_notice("Lost the call - too much glove movement" if float(q.speed) > Framing.STILL_SPEED else "Lost the call - get the glove on it", false)
-	host._log("receive", {"miss": snappedf(float(q.miss), 0.001), "speed": snappedf(float(q.speed), 0.01), "quality": snappedf(float(q.quality), 0.01),
+	host.slog.record("receive", {"miss": snappedf(float(q.miss), 0.001), "speed": snappedf(float(q.speed), 0.01), "quality": snappedf(float(q.quality), 0.01),
 		"p": snappedf(float(c.p), 0.01), "call": result, "was": outcome})
 	return result
 
@@ -226,10 +226,10 @@ func check_cover(h: LiveHit) -> void:
 		fld.covers += 1
 		host.hud.show_notice("Covered first", true)
 		host._haptics.play("catch", 0.6)
-		host._log("cover_first", {"covered": true, "distance": snappedf(d, 0.01)})
+		host.slog.record("cover_first", {"covered": true, "distance": snappedf(d, 0.01)})
 		return
 	fld.uncovered += 1
-	host._log("cover_first", {"covered": false, "distance": snappedf(d, 0.01)})
+	host.slog.record("cover_first", {"covered": false, "distance": snappedf(d, 0.01)})
 	var spot: Vector3 = h.play.get("field_pos", h.ball.global_position)
 	h.play = {"result": "single", "text": "Safe - nobody covered first", "short": "Safe - nobody covered first", "bases": 1,
 		"fielder": int(h.play.get("fielder", 3)), "fielder_name": String(h.play.get("fielder_name", "1B")), "field_pos": spot,

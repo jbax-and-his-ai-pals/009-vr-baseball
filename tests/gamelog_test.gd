@@ -36,7 +36,7 @@ func _init() -> void:
 			bp.plays.on_delivery_start()
 			bp._debug_throw()
 		if i == 60 * 40:
-			bp._mark_moment()
+			bp.slog.mark_moment()
 		if bp._game.over:
 			break
 	GameLog.close()

@@ -47,7 +47,7 @@ func finish_derby() -> void:
 	var stars = 3 if derby_hr >= 8 else (2 if derby_hr >= 5 else (1 if derby_hr >= 2 else 0))
 	var r = host._profile.record_challenge("derby", stars, derby_hr)
 	host._profile.save()
-	host._log("derby", {"home_runs": derby_hr, "stars": stars})
+	host.slog.record("derby", {"home_runs": derby_hr, "stars": stars})
 	host.hud.show_notice("DERBY OVER: %d home runs   %s%s" % [derby_hr, Scenario.stars_text(stars), "  (new best!)" if r.improved else ""], true)
 	host._props.later(7.0, func():
 		Session.show_menu = true
@@ -91,7 +91,7 @@ func finish_drill() -> void:
 	var stars = 3 if (int(host.fielding.fld.caught) >= 9 and int(host.fielding.fld.errors) == 0) else (2 if int(host.fielding.fld.caught) >= 7 else (1 if int(host.fielding.fld.caught) >= 5 else 0))
 	var r = host._profile.record_challenge("drill_f%d" % host.fielding.human_num(), stars, int(host.fielding.fld.caught))
 	host._profile.save()
-	host._log("drill", {"position": host.fielding.human_num(), "chances": host.fielding.fld.chances, "caught": host.fielding.fld.caught, "errors": host.fielding.fld.errors, "assists": host.fielding.fld.assists, "stars": stars})
+	host.slog.record("drill", {"position": host.fielding.human_num(), "chances": host.fielding.fld.chances, "caught": host.fielding.fld.caught, "errors": host.fielding.fld.errors, "assists": host.fielding.fld.assists, "stars": stars})
 	host.hud.show_notice("DRILL: %d of %d fielded, %d errors   %s%s" % [int(host.fielding.fld.caught), drill_started, int(host.fielding.fld.errors), Scenario.stars_text(stars), "  (new best!)" if r.improved else ""], true)
 	host._props.later(7.0, func():
 		Session.show_menu = true
@@ -109,7 +109,7 @@ func update_scenario(ev: Dictionary) -> void:
 	scenario_done = true
 	var r = host._profile.record_challenge(scenario.id, scenario.stars, scenario.pitches)
 	host._profile.save()
-	host._log("challenge", {"id": scenario.id, "state": st, "stars": scenario.stars, "pitches": scenario.pitches})
+	host.slog.record("challenge", {"id": scenario.id, "state": st, "stars": scenario.stars, "pitches": scenario.pitches})
 	if st == "success":
 		host.hud.show_notice("CHALLENGE COMPLETE  %s%s" % [Scenario.stars_text(scenario.stars), "  (new best!)" if r.improved else ""], true)
 		host._sfx_later(0.3, "music_victory", null, -4.0)

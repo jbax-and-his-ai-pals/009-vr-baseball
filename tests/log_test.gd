@@ -44,11 +44,11 @@ func _init() -> void:
 	_throw(bp, -1.5)
 	_throw(bp, 0.0)
 	# A soft release is a drop, not a pitch: nothing logged, nothing counted.
-	var before: int = bp._logger.count
+	var before: int = bp.slog.logger.count
 	_throw_soft(bp)
-	var drop_ok: bool = bp._logger.count == before
+	var drop_ok: bool = bp.slog.logger.count == before
 
-	var path: String = bp._logger.path
+	var path: String = bp.slog.logger.path
 	print("log path: ", ProjectSettings.globalize_path(path))
 	var f := FileAccess.open(path, FileAccess.READ)
 	var lines: Array = []
