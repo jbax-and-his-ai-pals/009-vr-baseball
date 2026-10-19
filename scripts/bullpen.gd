@@ -132,20 +132,9 @@ var _dust: DustPuffs          # _props.dust
 var _profile := PlayerProfile.load_from()   # lifetime stats, leaderboards, challenge results
 var _career: Career = Career.load_from()    # the saved season, if any
 var _career_game := false                    # this game is the next start of the career
-var _visit_used := false                     # the one mound visit a game
-var _visit_timer := 0.0                      # seconds left of a visit (no pitching during it)
-var _fatigue_credit := 0                     # pitches your arm is rested by (a mound visit)
-var _user_left := false                      # you handed the ball to the bullpen
-var _left_line := {}                         # your line at that moment
 var _game_recorded := false
-var _sign := {}                              # the catcher's call for the next pitch ({} when none)
-var _sign_tally := {"called": 0, "perfect": 0, "type": 0, "loc": 0, "shaken": 0}
-var _sign_label: Label3D
-var _sign_marker: MeshInstance3D
 var _call_label: Label3D                    # the umpire's call as words, above the plate
 var _call_label_until := 0.0
-var _seat_done := false
-var _gestures := Gestures.new()
 var _tracker := SwingTracker.new()          # your controller as a bat (Hitting)
 var _bat_view: MeshInstance3D               # the bat in your hand
 var _bat_call := ""                         # a play called with this pitch: "squeeze" or "hit_and_run" ("" for none)
@@ -163,9 +152,6 @@ var _mark_pressed := false
 var _delivery_start: float:               # when your motion began (seconds), -1 if it has not
 	get: return _human.delivery_start
 var _last_delivery := 0.9            # how long the last delivery took, motion start to release
-var _tired_notice := false
-var _relievers_used := 0
-var _runs_at_pitcher_change := 0
 var _doll_styles := {}
 var _runner_styles := 0
 var _doll_demo_step := 0
@@ -221,6 +207,7 @@ var fielding := FieldingControl.new()                 # human fielding, catching
 var roles := RoleSwitch.new()                 # pitch the top halves, bat the bottom halves
 var plays := RunnerPlays.new()                 # steals, throws over, rundowns, balks and the balls in the air that are not pitches
 var acts := Activities.new()                 # derby, drills, challenges and the pitching lesson
+var manager := Manager.new()                 # the pitcher's side of managing: signs, gestures, visits, changes, the infield alignment
 var _game_seed := 0
 var forced_seed := -1                       # tests and replays: use this seed (the --seed= flag does the same)
 var _last_report_extra := ""
@@ -246,6 +233,7 @@ var _best_ev := 0.0
 
 
 func _init() -> void:
+	manager.host = self
 	acts.host = self
 	plays.host = self
 	roles.host = self
@@ -350,7 +338,7 @@ func _ready() -> void:
 	_base_umps.umpire_voice.connect(func(id: String, at: Vector3): _sound.umpire_says_at(id, at))
 	_dugouts = Dugouts.new()
 	_dugouts.setup(self, _home, _away, Callable(self, "_doll_style"))
-	_sound.umpire_spoke.connect(_on_umpire_spoke)
+	_sound.umpire_spoke.connect(manager.on_umpire_spoke)
 	_director.base_umps = _base_umps
 	_director.props = _props
 	_director.sound = _sound
@@ -363,7 +351,7 @@ func _ready() -> void:
 	_sound.batter = _batter
 	_presenter.walk_step.connect(_on_walk_step)
 	_presenter.arrived.connect(_on_batter_arrived)
-	_sound.tired_source = Callable(self, "_arm_fatigue")
+	_sound.tired_source = Callable(manager, "arm_fatigue")
 	_audio.apply_volumes(_settings.volumes)
 	_menu.ui_sound.connect(func(id: String): _sfx(id))
 	_menu.ui_haptic.connect(func(c: XRController3D, ev: String): _haptics.play_on(c, ev))
@@ -413,69 +401,7 @@ func _ready() -> void:
 	if "--doll-demo" in OS.get_cmdline_user_args():
 		_spawn_doll_demo()
 	_set_hud_idle()
-	_refresh_sign()
-
-
-## First base open, a runner in scoring position, two outs or the late innings, and a hitter
-## the defense does not want to pitch to: the AI manager walks him on purpose.
-func _wants_intentional_walk() -> bool:
-	if _game == null or _batter_player == null or _game.balls != 0 or _game.strikes != 0:
-		return false
-	if _game.bases[0] != null or (_game.bases[1] == null and _game.bases[2] == null):
-		return false
-	var late := _game.inning >= maxi(_game.innings - 2, 1)
-	if _game.outs < 1 and not late:
-		return false
-	return _batter_player.power >= 68.0 and _batter_player.hitting_overall() >= 62.0 and _game.runs - _game.home_score <= 2
-
-
-## Walk the batter on purpose (the manager's call, or the pause menu): no pitches, the usual
-## forced advance, and he trots to first.
-func _issue_intentional_walk() -> void:
-	if _game == null or not _batter_ready or not _aux_play.is_empty() or _game.over:
-		return
-	_log("intentional_walk", {"batter": _batter_player.name if _batter_player else ""})
-	var before := _game.bases.duplicate()
-	var ev := _game.intentional_walk()
-	_begin_pa_exit(ev, before)
-	_last_report = "INTENTIONAL WALK
-" + _event_text(ev)
-	_after_event(ev)
-	_refresh_hud()
-
-
-## How worn out the human pitcher's arm is (0 fresh .. 1 spent), from his pitch count and the
-## starter's stamina. Tells you once when it starts to show.
-func _arm_fatigue() -> float:
-	if _game == null or _home == null:
-		return 0.0
-	var f: float = _home.player_at(1).fatigue(maxi(_game.pitch_count - _fatigue_credit, 0))
-	if f > 0.35 and not _tired_notice:
-		_tired_notice = true
-		_show_notice("Your arm is getting tired")
-	return f
-
-
-## The AI manager's call: a starter who is spent or getting hit hard is replaced by a reliever.
-func _maybe_change_pitcher() -> void:
-	if _ai_pitcher == null or _game == null:
-		return
-	var tired := _ai_pitcher.player.fatigue(_ai_pitcher.pitches_thrown)
-	var rough := _game.runs - _runs_at_pitcher_change >= 5
-	if tired < 0.9 and not rough:
-		return
-	if _game.outs != 0 or _game.balls != 0 or _game.strikes != 0:
-		return               # changes happen between batters
-	_relievers_used += 1
-	_log("pitcher_change", {"tired": snappedf(tired, 0.01), "pitches": _ai_pitcher.pitches_thrown,
-		"runs_since": _game.runs - _runs_at_pitcher_change})
-	var rp := Team.relief_pitcher(50.0 + 2.0 * _relievers_used, 4000 + _relievers_used * 31)
-	_ai_pitcher = AIPitcher.new(rp)
-	_ai_pitcher.rng.seed = _run_rng.randi()
-	_runs_at_pitcher_change = _game.runs
-	_show_notice("New pitcher: %s" % rp.name)
-	_sfx_later(1.0, "pa_pitching_change")
-	_refresh_scoreboard()
+	manager.refresh_sign()
 
 
 ## The half inning you do not pitch: your team bats against their pitcher, played out of sight.
@@ -765,25 +691,25 @@ func _build_world() -> void:
 	zone_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	zone_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	zone_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	_sign_label = Label3D.new()
-	_sign_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	_sign_label.fixed_size = true
-	_sign_label.pixel_size = 0.0014
-	_sign_label.font_size = 64
-	_sign_label.outline_size = 14
-	_sign_label.modulate = Color(0.55, 0.95, 1.0)
-	_sign_label.no_depth_test = true
-	_sign_label.position = Vector3(0.75, 0.45, -1.25)
-	_sign_label.visible = false
-	add_child(_sign_label)
+	manager.sign_label = Label3D.new()
+	manager.sign_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	manager.sign_label.fixed_size = true
+	manager.sign_label.pixel_size = 0.0014
+	manager.sign_label.font_size = 64
+	manager.sign_label.outline_size = 14
+	manager.sign_label.modulate = Color(0.55, 0.95, 1.0)
+	manager.sign_label.no_depth_test = true
+	manager.sign_label.position = Vector3(0.75, 0.45, -1.25)
+	manager.sign_label.visible = false
+	add_child(manager.sign_label)
 	var marker_mesh := SphereMesh.new()
 	marker_mesh.radius = 0.045
 	marker_mesh.height = 0.09
-	_sign_marker = _add_mesh(marker_mesh, Color(0.4, 0.95, 1.0, 0.55), Vector3(0.0, 0.85, 0.02))
-	var marker_mat := _sign_marker.material_override as StandardMaterial3D
+	manager.sign_marker = _add_mesh(marker_mesh, Color(0.4, 0.95, 1.0, 0.55), Vector3(0.0, 0.85, 0.02))
+	var marker_mat := manager.sign_marker.material_override as StandardMaterial3D
 	marker_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	marker_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	_sign_marker.visible = false
+	manager.sign_marker.visible = false
 	_call_label = Label3D.new()
 	_call_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	_call_label.fixed_size = true
@@ -988,10 +914,10 @@ func _run_ai_pitcher(delta: float) -> void:
 	var play_running: bool = _play_hit != null and not _play_hit.result_shown
 	if play_running or not _batter_ready:
 		return
-	_maybe_change_pitcher()
+	manager.maybe_change_pitcher()
 	# The manager's call: with first base open and a dangerous hitter up, put him on.
-	if _wants_intentional_walk():
-		_issue_intentional_walk()
+	if manager.wants_intentional_walk():
+		manager.issue_intentional_walk()
 		return
 	if plays.ai_throw_over():
 		return
@@ -1027,17 +953,17 @@ func _process(delta: float) -> void:
 	_game_time += delta
 	if _call_label != null and _call_label.visible and _game_time > _call_label_until:
 		_call_label.visible = false
-	_seat_check()
+	manager.seat_check()
 	if _mode.human_batter and _batter != null:
 		_batter.visible = false              # you are the batter
 	_update_human_bat(Time.get_ticks_usec() / 1_000_000.0)
 	if fielding.is_catcher():
 		fielding.sample_glove(_game_time)
 		fielding.poll_catcher_throw(delta, _game_time)
-	_poll_gestures(delta)
+	manager.poll_gestures(delta)
 	acts.run_drill(delta)
-	if _visit_timer > 0.0:
-		_visit_timer -= delta
+	if manager.visit_timer > 0.0:
+		manager.visit_timer -= delta
 	_crew.update(delta)
 	_base_umps.update(delta)
 	_props.update(delta)
@@ -1243,7 +1169,7 @@ func _toggle_pause() -> void:
 			_close_menu()
 		return
 	var in_game := _mode.human_pitcher and lineup_mode == "Game" and _game != null and not _game.over and acts.scenario == null
-	_menu.model.can_mound_visit = in_game and not _visit_used
+	_menu.model.can_mound_visit = in_game and not manager.visit_used
 	_menu.model.can_leave = in_game
 	_menu.open_pause(Session.current if Session.current != null else _config)
 	_sfx("ui_pause_open")
@@ -1295,13 +1221,13 @@ func _on_menu_event(ev: Dictionary) -> void:
 			_close_menu()
 		"intentional_walk":
 			_close_menu()
-			_issue_intentional_walk()
+			manager.issue_intentional_walk()
 		"mound_visit":
 			_close_menu()
-			_mound_visit()
+			manager.mound_visit()
 		"leave_game":
 			_close_menu()
-			_leave_game()
+			manager.leave_game()
 		"quit":
 			get_tree().quit()
 
@@ -1352,13 +1278,13 @@ func _new_game() -> void:
 	acts.drill_started = 0
 	acts.drill_timer = 3.0
 	acts.drill_done = false
-	_sign_tally = {"called": 0, "perfect": 0, "type": 0, "loc": 0, "shaken": 0}
-	_sign = {}
-	_visit_used = false
-	_visit_timer = 0.0
-	_fatigue_credit = 0
-	_user_left = false
-	_left_line = {}
+	manager.sign_tally = {"called": 0, "perfect": 0, "type": 0, "loc": 0, "shaken": 0}
+	manager.sign = {}
+	manager.visit_used = false
+	manager.visit_timer = 0.0
+	manager.fatigue_credit = 0
+	manager.user_left = false
+	manager.left_line = {}
 	_stats.reset()
 	if _zone_markers:
 		_zone_markers.clear()
@@ -1409,7 +1335,7 @@ func _player_named(n: String) -> Player:
 
 func _cycle_profile() -> void:
 	if lineup_mode == "Game":
-		_shake_off()                    # in a game Y shakes off the catcher's sign
+		manager.shake_off()                    # in a game Y shakes off the catcher's sign
 		return
 	var names: Array = []
 	for b in BatterProfile.all():
@@ -1427,7 +1353,7 @@ func _current_tag() -> String:
 
 func _release_from_hand(release_t: float, vel_latency: float, spin_latency: float) -> void:
 	var from := _held_ball.global_position
-	var r := _human.throw(release_t, vel_latency, spin_latency, from, _camera.global_position.y, _arm_fatigue(), _command_scale(), _runners_on())
+	var r := _human.throw(release_t, vel_latency, spin_latency, from, _camera.global_position.y, manager.arm_fatigue(), manager.command_scale(), _runners_on())
 	_held_ball.visible = false
 	match String(r.kind):
 		"drop":
@@ -1460,7 +1386,7 @@ func _log_throw(pitch: LivePitch, from: Vector3, release_t: float, latency: floa
 ## Read the controller each frame: the ball in your hand follows it; grabs, the start of your delivery and
 ## releases come back as events.
 func _poll_hand(now: float) -> void:
-	for e in _human.poll(now, _hand, _batter_ready and _visit_timer <= 0.0, release_mode == ReleaseMode.AUTO_PEAK):
+	for e in _human.poll(now, _hand, _batter_ready and manager.visit_timer <= 0.0, release_mode == ReleaseMode.AUTO_PEAK):
 		match String(e.type):
 			"grab":
 				_haptics.play("grab")
@@ -1664,7 +1590,7 @@ func _land(pitch: LivePitch) -> void:
 	_mark_pitch(a, outcome)
 	acts.derby_tally(pitch, false, outcome in ["called_strike", "swinging_strike"])
 	acts.tutorial_pitch(pitch)
-	_grade_sign(pitch, plate)
+	manager.grade_sign(pitch, plate)
 	if acts.scenario != null and a.get("reached", false):
 		acts.scenario.on_pitch(String(PitchLocation.classify(plate.x, plate.y).kind), bool(a.get("strike", false)) and outcome != "hit_by_pitch")
 	if _sound != null:
@@ -1783,7 +1709,7 @@ func _contact(pitch: LivePitch) -> void:
 	_mark_pitch(a, "in_play" if in_play else "foul")
 	acts.derby_tally(pitch, bool(sim.get("home_run", false)), false)
 	acts.tutorial_pitch(pitch)
-	_grade_sign(pitch, a.get("plate_pos", Vector3.ZERO))
+	manager.grade_sign(pitch, a.get("plate_pos", Vector3.ZERO))
 	_stat_pitch(pitch.label, a.speed_mph, "in_play" if in_play else "foul")
 	if in_play:
 		_in_play += 1
@@ -1913,17 +1839,13 @@ func _format_hit(b: Dictionary, sim: Dictionary) -> String:
 	if sim.wall:
 		var wall_at: Vector3 = sim.rest_pos
 		var wall_d := Vector2(wall_at.x, wall_at.z).length()
-		return "%s  (%s)
-Exit velo %.0f mph | Launch %+.0f deg | Spray %+.0f deg
-Reaches the wall at %.0f m (%.0f ft) | Apex %.1f m" % [
+		return "%s  (%s)\nExit velo %.0f mph | Launch %+.0f deg | Spray %+.0f deg\nReaches the wall at %.0f m (%.0f ft) | Apex %.1f m" % [
 			outcome, where, sim.ev_mph, sim.launch, sim.spray, wall_d, wall_d * 3.28084, sim.apex]
 	if sim.apex < 2.0 and not sim.home_run:
 		# A ball that never leaves the ground: report where it rolls to.
 		var rest: Vector3 = sim.rest_pos
 		var roll := Vector2(rest.x, rest.z).length()
-		return "%s  (%s)
-Exit velo %.0f mph | Launch %+.0f deg | Spray %+.0f deg
-Rolls %.0f m (%.0f ft) | %d bounces" % [
+		return "%s  (%s)\nExit velo %.0f mph | Launch %+.0f deg | Spray %+.0f deg\nRolls %.0f m (%.0f ft) | %d bounces" % [
 			outcome, where, sim.ev_mph, sim.launch, sim.spray, roll, roll * 3.28084, sim.bounces]
 	var feet: float = sim.distance * 3.28084
 	return "%s  (%s)\nExit velo %.0f mph | Launch %+.0f deg | Spray %+.0f deg\nDistance %.0f m (%.0f ft) | Apex %.1f m | Hang %.1f s" % [
@@ -2111,7 +2033,7 @@ func _on_batter_hidden(plan: Dictionary) -> void:
 
 ## He is in the box: the pitcher may throw.
 func _on_batter_arrived() -> void:
-	_refresh_sign()
+	manager.refresh_sign()
 	_sfx("batter_step_dirt", _batter_home.origin)
 	if _fx_rng.randf() < 0.5:
 		_sfx_later(0.5, "bat_tap_plate", Vector3(0.0, 0.1, 0.0), -4.0)
@@ -2131,8 +2053,7 @@ func _announce_play(h: LiveHit) -> void:
 		return
 	elif play.get("foul_tip", false):
 		# Already counted when the bat hit it (a tip into the mitt is a strike on the spot).
-		_last_report = "FOUL TIP
-" + h.report
+		_last_report = "FOUL TIP\n" + h.report
 		_refresh_hud()
 		return
 	elif play.get("result", "") == "foul":
@@ -2183,162 +2104,6 @@ func _event_text(ev: Dictionary) -> String:
 	return " | ".join(parts)
 
 
-## The catcher comes out to the mound: you catch your breath (the arm is rested by 15 pitches) and cannot
-## pitch for a few seconds. Once a game.
-func _mound_visit() -> void:
-	if not _mode.human_pitcher or _visit_used or _game == null or _game.over:
-		return
-	_visit_used = true
-	_fatigue_credit = 15
-	_visit_timer = 5.2
-	_crew.visit_mound()
-	_log("mound_visit", {"pitches": _game.pitch_count})
-	_show_notice("Mound visit: you catch your breath", true)
-
-
-## You hand the ball over: a reliever finishes the game (an AI pitcher, like Spectate), your line is closed
-## as it stands, and the team's result is yours at the end.
-func _leave_game() -> void:
-	if not _mode.human_pitcher or _game == null or _game.over:
-		return
-	_left_line = _game_line()
-	_user_left = true
-	_game.bottom_live = false              # with you out of the game the bottom halves are played for you
-	_drop_held()
-	_relievers_used += 1
-	var rp := Team.relief_pitcher(52.0, 5000 + _relievers_used * 31)
-	_ai_pitcher = AIPitcher.new(rp)
-	_ai_pitcher.rng.seed = _run_rng.randi()
-	_runs_at_pitcher_change = _game.runs
-	_mode = GameMode.spectate()
-	_sound.mode = _mode
-	_ensure_pitcher_doll()
-	_spectate_timer = 2.0
-	_log("leave_game", {"line": _left_line, "reliever": rp.name})
-	_show_notice("%s takes over" % rp.name)
-	_sfx_later(1.0, "pa_pitching_change")
-	_refresh_scoreboard()
-	_refresh_hud()
-
-
-## The umpire's call as words, for anyone who cannot hear it well (Options > Umpire call text).
-const CALL_WORDS := {"ump_strike": "STRIKE", "ump_strike_three": "STRIKE THREE", "ump_ball": "BALL", "ump_out": "OUT", "ump_safe": "SAFE",
-	"ump_foul": "FOUL BALL", "ump_balk": "BALK", "ump_infield_fly": "INFIELD FLY", "ump_time": "TIME", "ump_play_ball": "PLAY BALL"}
-
-
-func _on_umpire_spoke(id: String, delay: float) -> void:
-	if not _settings.call_text or not CALL_WORDS.has(id):
-		return
-	_props.later(delay, func():
-		if _call_label == null:
-			return
-		var words: String = CALL_WORDS[id]
-		if id in ["ump_strike", "ump_ball"] and _game != null:
-			words += "  " + _game.count_text()
-		_call_label.text = words
-		_call_label.visible = true
-		_call_label_until = _game_time + 1.7)
-
-
-## Hand signals with your glove hand (Options > Hand signals): overhead is an intentional walk, at the
-## ear calls for the bullpen. Only while you pitch and the other hand is empty.
-func _poll_gestures(delta: float) -> void:
-	if not _settings.gestures or not _xr_active or _off_hand == null or _camera == null or not _off_hand.get_is_active() 			or not _mode.human_pitcher or _game == null or _game.over or acts.scenario != null:
-		return
-	var sig := _gestures.update(delta, _camera.global_position, _off_hand.global_position, _held)
-	match sig:
-		"intentional_walk":
-			_log("gesture", {"signal": sig})
-			_haptics.play("ui_select")
-			_issue_intentional_walk()
-		"bullpen_phone":
-			_log("gesture", {"signal": sig})
-			_haptics.play("ui_select")
-			if _menu != null and not _menu.is_open() and lineup_mode == "Game":
-				_toggle_pause()
-				_menu.model.can_leave = true
-				_menu.goto("confirm_leave")
-
-
-## Seated play: once the headset is tracking, lift the whole rig so a seated head is where a standing
-## pitcher's would be (see Comfort.seated_offset). Done once per game start.
-func _seat_check() -> void:
-	if _seat_done or not _settings.seated or not _xr_active or _origin == null or _camera == null:
-		return
-	if _camera.position.y < 0.3:
-		return                          # not tracking yet
-	_seat_done = true
-	var lift := Comfort.seated_offset(_camera.position.y)
-	_origin.position.y += lift
-	_log("seated", {"head_y": snappedf(_camera.position.y, 0.01), "lift": snappedf(lift, 0.01)})
-
-
-## The catcher calls the next pitch (Options > Catcher signs): a pitch and a spot, shown by his knee and a
-## marker on the zone. Only when you pitch in a game.
-func _signs_enabled() -> bool:
-	return _settings.signs and _mode.human_pitcher and lineup_mode == "Game" and acts.scenario == null and _game != null and not _game.over
-
-
-func _refresh_sign() -> void:
-	if _sign_label == null:
-		return
-	if not _signs_enabled():
-		_sign = {}
-		_sign_label.visible = false
-		_sign_marker.visible = false
-		return
-	var side := -1.0 if _batter_is_lefty() else 1.0
-	_sign = CatcherSigns.call_pitch({"balls": _game.balls, "strikes": _game.strikes, "outs": _game.outs,
-		"bases": [_game.bases[0] != null, _game.bases[1] != null, _game.bases[2] != null], "batter_side": side}, [], _fx_rng)
-	_sign_label.text = "SIGN: %s" % _sign.words
-	_sign_label.visible = true
-	var tg: Vector2 = _sign.target
-	_sign_marker.position = Vector3(tg.x, tg.y, 0.02)
-	_sign_marker.visible = true
-
-
-## Y (or P): shake him off and he calls something else.
-func _shake_off() -> void:
-	if _sign.is_empty():
-		_show_notice("Y cycles batters in Practice mode", true)
-		return
-	_sign_tally.shaken += 1
-	var old := String(_sign.words)
-	_refresh_sign()
-	_show_notice("Shook off %s: now %s" % [old, _sign.words], true)
-
-
-## A pitch reached the plate: was it what he called?
-func _grade_sign(pitch: LivePitch, plate: Vector3) -> void:
-	if _sign.is_empty() or not pitch.analysis.get("reached", false):
-		return
-	var g := CatcherSigns.grade(_sign, pitch.label, plate.x, plate.y)
-	_sign_tally.called += 1
-	if g.perfect:
-		_sign_tally.perfect += 1
-	if g.type:
-		_sign_tally.type += 1
-	if g.loc:
-		_sign_tally.loc += 1
-	_log("sign", {"sign": _sign.words, "thrown": pitch.label, "type": g.type, "loc": g.loc, "perfect": g.perfect})
-	if g.perfect:
-		_show_notice("SIGN HIT!", true)
-		_sfx("corner_chime")
-		_haptics.play("ui_select")
-
-
-## The infield plays in when a run at the plate matters (see Defense.wants_infield_in).
-func _update_alignment() -> void:
-	if _game == null or _defense == null:
-		return
-	var want := Defense.wants_infield_in(_game.outs, _game.bases, _game.inning, _game.home_score - _game.runs) and not _game.over
-	if want != _defense.infield_in:
-		_defense.set_infield_in(want)
-		_log("alignment", {"infield_in": want})
-		if want:
-			_show_notice("Infield in", true)
-
-
 ## What you did as a batter this game: the lineup is you, so it is the lineup's line against their pitcher.
 func _hitting_line() -> Dictionary:
 	return GameRecords.hitting(_game, _best_ev, _home.name)
@@ -2347,11 +2112,6 @@ func _hitting_line() -> Dictionary:
 ## What you did as a fielder this game (see PlayerProfile.fielding_score).
 func _fielding_line() -> Dictionary:
 	return GameRecords.fielding(_game, fielding.fld, fielding.human_num(), _away.name)
-
-
-## A career pitcher's command narrows or widens the aim funnel (1.0 for everyone else).
-func _command_scale() -> float:
-	return _career.funnel_factor() if _career_game and _career != null else 1.0
 
 
 ## A career start is over: the result goes into the season, you are told how you did, and you go back to the menu.
@@ -2372,12 +2132,12 @@ func _finish_career_start() -> void:
 
 ## What you did in this game, as one pitching line.
 func _game_line() -> Dictionary:
-	return GameRecords.pitching(_game, _stats, _sign_tally, _away.name, _left_line, roles.bat_log)
+	return GameRecords.pitching(_game, _stats, manager.sign_tally, _away.name, manager.left_line, roles.bat_log)
 
 
 ## A finished game goes in the book (only games you pitch that count for a leaderboard).
 func _record_finished_game() -> void:
-	if acts.drill or acts.derby or _game_recorded or not (_mode.human_pitcher or _user_left or not _mode.human_fielders.is_empty() or _mode.human_batter):
+	if acts.drill or acts.derby or _game_recorded or not (_mode.human_pitcher or manager.user_left or not _mode.human_fielders.is_empty() or _mode.human_batter):
 		return
 	_game_recorded = true
 	var cfg := _current_config()
@@ -2452,8 +2212,8 @@ func _after_event(ev: Dictionary, extra: Dictionary = {}) -> void:
 		_game.inning = 1
 		_game.over = false
 	acts.update_scenario(ev)
-	_update_alignment()
-	_refresh_sign()
+	manager.update_alignment()
+	manager.refresh_sign()
 	if ev.get("game_over", false):
 		_record_finished_game()
 		_game_over_timer = -1.0 if (acts.scenario != null or _career_game) else 8.0

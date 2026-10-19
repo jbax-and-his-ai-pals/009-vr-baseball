@@ -40,17 +40,17 @@ func _init() -> void:
 	await process_frame
 
 	bp._game.pitch_count = 100
-	var tired_before: float = bp._arm_fatigue()
-	bp._mound_visit()
-	var tired_after: float = bp._arm_fatigue()
-	_check(bp._visit_used and tired_after < tired_before and bp._visit_timer > 4.0 and bp._crew.is_visiting(),
+	var tired_before: float = bp.manager.arm_fatigue()
+	bp.manager.mound_visit()
+	var tired_after: float = bp.manager.arm_fatigue()
+	_check(bp.manager.visit_used and tired_after < tired_before and bp.manager.visit_timer > 4.0 and bp._crew.is_visiting(),
 		"a mound visit rests the arm (%.2f to %.2f), stops pitching for a few seconds and sends the catcher out" % [tired_before, tired_after])
-	var credit: int = bp._fatigue_credit
-	bp._mound_visit()
-	_check(bp._fatigue_credit == credit and bp._visit_timer <= 5.2, "only one visit a game")
+	var credit: int = bp.manager.fatigue_credit
+	bp.manager.mound_visit()
+	_check(bp.manager.fatigue_credit == credit and bp.manager.visit_timer <= 5.2, "only one visit a game")
 	for i in 60 * 7:
 		bp._process(1.0 / 60.0)
-	_check(bp._visit_timer <= 0.0 and not bp._crew.is_visiting() and bp._catcher.position.distance_to(PlateCrew.CATCHER_HOME) < 0.05,
+	_check(bp.manager.visit_timer <= 0.0 and not bp._crew.is_visiting() and bp._catcher.position.distance_to(PlateCrew.CATCHER_HOME) < 0.05,
 		"then the catcher is back behind the plate and you can pitch again")
 	bp._game.pitch_count = 0
 
@@ -62,8 +62,8 @@ func _init() -> void:
 	var outs_before: int = bp._game.outs_recorded
 	var pitches_before: int = bp._game.pitch_count
 	var starter: String = bp._ai_pitcher.player.name
-	bp._leave_game()
-	_check(not bp._mode.human_pitcher and bp._user_left and bp._left_line.get("pitches", -1) == pitches_before and bp._left_line.get("outs", -1) == outs_before,
+	bp.manager.leave_game()
+	_check(not bp._mode.human_pitcher and bp.manager.user_left and bp.manager.left_line.get("pitches", -1) == pitches_before and bp.manager.left_line.get("outs", -1) == outs_before,
 		"you are out of the game with your line as it stood (%d pitches, %d outs)" % [pitches_before, outs_before])
 	_check(bp._ai_pitcher.player.name != starter and bp._spectate_timer > 0.0, "a reliever takes over")
 	var games_before := int(bp._profile.totals.get("games", 0))

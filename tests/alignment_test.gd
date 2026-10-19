@@ -89,7 +89,7 @@ func _init() -> void:
 	bp._game.runs = 2
 	bp._game.home_score = 2
 	bp._game.bases = [null, null, bp._away.lineup[0]]
-	bp._update_alignment()
+	bp.manager.update_alignment()
 	_check(bp._defense.infield_in, "the scene puts the infield in")
 	var ss: Node3D = bp._field_nodes[6]
 	var target_z: float = bp._defense.fielder_by_num(6).home.z
@@ -97,7 +97,7 @@ func _init() -> void:
 		bp._process(1.0 / 60.0)
 	_check(absf(ss.position.z - target_z) < 0.3, "and the shortstop walks in to his new spot (%.1f vs %.1f)" % [ss.position.z, target_z])
 	bp._game.bases = [null, null, null]
-	bp._update_alignment()
+	bp.manager.update_alignment()
 	_check(not bp._defense.infield_in, "and goes back when the man on third is gone")
 	bp.queue_free()
 

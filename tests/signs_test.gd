@@ -79,30 +79,30 @@ func _init() -> void:
 	bp.menu_on_start = false
 	root.add_child(bp)
 	await process_frame
-	_check(not bp._sign.is_empty() and bp._sign_label.visible and bp._sign_marker.visible and bp._sign_label.text.begins_with("SIGN:"), "a sign is shown before the first pitch (%s)" % bp._sign_label.text)
-	var first := String(bp._sign.words)
+	_check(not bp.manager.sign.is_empty() and bp.manager.sign_label.visible and bp.manager.sign_marker.visible and bp.manager.sign_label.text.begins_with("SIGN:"), "a sign is shown before the first pitch (%s)" % bp.manager.sign_label.text)
+	var first := String(bp.manager.sign.words)
 	var changed := false
 	for i in 12:
-		bp._shake_off()
-		if String(bp._sign.words) != first:
+		bp.manager.shake_off()
+		if String(bp.manager.sign.words) != first:
 			changed = true
 			break
-	_check(changed and int(bp._sign_tally.shaken) >= 1, "shaking him off gets another call")
+	_check(changed and int(bp.manager.sign_tally.shaken) >= 1, "shaking him off gets another call")
 	# Grade a pitch that matches.
 	var p := LivePitch.new()
-	p.label = String(bp._sign.pitch)
+	p.label = String(bp.manager.sign.pitch)
 	p.analysis = {"reached": true}
-	var tg: Vector2 = bp._sign.target
-	bp._grade_sign(p, Vector3(tg.x, tg.y, 0.0))
-	_check(int(bp._sign_tally.called) == 1 and int(bp._sign_tally.perfect) == 1, "a pitch that matches the call is a sign hit")
+	var tg: Vector2 = bp.manager.sign.target
+	bp.manager.grade_sign(p, Vector3(tg.x, tg.y, 0.0))
+	_check(int(bp.manager.sign_tally.called) == 1 and int(bp.manager.sign_tally.perfect) == 1, "a pitch that matches the call is a sign hit")
 	var line: Dictionary = bp._game_line()
 	_check(int(line.signs) == 1 and int(line.sign_hits) == 1, "it goes on your line")
 	var prof := PlayerProfile.new()
 	prof.record_game(GameConfig.new(), line)
 	_check(prof.lifetime_lines().any(func(x): return String(x).begins_with("Catcher signs: 1 of 1")), "and into your lifetime totals")
 	bp._settings.signs = false
-	bp._refresh_sign()
-	_check(bp._sign.is_empty() and not bp._sign_label.visible and not bp._sign_marker.visible, "with the setting off there is no sign")
+	bp.manager.refresh_sign()
+	_check(bp.manager.sign.is_empty() and not bp.manager.sign_label.visible and not bp.manager.sign_marker.visible, "with the setting off there is no sign")
 	bp.queue_free()
 
 	print("FAILURES: %d" % _failures)

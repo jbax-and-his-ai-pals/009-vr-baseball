@@ -25,7 +25,7 @@ func on_delivery_start() -> void:
 		return
 	var tired = 0.0
 	if host._mode.human_pitcher:
-		tired = host._arm_fatigue()
+		tired = host.manager.arm_fatigue()
 	for base in [2, 1]:
 		var runner = host._game.bases[base - 1]
 		if not (runner is Player):
