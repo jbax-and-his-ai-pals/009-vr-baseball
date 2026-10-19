@@ -15,9 +15,9 @@ func _throw(bp: Node3D, omega_x: float, omega_y: float = 0.0) -> void:
 		var k := i / 90.0
 		det.add_sample(_t0 + k, Vector3(0.0, 2.0 + 0.1 * k, 18.0 - 12.0 * k), q, 0.9)
 		q = (Quaternion(Vector3(1, 0, 0), omega_x / 90.0) * Quaternion(Vector3(0, 1, 0), omega_y / 90.0) * q).normalized()
-	bp._held_ball.global_position = Vector3(0.0, 2.2, 16.0)
+	bp.flight.held_ball.global_position = Vector3(0.0, 2.2, 16.0)
 	bp._held = true
-	bp._release_from_hand(_t0 + 26.0 / 90.0, 0.015, 0.04)
+	bp.flight.release_from_hand(_t0 + 26.0 / 90.0, 0.015, 0.04)
 	_t0 += 10.0
 
 

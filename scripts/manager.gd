@@ -108,7 +108,7 @@ func leave_game() -> void:
 	left_line = host.results.game_line()
 	user_left = true
 	host._game.bottom_live = false              # with you out of the game the bottom halves are played for you
-	host._drop_held()
+	host.flight.drop_held()
 	relievers_used += 1
 	var rp = Team.relief_pitcher(52.0, 5000 + relievers_used * 31)
 	host._ai_pitcher = AIPitcher.new(rp)

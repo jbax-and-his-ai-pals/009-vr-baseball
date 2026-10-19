@@ -27,7 +27,7 @@ func update_roles(delta: float) -> void:
 	if host._game == null or not two_way:
 		return
 	var settled = host._aux_play.is_empty() and host._walk_on.is_empty() and not host._play_in_progress()
-	for h in host._hits:
+	for h in host.flight.hits:
 		if not h.result_shown:
 			settled = false
 	if top_game == null and host._game.awaiting_bottom and settled:
@@ -87,11 +87,11 @@ func enter_bottom() -> void:
 	var half = GameState.new(host._home.lineup, 1)
 	half.order_index = host._home_order % maxi(host._home.lineup.size(), 1)
 	host._game = half
-	host._drop_held()
+	host.flight.drop_held()
 	host._mode = GameMode.hitting()
 	host._sound.mode = host._mode
 	host._ensure_bat_view()
-	host._bat_view.visible = true
+	host.flight.bat_view.visible = true
 	if opp_pitcher == null:
 		opp_pitcher = AIPitcher.new(host._away.player_at(1))
 		opp_pitcher.rng.seed = host._run_rng.randi()
@@ -128,8 +128,8 @@ func finish_bottom_half() -> void:
 	host._mode = GameMode.pitching()
 	host._sound.mode = host._mode
 	dress_teams(false)
-	if host._bat_view != null:
-		host._bat_view.visible = false
+	if host.flight.bat_view != null:
+		host.flight.bat_view.visible = false
 	if host._field_nodes.has(1):
 		(host._field_nodes[1] as Node3D).visible = false
 	place_for_role()

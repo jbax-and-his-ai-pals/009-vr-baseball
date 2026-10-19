@@ -34,7 +34,7 @@ func _init() -> void:
 				bp._game.bases = [fast, null, null]
 				bp._refresh_base_runners()
 			bp.plays.on_delivery_start()
-			bp._debug_throw()
+			bp.flight.debug_throw()
 		if i == 60 * 40:
 			bp.slog.mark_moment()
 		if bp._game.over:

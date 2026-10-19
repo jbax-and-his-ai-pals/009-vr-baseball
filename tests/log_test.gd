@@ -14,9 +14,9 @@ func _throw(bp: Node3D, rise_per_sec: float) -> void:
 		var t := _t0 + i / 90.0
 		var k := i / 90.0
 		det.add_sample(t, Vector3(0.0, 2.0 + rise_per_sec * k, 18.0 - 12.0 * k), Quaternion.IDENTITY, 0.9)
-	bp._held_ball.global_position = Vector3(0.0, 2.2, 16.0)
+	bp.flight.held_ball.global_position = Vector3(0.0, 2.2, 16.0)
 	bp._held = true
-	bp._release_from_hand(_t0 + 26.0 / 90.0, 0.015, 0.04)
+	bp.flight.release_from_hand(_t0 + 26.0 / 90.0, 0.015, 0.04)
 	_t0 += 10.0
 
 
@@ -26,9 +26,9 @@ func _throw_soft(bp: Node3D) -> void:
 	for i in 27:
 		var k := i / 90.0
 		det.add_sample(_t0 + k, Vector3(0.0, 2.0, 18.0 - 0.5 * k), Quaternion.IDENTITY, 0.9)
-	bp._held_ball.global_position = Vector3(0.0, 2.2, 16.0)
+	bp.flight.held_ball.global_position = Vector3(0.0, 2.2, 16.0)
 	bp._held = true
-	bp._release_from_hand(_t0 + 26.0 / 90.0, 0.015, 0.04)
+	bp.flight.release_from_hand(_t0 + 26.0 / 90.0, 0.015, 0.04)
 	_t0 += 10.0
 
 

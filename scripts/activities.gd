@@ -63,7 +63,7 @@ func mode_is_not_fielding(c: GameConfig) -> bool:
 func run_drill(delta: float) -> void:
 	if not drill or drill_done or host._game == null:
 		return
-	var busy = not host._hits.is_empty() and not (host._hits[host._hits.size() - 1] as LiveHit).result_shown
+	var busy = not host.flight.hits.is_empty() and not (host.flight.hits[host.flight.hits.size() - 1] as LiveHit).result_shown
 	if busy or not host._aux_play.is_empty() or not host._walk_on.is_empty():
 		return
 	drill_timer -= delta
@@ -82,7 +82,7 @@ func run_drill(delta: float) -> void:
 	drill_started += 1
 	drill_timer = 3.5
 	host.hud.show_notice("Drill: ball %d of %d" % [drill_started, drill_started + drill_left], true)
-	host._debug_hit(ev, la, spray)
+	host.flight.debug_hit(ev, la, spray)
 
 
 func finish_drill() -> void:

@@ -175,7 +175,7 @@ func _init() -> void:
 		throw_timer -= 1.0 / 60.0
 		if throw_timer <= 0.0 and bp._batter_ready:
 			throw_timer = 1.0
-			bp._debug_throw()
+			bp.flight.debug_throw()
 		if bp.acts.scenario_done:
 			break
 	_check(bp.acts.scenario_done and bp._profile.challenge("side").attempts == 1, "it was judged and the attempt recorded (%s, stars %d)" % [bp.acts.scenario.state, bp.acts.scenario.stars])

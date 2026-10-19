@@ -167,10 +167,10 @@ func _init() -> void:
 		called += 1
 		if called == 1:
 			_check(bp.plays.steal.call == "squeeze" and int(bp.plays.steal.from) == 3 and bp._bat_call == "squeeze", "a squeeze breaks the runner from third")
-		bp._debug_throw()
+		bp.flight.debug_throw()
 		for i in 60 * 12:
 			bp._process(1.0 / 60.0)
-			if bp.plays.steal.is_empty() and bp._aux_play.is_empty() and bp._hits.all(func(h): return h.result_shown):
+			if bp.plays.steal.is_empty() and bp._aux_play.is_empty() and bp.flight.hits.all(func(h): return h.result_shown):
 				break
 		if bp.plays.steal.is_empty() and bp._bat_call == "":
 			finished += 1

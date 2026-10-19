@@ -341,7 +341,7 @@ func poll_fielding(now: float) -> void:
 
 
 func holding_hit() -> LiveHit:
-	for h in host._hits:
+	for h in host.flight.hits:
 		if h.human_state in ["holding", "gripped"]:
 			return h
 	return null

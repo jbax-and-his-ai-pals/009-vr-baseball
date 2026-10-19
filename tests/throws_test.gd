@@ -20,8 +20,8 @@ func _init() -> void:
 	await process_frame
 
 	# --- A grounder to short, thrown to first.
-	bp._debug_hit(78.0, -6.0, 18.0)
-	var h = bp._hits[bp._hits.size() - 1]
+	bp.flight.debug_hit(78.0, -6.0, 18.0)
+	var h = bp.flight.hits[bp.flight.hits.size() - 1]
 	var fielder: int = int(h.play.get("fielder", 0))
 	print("  grounder fielded by ", fielder, " result ", h.play.get("result", ""), " throws ", h.throws.size())
 	if h.play.get("result", "") == "out" and not h.throws.is_empty():
@@ -41,8 +41,8 @@ func _init() -> void:
 	var h2 = null
 	for spec in [[96.0, 8.0, -12.0], [98.0, 10.0, 25.0], [100.0, 6.0, -30.0], [94.0, 12.0, 8.0]]:
 		bp._process(1.0)
-		bp._debug_hit(spec[0], spec[1], spec[2])
-		h2 = bp._hits[bp._hits.size() - 1]
+		bp.flight.debug_hit(spec[0], spec[1], spec[2])
+		h2 = bp.flight.hits[bp.flight.hits.size() - 1]
 		if h2.throws.size() >= 2:
 			break
 	print("  deep ball result ", h2.play.get("result", ""), " throws ", h2.throws.size())
@@ -57,7 +57,7 @@ func _init() -> void:
 		print("  (this ball was not a relay)")
 
 	# --- The ball is carried, not teleported: its height changes continuously after a catch.
-	var h3 = bp._hits[bp._hits.size() - 1]
+	var h3 = bp.flight.hits[bp.flight.hits.size() - 1]
 	if int(h3.play.get("fielder", 0)) != 0 and h3.play.get("result", "") != "home_run":
 		h3.t = float(h3.play.field_time) + 0.01
 		var y0: float = (bp._director.ball_with_fielder(h3) as Vector3).y

@@ -56,7 +56,7 @@ func _init() -> void:
 
 	# Taking yourself out.
 	for i in 6:
-		bp._debug_throw()
+		bp.flight.debug_throw()
 		for j in 60 * 3:
 			bp._process(1.0 / 60.0)
 	var outs_before: int = bp._game.outs_recorded

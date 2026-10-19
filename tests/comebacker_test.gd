@@ -31,8 +31,8 @@ func _init() -> void:
 	var found := false
 	var spec_used := []
 	for spec in specs:
-		bp._debug_hit(spec[0], spec[1], spec[2])
-		var h: LiveHit = bp._hits[bp._hits.size() - 1]
+		bp.flight.debug_hit(spec[0], spec[1], spec[2])
+		var h: LiveHit = bp.flight.hits[bp.flight.hits.size() - 1]
 		if h.human_chance:
 			found = true
 			spec_used = spec
@@ -47,7 +47,7 @@ func _init() -> void:
 		print("FAILURES: %d" % (_failures + 1))
 		quit(1)
 		return
-	var h: LiveHit = bp._hits[bp._hits.size() - 1]
+	var h: LiveHit = bp.flight.hits[bp.flight.hits.size() - 1]
 	_check(h.human_state == "waiting" and int(h.play.get("fielder", 0)) == 1 and not h.fallback.is_empty(), "the ball is yours (waiting for your glove), with the AI's answer ready if you miss")
 	var chances_before: int = bp.fielding.fld.chances
 	var t := 0.0
@@ -69,8 +69,8 @@ func _init() -> void:
 	bp2.fielding.auto_field = false
 	var chance: LiveHit = null
 	for spec in specs:
-		bp2._debug_hit(spec[0], spec[1], spec[2])
-		var h2: LiveHit = bp2._hits[bp2._hits.size() - 1]
+		bp2.flight.debug_hit(spec[0], spec[1], spec[2])
+		var h2: LiveHit = bp2.flight.hits[bp2.flight.hits.size() - 1]
 		if h2.human_chance:
 			chance = h2
 			break

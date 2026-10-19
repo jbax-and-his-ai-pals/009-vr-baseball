@@ -6,7 +6,7 @@ func _init() -> void:
 	root.add_child(bp)
 	await process_frame
 	for i in 40:
-		bp._debug_throw()
+		bp.flight.debug_throw()
 		for k in 30:
 			bp._process(1.0 / 60.0)
 	await process_frame

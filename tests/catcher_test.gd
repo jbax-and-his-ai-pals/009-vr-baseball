@@ -72,8 +72,8 @@ func _init() -> void:
 	var tracked := 0
 	var ump_clips := {}
 	for i in 12:
-		bp._batter_free_at = 1e9               # he takes everything, so every pitch ends at the catcher
-		bp._debug_throw()
+		bp.flight.batter_free_at = 1e9               # he takes everything, so every pitch ends at the catcher
+		bp.flight.debug_throw()
 		if not bp._crew._track.is_empty():
 			tracked += 1
 		for k in 90:

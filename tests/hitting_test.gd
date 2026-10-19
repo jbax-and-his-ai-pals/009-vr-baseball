@@ -15,7 +15,7 @@ func _check(ok: bool, msg: String) -> void:
 ## Put the bat through the plate point where this pitch will cross, moving toward the pitcher; or miss it
 ## by `miss` metres above, or hold still (swing_speed 0).
 func _set_bat(bp: Node3D, plate: Vector3, swing_speed: float, miss: float) -> void:
-	var t: SwingTracker = bp._tracker
+	var t: SwingTracker = bp.flight.tracker
 	var through := Vector3(plate.x, plate.y + miss, 0.0)
 	t.knob = through - Vector3(BatPhysics.SWEET, 0.0, 0.0)
 	t.tip = t.knob + Vector3(BatPhysics.LENGTH, 0.0, 0.0)
@@ -26,7 +26,7 @@ func _set_bat(bp: Node3D, plate: Vector3, swing_speed: float, miss: float) -> vo
 func _next_pitch(bp: Node3D, seen: Array) -> LivePitch:
 	for i in 60 * 40:
 		bp._process(1.0 / 60.0)
-		for p in bp._pitches:
+		for p in bp.flight.pitches:
 			if not seen.has(p) and not p.landed:
 				seen.append(p)
 				return p
@@ -59,7 +59,7 @@ func _init() -> void:
 	bp.game_innings = 1
 	root.add_child(bp)
 	await process_frame
-	_check(bp._mode.human_batter and not bp._mode.human_pitcher and bp._bat_view != null, "the scene is in Hitting mode with a bat in your hand")
+	_check(bp._mode.human_batter and not bp._mode.human_pitcher and bp.flight.bat_view != null, "the scene is in Hitting mode with a bat in your hand")
 	for i in 120:
 		bp._process(1.0 / 60.0)
 	_check(not bp._batter.visible, "the AI batter figure is not drawn: you are the batter")
@@ -83,18 +83,18 @@ func _init() -> void:
 	var tries := 0
 	while tries < 12 and not hit_found:
 		tries += 1
-		var before: int = bp._hits.size()
+		var before: int = bp.flight.hits.size()
 		var p3 := _play_pitch(bp, seen, 32.0, 0.0)
 		if p3 != null and p3.bat.get("contact", false):
 			hit_found = true
 			best_ev = float(p3.bat.ev)
-			_check(bp._hits.size() > 0 and (bp._hits[bp._hits.size() - 1] as LiveHit).summary == p3.sim and p3.bat.kind in ["hit", "foul tip"], "a swing through the ball is contact (%s, %.0f mph)" % [p3.bat.kind, best_ev])
+			_check(bp.flight.hits.size() > 0 and (bp.flight.hits[bp.flight.hits.size() - 1] as LiveHit).summary == p3.sim and p3.bat.kind in ["hit", "foul tip"], "a swing through the ball is contact (%s, %.0f mph)" % [p3.bat.kind, best_ev])
 			_check(best_ev > 55.0 or p3.bat.kind == "foul tip", "and comes off the bat fast")
 			_check(p3.sim.has("landing_pos") and not p3.play.is_empty(), "the batted ball is flown and the defense answers it")
 		# let the play finish before the next pitch
 		for i in 60 * 14:
 			bp._process(1.0 / 60.0)
-			if bp._batter_ready and bp._aux_play.is_empty() and bp._hits.all(func(h): return h.result_shown):
+			if bp._batter_ready and bp._aux_play.is_empty() and bp.flight.hits.all(func(h): return h.result_shown):
 				break
 	_check(hit_found, "within a few pitches a swing through the ball made contact")
 

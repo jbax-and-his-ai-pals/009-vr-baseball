@@ -74,7 +74,7 @@ func _init() -> void:
 	# A busy moment: the maximum number of simultaneous pitches, plus batted balls.
 	var peak := 0
 	for i in 8:
-		bp._debug_throw()
+		bp.flight.debug_throw()
 	for frame in 90:
 		bp._process(1.0 / 60.0)
 		var acc := {"draws": 0, "tris": 0}

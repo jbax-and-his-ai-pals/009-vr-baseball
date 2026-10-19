@@ -42,7 +42,7 @@ func _init() -> void:
 		if throw_timer <= 0.0:
 			throw_timer = 1.0
 			if bp._batter_ready:
-				bp._debug_throw()
+				bp.flight.debug_throw()
 			else:
 				waited_unready += 1
 		# Whenever the next batter is walking up or is ready, you must be able to see him.
@@ -51,7 +51,7 @@ func _init() -> void:
 			if invisible_frames == 1:
 				var info := "ready=%s walk_on=%s aux=%s over=%s inning=%d outs=%d" % [bp._batter_ready, not bp._walk_on.is_empty(),
 					not bp._aux_play.is_empty(), bp._game.over, bp._game.inning, bp._game.outs]
-				for hh in bp._hits:
+				for hh in bp.flight.hits:
 					info += " | hit result=%s shown=%s hidden=%s t=%.1f" % [hh.play.get("result", "?"), hh.result_shown, hh.plan.get("batter_hidden", "-"), hh.t]
 				print("  INVISIBLE: ", info)
 		if bp._batter_ready and bp._batter.transform.origin.distance_to(bp._batter_home.origin) > 0.1:
@@ -61,7 +61,7 @@ func _init() -> void:
 			max_unready_run = maxf(max_unready_run, unready_run)
 			if absf(unready_run - 14.0) < dt * 0.6:
 				var info := "aux=%s walk_on=%s" % [not bp._aux_play.is_empty(), not bp._walk_on.is_empty()]
-				for h in bp._hits:
+				for h in bp.flight.hits:
 					info += " | hit result=%s shown=%s t=%.1f end=%.1f state=%s" % [h.play.get("result", "?"), h.result_shown, h.t, h.play_end, h.human_state]
 				print("  STUCK? ", info)
 		else:

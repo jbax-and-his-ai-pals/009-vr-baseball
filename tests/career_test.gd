@@ -183,7 +183,7 @@ func _init() -> void:
 		t -= 1.0 / 60.0
 		if t <= 0.0 and bp._batter_ready:
 			t = 1.0
-			bp._debug_throw()
+			bp.flight.debug_throw()
 		if bp._career.matchday > 0:
 			break
 	_check(bp._career.matchday == 1 and bp._career.starts.size() == 1 and bp._career.league.results.size() == 4, "the finished start moves the season on (matchday %d)" % bp._career.matchday)

@@ -8,7 +8,7 @@ func _init() -> void:
 	for i in 600:
 		bp._process(1.0 / 60.0)
 		if i % 90 == 0 and bp._batter_ready:
-			bp._debug_throw()
+			bp.flight.debug_throw()
 	await process_frame
 	await process_frame
 	for b in [bp.hud.pitch_board, bp.hud.bat_board, bp.hud.info_board]:

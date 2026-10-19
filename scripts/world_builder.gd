@@ -200,12 +200,12 @@ func build_world() -> void:
 	host.add_child(host._zone_markers)
 
 	# Shared ball mesh: a stitched baseball, one draw call for every ball (held, pitched, batted).
-	host._ball_mesh = BallVisual.mesh()
-	host._trail_mat = StandardMaterial3D.new()
-	host._trail_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	host._trail_mat.albedo_color = Color(1.0, 0.9, 0.2)
-	host._held_ball = make_ball()
-	host._held_ball.visible = false
+	host.flight.ball_mesh = BallVisual.mesh()
+	host.flight.trail_mat = StandardMaterial3D.new()
+	host.flight.trail_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	host.flight.trail_mat.albedo_color = Color(1.0, 0.9, 0.2)
+	host.flight.held_ball = make_ball()
+	host.flight.held_ball.visible = false
 
 	host.hud.build_boards()
 
@@ -223,7 +223,7 @@ func add_mesh(mesh: Mesh, color: Color, at: Vector3, parent: Node = null) -> Mes
 
 func make_ball() -> MeshInstance3D:
 	var ball = MeshInstance3D.new()
-	ball.mesh = host._ball_mesh
+	ball.mesh = host.flight.ball_mesh
 	ball.material_override = BallVisual.material()
 	host.add_child(ball)
 	return ball

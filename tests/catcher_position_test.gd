@@ -23,7 +23,7 @@ func _run_pitches(bp: Node3D, glove_dx: float, n: int) -> Dictionary:
 		var pitch: LivePitch = null
 		for i in 60 * 30:
 			bp._process(1.0 / 60.0)
-			for q in bp._pitches:
+			for q in bp.flight.pitches:
 				if not seen.has(q) and not q.landed:
 					seen.append(q)
 					pitch = q
@@ -124,7 +124,7 @@ func _init() -> void:
 	bp._spectate_timer = 1e9                      # no more real pitches: only the ones this test makes
 	for i in 60 * 8:
 		bp._process(1.0 / 60.0)
-		if bp._pitches.is_empty() and bp._batter_ready and bp._aux_play.is_empty():
+		if bp.flight.pitches.is_empty() and bp._batter_ready and bp._aux_play.is_empty():
 			break
 	bp.fielding.fld = {"chances": 0, "caught": 0, "missed": 0, "errors": 0, "assists": 0, "frames": 0, "lost": 0, "blocks": 0, "passed": 0, "covers": 0, "uncovered": 0}
 	var corner := Vector3(PitchPhysics.ZONE_HALF_W + PitchPhysics.BALL_RADIUS - 1.0 * inch, 0.85, 0.0)

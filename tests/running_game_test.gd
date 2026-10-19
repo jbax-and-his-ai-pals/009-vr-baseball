@@ -44,7 +44,7 @@ func _init() -> void:
 		bp._game.bases = [who, null, null]
 		bp._game.outs = 0
 		bp.plays.steal = {}
-		bp._batter_free_at = 1e9          # he takes every pitch, so only the steal happens
+		bp.flight.batter_free_at = 1e9          # he takes every pitch, so only the steal happens
 		bp._aux_play = {}
 		bp._refresh_base_runners()
 		bp._batter_ready = true
@@ -59,7 +59,7 @@ func _init() -> void:
 		went += 1
 		var sb: int = bp._game.stolen_bases
 		var cs: int = bp._game.caught_stealing
-		bp._debug_throw()
+		bp.flight.debug_throw()
 		_settle(bp, 9.0)
 		if bp._game.stolen_bases > sb:
 			made += 1

@@ -40,7 +40,7 @@ func snapshot() -> Dictionary:
 	d["walk_on"] = not host._walk_on.is_empty()
 	d["aux"] = not host._aux_play.is_empty()
 	d["steal"] = not host.plays.steal.is_empty()
-	d["hits_alive"] = host._hits.size()
+	d["hits_alive"] = host.flight.hits.size()
 	d["plays_open"] = host._play_in_progress()
 	d["flights"] = host.plays.flights.size()
 	d["unready_for"] = snappedf(host._unready_for, 0.01)
@@ -83,7 +83,7 @@ func log_frame(delta: float) -> void:
 			"spikes": perf_spikes, "draw_calls": int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)),
 			"nodes": int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)),
 			"mem_mb": snappedf(Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0, 0.1),
-			"level": host._governor.level, "xr": host._xr_active, "hits": host._hits.size(), "pitches": host._pitches.size(), "s": brief()})
+			"level": host._governor.level, "xr": host._xr_active, "hits": host.flight.hits.size(), "pitches": host.flight.pitches.size(), "s": brief()})
 		perf_sum = 0.0
 		perf_frames = 0
 		perf_max = 0.0

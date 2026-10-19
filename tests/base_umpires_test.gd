@@ -50,7 +50,7 @@ func _init() -> void:
 	await process_frame
 	var calls: Array = []
 	bp._base_umps.umpire_voice.connect(func(id: String, at: Vector3): calls.append([id, at]))
-	bp._debug_hit(78.0, -6.0, 18.0)
+	bp.flight.debug_hit(78.0, -6.0, 18.0)
 	for i in 60 * 14:
 		bp._process(1.0 / 60.0)
 		if not calls.is_empty():

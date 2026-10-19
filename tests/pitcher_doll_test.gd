@@ -46,7 +46,7 @@ func _init() -> void:
 	var thrown := false
 	for i in 60 * 14:
 		bp._process(1.0 / 60.0)
-		if bp._game.pitch_count > pitched or bp._pitches.size() > 0:
+		if bp._game.pitch_count > pitched or bp.flight.pitches.size() > 0:
 			thrown = true
 			break
 	_check(thrown, "and the pitch is thrown after the windup")
@@ -62,7 +62,7 @@ func _init() -> void:
 		if int(m.fielder) == 1:
 			covers = true
 	_check(covers, "and he runs over to cover the bag")
-	bp._play_hit = null
+	bp.flight.play_hit = null
 	bp._director.reset_fielders()
 	_check(absf(p.position.y - PitchPhysics.MOUND_H) < 0.01, "back on the mound he stands on it")
 	bp.queue_free()
