@@ -76,6 +76,13 @@ func open_pause(game: GameConfig) -> void:
 	_show()
 
 
+## Open a screen of the pause menu directly (a gesture asks for the leave-the-game question).
+func goto(screen: String) -> void:
+	model.stack.append(screen)
+	_hover = -1
+	_rebuild()
+
+
 func close() -> void:
 	_open = false
 	visible = false
@@ -234,7 +241,7 @@ func _click(i: int) -> void:
 	var row_id: String = _rows[i].id
 	ui_haptic.emit(_pointer, "ui_select")
 	var ev := model.activate(i)
-	if row_id in ["vignette", "snap_turn", "developer", "call_text", "seated", "colorblind"]:
+	if row_id in ["vignette", "snap_turn", "developer", "call_text", "seated", "colorblind", "gestures"]:
 		var now_on: bool = bool(model.settings.get(row_id))
 		ui_sound.emit("ui_toggle_on" if now_on else "ui_toggle_off")
 	else:

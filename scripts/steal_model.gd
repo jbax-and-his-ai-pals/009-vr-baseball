@@ -92,6 +92,25 @@ static func pickoff_chance(lead_m: float, angle_error: float, throw_speed: float
 	return clampf(0.32 * reach * accuracy * arm * jump, 0.0, 0.35)
 
 
+## What a throw over does, given the chance it gets him (`p_out`) and how far off the bag he was:
+##   "out"                 picked off cleanly
+##   "rundown_out"         caught between the bases and run down
+##   "rundown_safe_back"   caught in a rundown but gets back to the bag
+##   "rundown_safe_ahead"  caught in a rundown but beats it to the next base
+##   "safe"                back in time, nothing more
+## A long lead is what makes a rundown possible.
+static func pickoff_outcome(p_out: float, lead: float, rng: RandomNumberGenerator) -> String:
+	var r := rng.randf()
+	if r < p_out * 0.55:
+		return "out"
+	if r < p_out:
+		return "rundown_out"
+	var p_trap := clampf((lead - 2.6) / 6.0, 0.0, 0.18)
+	if rng.randf() < p_trap:
+		return "rundown_safe_back" if rng.randf() < 0.6 else "rundown_safe_ahead"
+	return "safe"
+
+
 ## Is this a balk? He started his motion (delivery_started) and then did not throw, with a
 ## runner on, or he threw to a base nobody was on.
 static func is_balk(runners_on: bool, delivery_started: bool, released: bool, threw_to_empty_base: bool) -> bool:

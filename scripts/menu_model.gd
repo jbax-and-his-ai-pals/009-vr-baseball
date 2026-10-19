@@ -135,6 +135,7 @@ func items() -> Array[Dictionary]:
 			rows.append(_row("haptics", "Haptics", settings.haptics))
 			rows.append(_row("colorblind", "Zone colours", "colour-blind" if settings.colorblind else "standard", true, "blue and orange instead of green and red"))
 			rows.append(_row("call_text", "Umpire call text", "on" if settings.call_text else "off", true, "calls also shown as words"))
+			rows.append(_row("gestures", "Hand signals", "on" if settings.gestures else "off", true, "hand overhead: intentional walk; hand at your ear: call the bullpen"))
 			rows.append(_row("seated", "Seated play", "on" if settings.seated else "off", true, "lifts your height to a standing pitcher's"))
 			rows.append(_row("vignette", "Comfort vignette", "on" if settings.vignette else "off"))
 			rows.append(_row("snap_turn", "Snap turn", "on" if settings.snap_turn else "off"))
@@ -393,6 +394,9 @@ func activate(index: int) -> Dictionary:
 			return {"type": "settings"}
 		"call_text":
 			settings.call_text = not settings.call_text
+			return {"type": "settings"}
+		"gestures":
+			settings.gestures = not settings.gestures
 			return {"type": "settings"}
 		"seated":
 			settings.seated = not settings.seated

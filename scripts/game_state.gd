@@ -280,6 +280,26 @@ func pickoff(base: int) -> Dictionary:
 	return ev
 
 
+## One runner takes the next base without it being a steal (he beat a rundown). From third he scores.
+func advance_runner(base: int) -> Dictionary:
+	var ev := _event()
+	if over or base < 1 or base > 3 or bases[base - 1] == null:
+		return ev
+	var runner = bases[base - 1]
+	if base < 3 and bases[base] != null:
+		return ev                                   # the next base is taken: he cannot
+	bases[base - 1] = null
+	ev.result = "advance"
+	if base == 3:
+		_score(1)
+		ev.runs = 1
+		ev.text = "Scores on the rundown"
+	else:
+		bases[base] = runner
+		ev.text = "Beats the rundown to %s" % ["", "second", "third"][base]
+	return ev
+
+
 ## The pitcher did something illegal with a runner on: every runner moves up a base.
 func balk() -> Dictionary:
 	var ev := wild_pitch()

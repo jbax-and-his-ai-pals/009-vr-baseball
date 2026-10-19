@@ -304,6 +304,52 @@ static func plan_dive_back(base: int, runner, from_pos: Vector3, to_pos: Vector3
 	return res
 
 
+## A runner caught between bases after a throw over, run down by two fielders. `outcome` is one of
+## StealModel.pickoff_outcome's rundown results. Returns a plan whose runner follows `keys` back and forth
+## between his base and the next, plus `turns`: the times he reverses (each is a throw), `fielders_at`
+## (the two bags the fielders stand at: [behind, ahead]), and the end ("OUT" or "SAFE") with its base.
+static func plan_rundown(base: int, runner, outcome: String, lead_fraction: float = 0.14) -> Dictionary:
+	var bb: Vector3 = BASE_POS[base] if base < 4 else Defense.HOME
+	var ab: Vector3 = Defense.HOME if base >= 3 else (BASE_POS[base + 1] as Vector3)
+	var legs: Array = []
+	match outcome:
+		"rundown_safe_back":
+			legs = [[0.66, 0.85], [0.0, 1.15]]
+		"rundown_safe_ahead":
+			legs = [[0.66, 0.85], [0.18, 0.95], [1.0, 1.15]]
+		_:
+			legs = [[0.66, 0.85], [0.18, 0.95], [0.52, 0.90]]
+	var r := _runner_entry(base, base, runner, _factor_of(runner))
+	var keys: Array = [[0.0, bb.lerp(ab, lead_fraction)]]
+	var turns: Array = []
+	var t := 0.35                                       # he reads the throw before he goes
+	keys.append([t, keys[0][1]])
+	for i in legs.size():
+		t += float(legs[i][1])
+		keys.append([t, bb.lerp(ab, float(legs[i][0]))])
+		if i < legs.size() - 1:
+			turns.append(t)
+	r["keys"] = keys
+	var end_base := base
+	var is_out := outcome == "rundown_out"
+	if outcome == "rundown_safe_ahead":
+		end_base = base + 1
+	var events: Array = []
+	if is_out:
+		r.out = true
+		r.out_base = base
+		r.t_out = t
+		events.append({"t": t, "base": base, "text": "OUT", "kind": "out"})
+	else:
+		events.append({"t": t, "base": mini(end_base, 4), "text": "SAFE", "kind": "safe"})
+	var res := {"runners": [r] as Array[Dictionary], "events": events, "throws": [], "runs": 0, "outs_added": 1 if is_out else 0,
+		"suffix": "", "hold": false, "hide_batter_at": 9999.0, "rundown": true, "turns": turns, "end_time": t,
+		"fielders_at": [base, base + 1], "end_safe_base": end_base}
+	_tally(res, 0)
+	res["end_time"] = t + 0.4                     # the picture ends a beat after the last call
+	return res
+
+
 ## Mark the runner in a steal plan out at the base he was going to, at time t_out.
 static func steal_out(plan: Dictionary, t_out: float) -> void:
 	var r: Dictionary = plan.runners[0]

@@ -141,6 +141,9 @@ var _game_recorded := false
 var _call_label: Label3D                    # the umpire's call as words, above the plate
 var _call_label_until := 0.0
 var _seat_done := false
+var _gestures := Gestures.new()
+var _pickoff_override := ""                 # tests: force a throw over's outcome
+var _node_moves: Array = []                 # fielders walking into position for a rundown
 var _bat_call := ""                         # a play called with this pitch: "squeeze" or "hit_and_run" ("" for none)
 var _scenario: Scenario            # the challenge being played (null in an ordinary game)
 var _scenario_id := ""
@@ -611,9 +614,16 @@ func _do_pickoff(base: int, from: Vector3, vel: Vector3, err: float) -> void:
 			_show_notice("Throw to %s" % ["", "first", "second", "third"][base])
 		return
 	var chance := StealModel.pickoff_chance(float(_leads[base - 1]), err, vel.length(), runner as Player)
-	var out := _run_rng.randf() < chance
-	_log("pickoff", {"base": base, "runner": (runner as Player).name, "lead": _leads[base - 1], "err_deg": err,
-		"speed": vel.length(), "chance": snappedf(chance, 0.001), "out": out})
+	var lead_now := float(_leads[base - 1])
+	var outcome := _pickoff_override if _pickoff_override != "" else StealModel.pickoff_outcome(chance, lead_now, _run_rng)
+	if outcome == "rundown_safe_ahead" and base < 3 and _game.bases[base] != null:
+		outcome = "rundown_safe_back"                 # the next base is taken
+	var out := outcome == "out"
+	_log("pickoff", {"base": base, "runner": (runner as Player).name, "lead": lead_now, "err_deg": err,
+		"speed": vel.length(), "chance": snappedf(chance, 0.001), "outcome": outcome})
+	if outcome.begins_with("rundown") and _aux_play.is_empty():
+		_start_rundown(base, runner, outcome)
+		return
 	if _aux_play.is_empty():
 		var bag := Baserunning.BASE_POS[base] as Vector3
 		var plan := Baserunning.plan_dive_back(base, runner, _director.stand_for(base), PlayDirector.BASE_STANDS[base - 1], dur + 0.25, out)
@@ -626,6 +636,56 @@ func _do_pickoff(base: int, from: Vector3, vel: Vector3, err: float) -> void:
 	else:
 		_last_report = "Throw over to %s: safe" % ["", "first", "second", "third"][base]
 	_refresh_hud()
+
+
+## A throw over catches him between the bases: two fielders run him back and forth. The book is settled
+## now (out, back safe, or on to the next base); the picture plays it out.
+func _start_rundown(base: int, runner, outcome: String) -> void:
+	var before := _game.bases.duplicate()
+	var plan := Baserunning.plan_rundown(base, runner, outcome)
+	_aux_play = {"plan": plan, "t": 0.0}
+	_leads[base - 1] = StealModel.lead_after_throw()
+	var behind := int(HumanFielding.receiver(base, 1))
+	var ahead := 2 if base >= 3 else (5 if base == 2 else 4)
+	if base == 2:
+		ahead = 5
+	elif base == 1:
+		ahead = 6 if behind == 4 else 4
+	var spot_b: Vector3 = Baserunning.RECEIVE_SPOT[base]
+	var spot_a: Vector3 = Baserunning.RECEIVE_SPOT[mini(base + 1, 4)]
+	# The fielders move to their bags, and the ball goes back and forth as the runner turns.
+	_move_node(_field_nodes.get(behind), spot_b, 0.5)
+	_move_node(_field_nodes.get(ahead), spot_a, 0.6)
+	var hand := Vector3(0.0, 1.5, 0.0)
+	var throws: Array = [0.4] + (plan.turns as Array).map(func(t): return float(t) - 0.2)
+	var holder_is_behind := true
+	for tt in throws:
+		var from_spot: Vector3 = (spot_b if holder_is_behind else spot_a) + hand
+		var to_spot: Vector3 = (spot_a if holder_is_behind else spot_b) + Vector3(0.0, 1.15, 0.0)
+		_spawn_flight(from_spot, to_spot, float(tt), 0.42, ahead if holder_is_behind else behind)
+		holder_is_behind = not holder_is_behind
+	var text := ""
+	match outcome:
+		"rundown_out":
+			var ev := _game.pickoff(base)
+			text = "RUN DOWN between %s and %s\n" % [["", "first", "second", "third"][base], ["", "second", "third", "home"][base]] + _event_text(ev)
+			_after_event(ev)
+		"rundown_safe_ahead":
+			var ev2 := _game.advance_runner(base)
+			text = "Beats the rundown!\n" + _event_text(ev2)
+			_after_event(ev2)
+		_:
+			text = "In a rundown, but he gets back safe"
+	_last_report = text
+	_haptics.play("buzz", 0.3)
+	_refresh_base_runners(before)             # the figure keeps running until the picture is done
+	_refresh_hud()
+
+
+func _move_node(node: Node3D, to: Vector3, seconds: float) -> void:
+	if node == null:
+		return
+	_node_moves.append({"node": node, "from": node.position, "to": Vector3(to.x, 0.0, to.z), "t": 0.0, "dur": seconds})
 
 
 func _call_balk(why: String) -> void:
@@ -656,6 +716,20 @@ func _spawn_flight(from: Vector3, to: Vector3, delay: float, dur: float, receive
 
 
 func _update_flights(delta: float) -> void:
+	for i in range(_node_moves.size() - 1, -1, -1):
+		var nm: Dictionary = _node_moves[i]
+		nm.t += delta
+		var nn: Node3D = nm.node
+		if not is_instance_valid(nn):
+			_node_moves.remove_at(i)
+			continue
+		var u := clampf(float(nm.t) / float(nm.dur), 0.0, 1.0)
+		var dir: Vector3 = (nm.to as Vector3) - (nm.from as Vector3)
+		nn.position = (nm.from as Vector3).lerp(nm.to, u)
+		if u < 1.0 and dir.length() > 0.2:
+			nn.rotation.y = atan2(dir.x, dir.z)
+		if u >= 1.0:
+			_node_moves.remove_at(i)
 	for i in range(_flights.size() - 1, -1, -1):
 		var f: Dictionary = _flights[i]
 		f.t += delta
@@ -1129,6 +1203,7 @@ func _process(delta: float) -> void:
 	if _call_label != null and _call_label.visible and _game_time > _call_label_until:
 		_call_label.visible = false
 	_seat_check()
+	_poll_gestures(delta)
 	if _visit_timer > 0.0:
 		_visit_timer -= delta
 	_crew.update(delta)
@@ -2420,6 +2495,26 @@ func _on_umpire_spoke(id: String, delay: float) -> void:
 		_call_label.text = words
 		_call_label.visible = true
 		_call_label_until = _game_time + 1.7)
+
+
+## Hand signals with your glove hand (Options > Hand signals): overhead is an intentional walk, at the
+## ear calls for the bullpen. Only while you pitch and the other hand is empty.
+func _poll_gestures(delta: float) -> void:
+	if not _settings.gestures or not _xr_active or _off_hand == null or _camera == null or not _off_hand.get_is_active() 			or not _mode.human_pitcher or _game == null or _game.over or _scenario != null:
+		return
+	var sig := _gestures.update(delta, _camera.global_position, _off_hand.global_position, _held)
+	match sig:
+		"intentional_walk":
+			_log("gesture", {"signal": sig})
+			_haptics.play("ui_select")
+			_issue_intentional_walk()
+		"bullpen_phone":
+			_log("gesture", {"signal": sig})
+			_haptics.play("ui_select")
+			if _menu != null and not _menu.is_open() and lineup_mode == "Game":
+				_toggle_pause()
+				_menu.model.can_leave = true
+				_menu.goto("confirm_leave")
 
 
 ## Seated play: once the headset is tracking, lift the whole rig so a seated head is where a standing
