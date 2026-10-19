@@ -25,7 +25,7 @@ func _init() -> void:
 
 	# --- Main menu: no Continue until a game has been played.
 	_check(m.screen() == "main" and _find(m, "continue") == -1, "a first launch has no Continue")
-	_check(_find(m, "stats") >= 0 and not m.items()[_find(m, "stats")].enabled, "stats are shown as coming soon")
+	_check(_find(m, "stats") >= 0 and m.items()[_find(m, "stats")].enabled, "stats and leaderboards are on the main menu")
 
 	# --- Play -> Pitching -> Start.
 	m.activate(_find(m, "play"))

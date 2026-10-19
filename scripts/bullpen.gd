@@ -133,6 +133,8 @@ var _director := PlayDirector.new()   # puts a play on the field: fielders, ball
 var _crew: PlateCrew          # drives the catcher and the umpire
 var _props: FieldProps        # dust, dropped bats, and calls that wait for their moment
 var _dust: DustPuffs          # _props.dust
+var _profile := PlayerProfile.load_from()   # lifetime stats, leaderboards, challenge results
+var _game_recorded := false
 var _haptics := Haptics.new()     # controller vibration
 var _sound: SoundDirector
 var _audio: AudioManager          # _sound.audio, for the loops that follow the ball
@@ -1253,7 +1255,9 @@ func _build_menu(show_main: bool) -> void:
 	for c in [_hand, _off_hand]:
 		if c != null:
 			ctrls.append(c)
-	_menu.setup(MenuModel.new(_settings), _camera, ctrls)
+	var menu_model := MenuModel.new(_settings)
+	menu_model.profile = _profile
+	_menu.setup(menu_model, _camera, ctrls)
 	_menu.chosen.connect(_on_menu_event)
 	Session.current = _current_config()
 	if show_main:
@@ -1328,6 +1332,7 @@ func _new_game() -> void:
 	_home_order = 0
 	if _sound != null:
 		_sound.new_game()
+	_game_recorded = false
 	_stats.reset()
 	if _zone_markers:
 		_zone_markers.clear()
@@ -2393,6 +2398,37 @@ func _event_text(ev: Dictionary) -> String:
 	return " | ".join(parts)
 
 
+## What you did in this game, as one pitching line.
+func _game_line() -> Dictionary:
+	var t := _stats.pitch_totals()
+	var n := maxi(int(t.n), 1)
+	return {"outs": _game.outs_recorded, "pitches": _game.pitch_count, "strikes": int(t.strikes), "k": _game.strikeouts,
+		"bb": _game.walks, "h": _game.hits, "r": _game.runs, "hr": _game.home_runs,
+		"max_mph": float(t.mph_max), "avg_mph": float(t.mph_sum) / n,
+		"won": _game.home_score > _game.runs, "lost": _game.home_score < _game.runs,
+		"score_for": _game.home_score, "score_against": _game.runs}
+
+
+## A finished game goes in the book (only games you pitch that count for a leaderboard).
+func _record_finished_game() -> void:
+	if _game_recorded or not _mode.human_pitcher:
+		return
+	_game_recorded = true
+	var cfg := _current_config()
+	if not cfg.is_scored():
+		return
+	var line := _game_line()
+	var r := _profile.record_game(cfg, line)
+	_profile.save()
+	var text := "Game Score %d" % int(r.score)
+	if int(r.rank) == 1:
+		text += " - best on this board!"
+	elif int(r.rank) > 0:
+		text += " - #%d on this board" % int(r.rank)
+	_log("game_recorded", {"score": r.score, "rank": r.rank, "key": r.key, "line": line})
+	_show_notice(text, true)
+
+
 ## After anything that changes the game: next batter, runners, scoreboard, game over.
 func _after_event(ev: Dictionary, extra: Dictionary = {}) -> void:
 	if ev.is_empty():
@@ -2414,6 +2450,7 @@ func _after_event(ev: Dictionary, extra: Dictionary = {}) -> void:
 	elif _aux_play.is_empty() and _walk_on.is_empty() and not _play_in_progress():
 		_batter_ready = true          # a foul (or any pitch that did not end the at-bat): he is still up
 	if ev.get("game_over", false):
+		_record_finished_game()
 		_game_over_timer = 8.0
 		_log("game_over", {"final": _game.final_text(), "line": _game.line_text(), "stats": {"k": _game.strikeouts,
 			"bb": _game.walks, "hits": _game.hits, "wp": _game.wild_pitches, "sb": _game.stolen_bases, "cs": _game.caught_stealing,

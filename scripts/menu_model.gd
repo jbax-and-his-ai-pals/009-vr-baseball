@@ -15,6 +15,8 @@ var settings: Settings
 var config := GameConfig.new()
 var stack: Array[String] = ["main"]
 var current_game: GameConfig = null       # the game being played, for the pause screen
+var profile: PlayerProfile = PlayerProfile.new()   # what the Stats screen shows
+var stats_key := ""                       # the leaderboard the Stats screen is showing
 const VOLUME_ROWS := {"Master": "Master volume", "SFX": "Effects", "Crowd": "Crowd", "Music": "Music", "Voice": "Voices"}
 const VOLUME_STEPS := [0.0, 0.25, 0.5, 0.75, 1.0]
 
@@ -54,6 +56,8 @@ func title() -> String:
 			return "Options"
 		"audio":
 			return "Sound"
+		"stats":
+			return "Stats"
 		"pause":
 			return "Paused" if current_game == null else "Paused - " + current_game.title()
 	return ""
@@ -77,7 +81,7 @@ func items() -> Array[Dictionary]:
 				rows.append(_row("continue", "Continue", last.title()))
 			rows.append(_row("play", "Play"))
 			rows.append(_row("options", "Options"))
-			rows.append(_row("stats", "Stats & leaderboards", "", false, "coming soon"))
+			rows.append(_row("stats", "Stats & leaderboards"))
 			rows.append(_row("quit", "Quit"))
 		"play":
 			rows.append(_row("mode:Pitching", "Pitching", "you pitch to AI batters"))
@@ -108,6 +112,21 @@ func items() -> Array[Dictionary]:
 			rows.append(_row("snap_turn", "Snap turn", "on" if settings.snap_turn else "off"))
 			rows.append(_row("developer", "Developer options", "on" if settings.developer else "off"))
 			rows.append(_row("audio", "Sound", "volume, crowd, music"))
+			rows.append(_row("back", "Back"))
+		"stats":
+			for line in profile.lifetime_lines():
+				rows.append(_row("info", line, "", false))
+			var keys := profile.keys_played()
+			if not keys.is_empty():
+				if stats_key not in keys:
+					stats_key = keys[0]
+				rows.append(_row("stats_key", "Leaderboard", key_label(stats_key), keys.size() > 1, "best games by Game Score"))
+				var rank := 1
+				for entry in profile.top(stats_key, 5):
+					var ln: Dictionary = entry.line
+					rows.append(_row("info", "#%d   score %d" % [rank, int(entry.score)],
+						"%s IP, %d K, %d R" % [PlayerProfile.ip_text(int(ln.get("outs", 0))), int(ln.get("k", 0)), int(ln.get("r", 0))], false))
+					rank += 1
 			rows.append(_row("back", "Back"))
 		"audio":
 			for bus in VOLUME_ROWS:
@@ -162,6 +181,12 @@ func activate(index: int) -> Dictionary:
 	match id:
 		"audio":
 			stack.append("audio")
+		"stats":
+			stack.append("stats")
+		"stats_key":
+			var ks := profile.keys_played()
+			if not ks.is_empty():
+				stats_key = _cycle(ks, stats_key)
 		"continue":
 			var c := GameConfig.from_dict(settings.last_game)
 			return {"type": "start", "config": c}
@@ -225,3 +250,11 @@ func back() -> Dictionary:
 	if stack.size() > 1:
 		stack.pop_back()
 	return {}
+
+
+## "Pitching/9inn/Standard" as words.
+static func key_label(key: String) -> String:
+	var parts := key.split("/")
+	if parts.size() != 3:
+		return key
+	return "%s, %s, %s" % [parts[0], parts[1].replace("inn", " inn"), parts[2]]

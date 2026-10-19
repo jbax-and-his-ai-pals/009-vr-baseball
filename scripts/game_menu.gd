@@ -227,8 +227,9 @@ func _click(i: int) -> void:
 	if i < 0 or i >= _rows.size():
 		return
 	if not _rows[i].enabled:
-		ui_sound.emit("ui_error")
-		ui_haptic.emit(_pointer, "ui_error")
+		if not String(_rows[i].id).begins_with("info"):      # a line of text is not a button that failed
+			ui_sound.emit("ui_error")
+			ui_haptic.emit(_pointer, "ui_error")
 		return
 	var row_id: String = _rows[i].id
 	ui_haptic.emit(_pointer, "ui_select")
