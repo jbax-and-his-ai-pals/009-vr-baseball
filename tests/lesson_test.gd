@@ -95,6 +95,11 @@ func _init() -> void:
 	pitch.analysis = {"reached": true, "strike": true, "speed_mph": 80.0, "spin_rpm": 2000.0, "ivb_in": 12.0, "hb_in": 0.0}
 	pitch.shape = {"z_snap": 0.0, "z_side": 0.0, "z_gyro": 0.0, "z_slot": 0.0, "z_wind": 0.0, "stiff": 0.0}
 	_check(bp.acts.lab_lines(pitch).contains("usual throw"), "in the lesson every pitch gets its explanation")
+	_check(PitchLab.grip("Curveball").contains("middle finger") and PitchLab.grip("Four-seam").contains("seams") and PitchLab.grip("???") == "", "every named pitch has a grip hint, others none")
+	bp._settings.assist = "Casual"
+	_check(bp.acts.lab_lines(pitch).contains("Grip:"), "at the Casual assist the lab says how to hold the pitch")
+	bp._settings.assist = "Pro"
+	_check(not bp.acts.lab_lines(pitch).contains("Grip:"), "and not at Pro")
 	for i in 8:
 		bp.acts.tutorial_pitch(pitch)
 	_check(bp.acts.tutorial.step == 1 and bp._settings.tutorial_step == 1, "eight fastballs advance the lesson and save your place")

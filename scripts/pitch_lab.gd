@@ -75,3 +75,26 @@ static func how_to(label: String) -> String:
 		"Knuckleball":
 			return "Knuckleball: a straight push with a dead wrist and almost no rotation."
 	return "Throw it your own way; the game measures it against your usual throw."
+
+
+## How the real pitch is gripped (the controllers cannot show fingers, so this is a hint in words at the easier assists).
+static func grip(label: String) -> String:
+	match label:
+		"Fastball", "Four-seam":
+			return "Grip: two fingers across the seams, thumb underneath."
+		"Two-seam", "Sinker":
+			return "Grip: two fingers along the seams, a little off center."
+		"Changeup":
+			return "Grip: the ball deep in the palm, the circle of thumb and finger on the side."
+		"Slider":
+			return "Grip: off center, the first finger along a seam, wrist turned like a doorknob."
+		"Cutter":
+			return "Grip: a fastball grip moved slightly off center."
+		"Curveball", "Slurve":
+			return "Grip: the middle finger on a seam, the thumb underneath, snap down."
+		"Splitter":
+			return "Grip: the ball wedged between the first two fingers."
+		"Knuckleball":
+			return "Grip: the knuckles or fingertips on the ball, no spin."
+	return ""
+

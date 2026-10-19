@@ -128,7 +128,10 @@ func update_scenario(ev: Dictionary) -> void:
 func lab_lines(pitch: LivePitch) -> String:
 	if not (host._config.activity == "Bullpen" or host._config.tutorial) or pitch.shape.is_empty():
 		return ""
-	return "\n" + "\n".join(PitchLab.explain(pitch.label, pitch.analysis, pitch.shape))
+	var lines: Array = PitchLab.explain(pitch.label, pitch.analysis, pitch.shape)
+	if host._settings.assist == "Casual" and PitchLab.grip(pitch.label) != "":
+		lines.append(PitchLab.grip(pitch.label))             # at the easiest assist the lab also says how to hold it
+	return "\n" + "\n".join(lines)
 
 
 ## One pitch of the lesson: it moves on by itself and says what it saw.
