@@ -300,6 +300,9 @@ func _ready() -> void:
 			fielding_position = clampi(int(a.substr(12)), 1, 9)
 	_auto_field = "--auto-field" in OS.get_cmdline_user_args()
 	apply_config(_current_config())
+	for pa in OS.get_cmdline_user_args():
+		if pa.begins_with("--park="):
+			Park.current = Park.by_id(pa.substr(7))          # debug: play in this park
 	_mode = GameMode.by_name(game_mode_name)
 	if not _mode.human_fielders.is_empty():
 		_mode = GameMode.fielding(fielding_position)

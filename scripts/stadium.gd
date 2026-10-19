@@ -392,7 +392,7 @@ func _build_details() -> void:
 		var sc := Vector3(rng.randf_range(18.0, 40.0), rng.randf_range(4.0, 7.0), rng.randf_range(10.0, 22.0))
 		_clouds.multimesh.set_instance_transform(i, Transform3D(Basis.IDENTITY.scaled(sc), pos))
 	var cm := StandardMaterial3D.new()
-	cm.albedo_color = Color(1.0, 1.0, 1.0)
+	cm.albedo_color = Color(0.16, 0.18, 0.30) if Park.now().night else Color(1.0, 1.0, 1.0)      # clouds at night are dark
 	cm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	_clouds.material_override = cm
 	add_child(_clouds)
