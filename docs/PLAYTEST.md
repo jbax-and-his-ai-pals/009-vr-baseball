@@ -197,3 +197,13 @@ Options > Haptics: Off / Low / Normal / Strong.
 - [ ] Rundowns: throw over with a big lead (do not throw over for several pitches first). Sometimes the runner is caught between the bases; two fielders throw it back and forth; he is out, gets back, or beats it to the next base. Is the animation readable?
 - [ ] In Spectate or Fielding mode there is a pitcher on the mound: he winds up before each pitch and covers first on a ground ball to the first baseman.
 - [ ] Left-handed throwing: Options > Throwing hand = left; do pitches land where you aim from the start, and do the breaking pitches break the right way?
+
+## 16. Hitting, drills, comebackers, derby (new; the biggest untested thing)
+
+- [ ] Play > Hitting: you stand just outside your box (the side from Options > Throwing hand), a bat is in your throwing hand, an AI pitcher throws. Does the bat follow the controller? Is the barrel where you expect (a 0.85 m bat pointing a little above where the controller points)?
+- [ ] A swing through the ball: contact, a hit (a notice says where on the bat and the timing, with exit speed and launch angle), fielders react. Swing and miss counts a strike; holding still takes the pitch (ball or called strike).
+- [ ] Does the bat feel too long, too short, tilted wrong? (`SwingTracker.pitch_deg` 35 and `BatPhysics.LENGTH` 0.85 are the knobs.) Can you hit a 90 mph-equivalent pitch on time? Do hard swings go 90-110 mph and handle hits go weak?
+- [ ] Hitting > Derby: ten outs of slow pitches; homers are counted; the result is stars. Is it too hard or too easy to homer?
+- [ ] Fielding > Drill: ten balls come at your position, with a notice per ball and a stars result.
+- [ ] Pitching: a ball hit right back at you becomes your chance: glove hand on it, grip and throw to first (a missed one goes by and the defense plays it).
+- [ ] AI throwing errors: now and then a throw to first sails and the runner is on.

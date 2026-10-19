@@ -13,8 +13,8 @@ extends RefCounted
 ##   batter    the practice batter's profile name
 ##   assist    Casual | Standard | Pro  (see Settings)
 
-const MODES := ["Pitching", "Spectate", "Fielding"]
-const ACTIVITIES := ["Game", "Practice", "Bullpen", "Drill"]
+const MODES := ["Pitching", "Spectate", "Fielding", "Hitting"]
+const ACTIVITIES := ["Game", "Practice", "Bullpen", "Drill", "Derby"]
 const INNINGS := [1, 3, 9]
 const BATTERS := ["Little Leaguer", "Rookie", "Contact Hitter", "Slugger", "All-Star", "MVP"]
 
@@ -59,6 +59,9 @@ func normalized() -> GameConfig:
 	# A drill is ten balls hit to your position: only for Fielding.
 	if c.activity == "Drill" and c.mode != "Fielding":
 		c.activity = "Game"
+	# A derby is ten outs of easy pitches to swing at: only for Hitting.
+	if c.activity == "Derby" and c.mode != "Hitting":
+		c.activity = "Game"
 	# A bullpen has no innings and nobody to field.
 	if c.activity == "Bullpen" and c.mode != "Pitching":
 		c.activity = "Game"
@@ -94,6 +97,8 @@ func title() -> String:
 			return "%s - practice vs %s" % [who, batter]
 		"Drill":
 			return "%s - drill" % who
+		"Derby":
+			return "Home run derby"
 		_:
 			return "%s - bullpen" % who
 

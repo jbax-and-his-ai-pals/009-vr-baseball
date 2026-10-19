@@ -180,7 +180,7 @@ func _init() -> void:
 	_check(m_p.human_pitcher and m_p.supported and not m_p.is_all_ai(), "Pitching: you pitch, supported")
 	_check(m_s.is_all_ai() and m_s.supported, "Spectate: everyone is AI")
 	_check(m_f.supported and not m_f.is_ai_fielder(6) and m_f.is_ai_fielder(8), "Fielding: playable; you take one position, the AI the rest")
-	_check(not GameMode.by_name("hitting").supported and GameMode.by_name("nonsense").name == "Pitching", "unbuilt modes are flagged; unknown names fall back to Pitching")
+	_check(GameMode.by_name("hitting").supported and GameMode.by_name("hitting").human_batter and not GameMode.by_name("hitting").human_pitcher and GameMode.by_name("nonsense").name == "Pitching", "Hitting: you bat; unknown names fall back to Pitching")
 
 	# --- Fatigue and relievers.
 	var arm := Player.new()

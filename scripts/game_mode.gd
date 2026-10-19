@@ -45,14 +45,13 @@ static func fielding(position: int = 6) -> GameMode:
 	return m
 
 
-## Reserved: the human bats against an AI pitcher.
+## The human bats against an AI pitcher: the controller is the bat, for every batter on his team.
 static func hitting() -> GameMode:
 	var m := GameMode.new()
 	m.name = "Hitting"
 	m.human_pitcher = false
 	m.human_batter = true
-	m.supported = false
-	m.summary = "You bat against an AI pitcher. Not built yet."
+	m.summary = "You bat against an AI pitcher: swing the controller. AI fielders and runners."
 	return m
 
 

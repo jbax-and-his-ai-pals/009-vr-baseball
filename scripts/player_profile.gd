@@ -37,6 +37,11 @@ static func fielding_score(line: Dictionary) -> int:
 		- 10 * int(line.get("errors", 0)) - 2 * int(line.get("r", 0))
 
 
+## Hitting Score for one game: hits, homers, walks and runs up, strikeouts down.
+static func hitting_score(line: Dictionary) -> int:
+	return 50 + 6 * int(line.get("h", 0)) + 8 * int(line.get("hr", 0)) + 3 * int(line.get("bb", 0)) + 2 * int(line.get("r", 0)) - 4 * int(line.get("k", 0))
+
+
 static func ip_text(outs: int) -> String:
 	return "%d.%d" % [outs / 3, outs % 3]
 
@@ -46,7 +51,8 @@ static func ip_text(outs: int) -> String:
 func record_game(config: GameConfig, line: Dictionary, when: float = -1.0) -> Dictionary:
 	var key := config.leaderboard_key()
 	var fielding := String(line.get("kind", "pitching")) == "fielding"
-	var score := fielding_score(line) if fielding else game_score(line)
+	var hitting := String(line.get("kind", "pitching")) == "hitting"
+	var score := fielding_score(line) if fielding else (hitting_score(line) if hitting else game_score(line))
 	var t := when if when >= 0.0 else Time.get_unix_time_from_system()
 	games.append({"t": t, "key": key, "title": config.title(), "line": line, "score": score})
 	while games.size() > MAX_GAMES:
@@ -69,6 +75,12 @@ func record_game(config: GameConfig, line: Dictionary, when: float = -1.0) -> Di
 
 
 func _add_totals(line: Dictionary) -> void:
+	if String(line.get("kind", "pitching")) == "hitting":
+		totals["h_games"] = int(totals.get("h_games", 0)) + 1
+		for k in ["pa", "h", "hr", "k", "bb", "r"]:
+			totals["h_" + k] = int(totals.get("h_" + k, 0)) + int(line.get(k, 0))
+		totals["h_ev_max"] = maxf(float(totals.get("h_ev_max", 0.0)), float(line.get("ev_max", 0.0)))
+		return
 	if String(line.get("kind", "pitching")) == "fielding":
 		totals["f_games"] = int(totals.get("f_games", 0)) + 1
 		for k in ["chances", "caught", "missed", "errors", "assists"]:
@@ -136,8 +148,12 @@ func keys_played() -> Array:
 func lifetime_lines() -> Array:
 	var g := int(totals.get("games", 0))
 	var fg := int(totals.get("f_games", 0))
-	if g == 0 and fg == 0:
+	var hg := int(totals.get("h_games", 0))
+	var hit_line: Array = [] if hg == 0 else ["Hitting: %d games, %d H, %d HR, %d K, hardest %.0f mph" % [hg, int(totals.get("h_h", 0)), int(totals.get("h_hr", 0)), int(totals.get("h_k", 0)), float(totals.get("h_ev_max", 0.0))]]
+	if g == 0 and fg == 0 and hg == 0:
 		return ["No games finished yet"]
+	if g == 0 and fg == 0:
+		return hit_line
 	if g == 0:
 		return ["Fielding: %d games, %d of %d caught, %d errors" % [fg, int(totals.get("f_caught", 0)), int(totals.get("f_chances", 0)), int(totals.get("f_errors", 0))]]
 	var pitches := int(totals.get("pitches", 0))

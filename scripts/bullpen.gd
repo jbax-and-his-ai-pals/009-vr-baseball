@@ -25,7 +25,7 @@ enum SpinMode { RAW, WRIST_MODEL }
 ## throws and you watch. (Fielding and Hitting exist as modes but are not built yet.)
 ## Open the main menu when the game starts (only when launched with no debug flags, or --menu).
 @export var menu_on_start := true
-@export_enum("Pitching", "Spectate", "Fielding") var game_mode_name: String = "Pitching"
+@export_enum("Pitching", "Spectate", "Fielding", "Hitting") var game_mode_name: String = "Pitching"
 ## The position you play in Fielding mode (3 first base ... 9 right field; 6 is shortstop).
 @export_range(3, 9, 1) var fielding_position := 6
 ## Game: a nine-inning game against a nine-man lineup, with the count, outs and runners.
@@ -148,7 +148,13 @@ var _seat_done := false
 var _gestures := Gestures.new()
 var _pickoff_override := ""                 # tests: force a throw over's outcome
 var _node_moves: Array = []                 # fielders walking into position for a rundown
+var _tracker := SwingTracker.new()          # your controller as a bat (Hitting)
+var _bat_view: MeshInstance3D               # the bat in your hand
 var _bat_call := ""                         # a play called with this pitch: "squeeze" or "hit_and_run" ("" for none)
+var _derby := false                         # home run derby: ten outs of easy pitches
+var _derby_outs := 0
+var _derby_hr := 0
+var _derby_done := false
 var _drill := false                         # ten balls hit to your fielding position
 var _drill_left := 10
 var _drill_timer := 3.0
@@ -314,6 +320,11 @@ func _ready() -> void:
 	_haptics.off_hand = _off_hand
 	_haptics.set_level(_settings.haptics)
 	PitchLocation.colorblind = _settings.colorblind
+	if _mode.human_batter:
+		_bat_view = MeshInstance3D.new()          # the bat in your hand
+		_bat_view.mesh = Figure.bat_mesh()
+		_bat_view.material_override = MeshMerger.vertex_color_material()
+		add_child(_bat_view)
 	_build_menu(want_menu)
 	_sound = SoundDirector.new()
 	add_child(_sound)
@@ -1130,6 +1141,11 @@ func _setup_xr() -> void:
 			var spot: Vector3 = _defense.fielder_by_num(int(_mode.human_fielders[0])).home
 			origin.position = Vector3(spot.x, 0.0, spot.z)
 			origin.rotation.y = atan2(spot.x, spot.z)       # face home plate
+		if _mode.human_batter:
+			# You stand just outside your box, square to the pitcher.
+			var side := 1.0 if _settings.hand == "right" else -1.0
+			origin.position = Vector3(side * 1.2, 0.0, -0.1)
+			origin.rotation.y = PI
 		_origin = origin
 		add_child(origin)
 		var cam := XRCamera3D.new()
@@ -1224,7 +1240,7 @@ func _run_ai_pitcher(delta: float) -> void:
 	var release := Vector3(0.0, PitchPhysics.MOUND_H + 1.85, PitchPhysics.MOUND_Z - 1.7)
 	_last_delivery = clampf(_run_rng.randfn(1.05, 0.15) - 0.2 * (_ai_pitcher.player.command - 50.0) / 50.0, 0.7, 1.5)
 	_on_delivery_start()
-	var pitch := _ai_pitcher.next_pitch(release)
+	var pitch := _derby_pitch(release) if _derby else _ai_pitcher.next_pitch(release)
 	var mound_man = _field_nodes.get(1)
 	if mound_man is Doll:
 		# He winds up and throws: the ball leaves his hand as the arm comes through.
@@ -1253,6 +1269,9 @@ func _process(delta: float) -> void:
 	if _call_label != null and _call_label.visible and _game_time > _call_label_until:
 		_call_label.visible = false
 	_seat_check()
+	if _mode.human_batter and _batter != null:
+		_batter.visible = false              # you are the batter
+	_update_human_bat(Time.get_ticks_usec() / 1_000_000.0)
 	_poll_gestures(delta)
 	_run_drill(delta)
 	if _visit_timer > 0.0:
@@ -1415,6 +1434,7 @@ func apply_config(c: GameConfig) -> void:
 	lineup_mode = "Game" if c.activity == "Game" else "Practice"
 	_scenario_id = c.scenario
 	_drill = c.activity == "Drill" and not _mode_is_not_fielding(c)
+	_derby = c.activity == "Derby" and c.mode == "Hitting"
 	_career_game = c.career and _career != null and not _career.is_over()
 
 
@@ -1522,6 +1542,9 @@ func _new_game() -> void:
 		_sound.new_game()
 	_game_recorded = false
 	_fld = {"chances": 0, "caught": 0, "missed": 0, "errors": 0, "assists": 0}
+	_derby_outs = 0
+	_derby_hr = 0
+	_derby_done = false
 	_drill_left = 10
 	_drill_started = 0
 	_drill_timer = 3.0
@@ -1666,7 +1689,7 @@ func _launch(from: Vector3, vel: Vector3, spin: Vector3, label: String, flutter_
 	var pitcher_right := (throwing_hand == &"right_hand") if _mode.human_pitcher else _ai_pitcher.player.throws_right
 	if _batter_player != null:
 		_batter_ai.platoon = BatterAI.platoon_for(_batter_player.bats_right, pitcher_right)
-	pitch.bat = _batter_ai.evaluate({"release": from, "vel": vel, "spin": spin,
+	pitch.bat = _evaluate_batter({"release": from, "vel": vel, "spin": spin,
 		"situation": {"bases": [_game.bases[0] != null, _game.bases[1] != null, _game.bases[2] != null],
 			"outs": _game.outs, "strikes": _game.strikes, "balls": _game.balls, "call": _bat_call},
 		"flutter_amp": flutter_amp, "flutter_seed": flutter_seed, "analysis": pitch.analysis})
@@ -1716,6 +1739,53 @@ func _launch(from: Vector3, vel: Vector3, spin: Vector3, label: String, flutter_
 	return pitch
 
 
+## The batter's decision for this pitch: the AI's, or (when you bat) a take until your bat says otherwise.
+func _evaluate_batter(d: Dictionary) -> Dictionary:
+	if _mode.human_batter:
+		return {"swing": false, "contact": false, "kind": "take", "p_swing": 0.0}
+	return _batter_ai.evaluate(d)
+
+
+## Hitting: each step of a pitch in flight, does your bat meet the ball? If so the collision decides the hit.
+## Returns true if the ball was hit (the pitch has become a batted ball).
+func _human_swing_check(pitch: LivePitch, next_pos: Vector3) -> bool:
+	if pitch.pos.z < 3.0 and pitch.pos.z > -1.2:
+		pitch.swing_peak = maxf(pitch.swing_peak, _tracker.barrel_speed())
+	var touch := BatPhysics.touch(pitch.pos, next_pos, _tracker.knob, _tracker.tip)
+	if touch.is_empty():
+		return false
+	var res := BatPhysics.collide(touch, pitch.vel, _tracker.knob, _tracker.tip, _tracker.knob_vel, _tracker.tip_vel)
+	if res.is_empty():
+		return false
+	res["contact_time"] = pitch.flight_time
+	res["t_err"] = 0.0
+	pitch.pos = touch.ball
+	pitch.bat = res
+	pitch.sim = BattedBall.simulate(res.contact_pos, res.vel, res.spin)
+	if res.kind == "hit":
+		_resolve_ball(pitch)
+	else:
+		pitch.play = {"result": "foul", "text": "Foul tip", "short": "Foul tip", "fielder": 0,
+			"movements": [], "bases": 0, "field_time": 0.0, "field_pos": Vector3.ZERO, "foul_tip": true}
+	_swings += 1
+	_contact(pitch)
+	var where := "off the end" if float(res.s) > 0.76 else ("jammed" if float(res.s) < 0.38 else ("on the barrel" if BatPhysics.sweetness(float(res.s)) > 0.8 else "off the barrel"))
+	var timing := "out front" if res.contact_pos.z > 0.35 else ("deep" if res.contact_pos.z < -0.2 else "on time")
+	if res.kind == "hit":
+		_show_notice("%s, %s: %.0f mph, %+.0f deg" % [where, timing, float(res.ev), float(res.la)], true)
+	return true
+
+
+## Your controller drives the bat every frame; the bat in your hand follows it.
+func _update_human_bat(now: float) -> void:
+	if not _mode.human_batter or _hand == null or not _hand.get_is_active():
+		return
+	_tracker.update(now, _hand.global_position, _hand.global_transform.basis.get_rotation_quaternion())
+	if _bat_view != null:
+		var dir := (_tracker.tip - _tracker.knob).normalized()
+		_bat_view.global_transform = Transform3D(Basis(Quaternion(Vector3.UP, dir)), _tracker.knob)
+
+
 func _free_pitch(pitch: LivePitch) -> void:
 	pitch.ball.queue_free()
 	pitch.trail_inst.queue_free()
@@ -1741,6 +1811,9 @@ func _update_flight(pitch: LivePitch, delta: float) -> void:
 		if next_pos.y <= PitchPhysics.BALL_RADIUS or next_pos.z <= BACKSTOP_Z or pitch.flight_time > 3.0:
 			pitch.pos = next_pos
 			_land(pitch)
+			changed = true
+			break
+		if _mode.human_batter and _human_swing_check(pitch, next_pos):
 			changed = true
 			break
 		pitch.pos = next_pos
@@ -1772,6 +1845,8 @@ func _land(pitch: LivePitch) -> void:
 		_strikes += 1
 	var outcome := "ball"
 	var plate: Vector3 = a.get("plate_pos", Vector3.ZERO)
+	if _mode.human_batter and not pitch.bat.get("contact", false) and pitch.swing_peak > 8.0:
+		pitch.bat = {"swing": true, "contact": false, "kind": "whiff", "p_swing": 1.0}      # you swung and missed
 	if pitch.bat.get("swing", false):
 		outcome = "swinging_strike"
 	elif a.get("reached", false) and a.get("strike", false):
@@ -1779,6 +1854,7 @@ func _land(pitch: LivePitch) -> void:
 	elif a.get("reached", false) and PitchLocation.hits_batter(plate.x, plate.y, _batter_is_lefty()):
 		outcome = "hit_by_pitch"
 	_mark_pitch(a, outcome)
+	_derby_tally(pitch, false, outcome in ["called_strike", "swinging_strike"])
 	_grade_sign(pitch, plate)
 	if _scenario != null and a.get("reached", false):
 		_scenario.on_pitch(String(PitchLocation.classify(plate.x, plate.y).kind), bool(a.get("strike", false)) and outcome != "hit_by_pitch")
@@ -1887,6 +1963,7 @@ func _contact(pitch: LivePitch) -> void:
 	if in_play:
 		_batter_ready = false
 	_mark_pitch(a, "in_play" if in_play else "foul")
+	_derby_tally(pitch, bool(sim.get("home_run", false)), false)
 	_grade_sign(pitch, a.get("plate_pos", Vector3.ZERO))
 	_stats.record_pitch(pitch.label, a.speed_mph, "in_play" if in_play else "foul")
 	if in_play:
@@ -2481,6 +2558,39 @@ func _event_text(ev: Dictionary) -> String:
 	return " | ".join(parts)
 
 
+## Batting practice pitches: slow, straight and over the middle (a little wandering so it is not a machine).
+func _derby_pitch(release: Vector3) -> Dictionary:
+	var target := Vector3(_run_rng.randf_range(-0.12, 0.12), _run_rng.randf_range(0.65, 1.0), 0.0)
+	var vel := PitchPhysics.solve_aim(release, 23.0, Vector3.ZERO, target)
+	return {"vel": vel, "spin": Vector3.ZERO, "kind": "BP fastball"}
+
+
+## One pitch of the derby is over: a homer is a homer; a swing that is not, or a strike you took, is an out;
+## a ball you let go is free. Ten outs and it is over.
+func _derby_tally(pitch: LivePitch, home_run: bool, struck: bool) -> void:
+	if not _derby or _derby_done:
+		return
+	if home_run:
+		_derby_hr += 1
+	elif struck or pitch.bat.get("swing", false) or pitch.bat.get("contact", false):
+		_derby_outs += 1
+	_show_notice("Derby: %d home runs, %d of 10 outs" % [_derby_hr, _derby_outs], true)
+	if _derby_outs >= 10:
+		_finish_derby()
+
+
+func _finish_derby() -> void:
+	_derby_done = true
+	var stars := 3 if _derby_hr >= 8 else (2 if _derby_hr >= 5 else (1 if _derby_hr >= 2 else 0))
+	var r := _profile.record_challenge("derby", stars, _derby_hr)
+	_profile.save()
+	_log("derby", {"home_runs": _derby_hr, "stars": stars})
+	_show_notice("DERBY OVER: %d home runs   %s%s" % [_derby_hr, Scenario.stars_text(stars), "  (new best!)" if r.improved else ""], true)
+	_props.later(7.0, func():
+		Session.show_menu = true
+		get_tree().reload_current_scene.call_deferred())
+
+
 func _mode_is_not_fielding(c: GameConfig) -> bool:
 	return c.mode != "Fielding"
 
@@ -2705,6 +2815,14 @@ func _update_alignment() -> void:
 			_show_notice("Infield in", true)
 
 
+## What you did as a batter this game: the lineup is you, so it is the lineup's line against their pitcher.
+func _hitting_line() -> Dictionary:
+	return {"kind": "hitting", "pa": _game.batters_faced, "h": _game.hits, "hr": _game.home_runs, "k": _game.strikeouts,
+		"bb": _game.walks, "r": _game.runs, "ev_max": _best_ev, "opp": _home.name, "innings": _game.innings,
+		"won": _game.runs > _game.home_score, "lost": _game.runs < _game.home_score,
+		"score_for": _game.runs, "score_against": _game.home_score}
+
+
 ## What you did as a fielder this game (see PlayerProfile.fielding_score).
 func _fielding_line() -> Dictionary:
 	var l := _fld.duplicate()
@@ -2767,7 +2885,7 @@ func _game_line() -> Dictionary:
 
 ## A finished game goes in the book (only games you pitch that count for a leaderboard).
 func _record_finished_game() -> void:
-	if _drill or _game_recorded or not (_mode.human_pitcher or _user_left or not _mode.human_fielders.is_empty()):
+	if _drill or _derby or _game_recorded or not (_mode.human_pitcher or _user_left or not _mode.human_fielders.is_empty() or _mode.human_batter):
 		return
 	_game_recorded = true
 	var cfg := _current_config()
@@ -2778,7 +2896,7 @@ func _record_finished_game() -> void:
 		return
 	if not cfg.is_scored():
 		return
-	var line := _fielding_line() if not _mode.human_fielders.is_empty() else _game_line()
+	var line := _fielding_line() if not _mode.human_fielders.is_empty() else (_hitting_line() if _mode.human_batter else _game_line())
 	var r := _profile.record_game(cfg, line)
 	_profile.save()
 	var text := "Game Score %d" % int(r.score)
@@ -2810,7 +2928,7 @@ func _after_event(ev: Dictionary, extra: Dictionary = {}) -> void:
 			_begin_walk_on()          # after a ball in play the next batter comes up now
 	elif _aux_play.is_empty() and _walk_on.is_empty() and not _play_in_progress():
 		_batter_ready = true          # a foul (or any pitch that did not end the at-bat): he is still up
-	if _drill:
+	if _drill or _derby:
 		# A drill is not a game: nobody is ever out, nobody stays on, the count never fills.
 		_game.outs = 0
 		_game.bases = [null, null, null]

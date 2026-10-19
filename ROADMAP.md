@@ -72,14 +72,14 @@ criteria for each phase are in section 5; this is the at-a-glance view. Updated 
 - [~] Test: a seed replays the game (only the bottom half is covered so far)
 - [~] Each presenter has a test (`PlateCrew`, `FieldProps`, `BatterPresenter` do; `SoundDirector` and `PlayDirector` are covered only through the full-game tests)
 
-### Phase 4 - Core VR feel (M4) - HALF DONE (open: hands and glove models, pitch lab, tutorial, comebackers)
+### Phase 4 - Core VR feel (M4) - MOSTLY DONE (open: hands and glove models, pitch lab, tutorial)
 - [x] Controller haptics (event table, Options > Haptics, menu pulses in the pointing hand)
 - [ ] Hand model holding the ball; grip shape that teaches the recognised pitch at easier assists
 - [ ] Glove model on the off hand
 - [ ] Pitch lab (Bullpen mode rebuilt): recognised pitch, spin axis, break, speed, location, "what made it a slider"
 - [ ] First-run tutorial: calibrate your normal throw, then one gesture per pitch type
 - [x] Catcher signs: a pitch and a spot called from the count, runners and batter side, shown by the catcher's knee and a marker on the zone; Y shakes him off; sign hits are graded, notified, and counted in your line and lifetime totals (a gameplay bonus for hitting the sign is not added)
-- [ ] Comebackers: catch a ball hit at you with the glove hand
+- [x] Comebackers: a ball hit back at the mound is yours to field with the glove hand and throw to first
 - [x] Seated mode (Options > Seated play: lifts the rig so a seated head is at standing height once tracking starts; a manual recalibrate is open)
 - [~] Left-handed throwing: the aim starts from the mirror image and the wrist model mirrors; tested by symmetry, not yet on a left-handed thrower in the headset
 - [x] Colour-blind palette for the zone colours (Options > Zone colours)
@@ -101,13 +101,13 @@ criteria for each phase are in section 5; this is the at-a-glance view. Updated 
 - [~] League data: eight fictional teams with names, colours and a double round-robin schedule done; parks and per-team rosters beyond generated ones are open
 - [~] Exit: a season is playable with saved progress, standings and a stats screen (tested in the scene; not played in the headset)
 
-### Phase 6 - More roles (M6)
+### Phase 6 - More roles (M6) - MOSTLY DONE (open: catcher and pitcher as fielding positions, role switching in a game)
 - [~] Human fielding: 1B to RF exist (`--field-pos`); open: pitcher and catcher, first base taking throws, tuning in the headset
-- [ ] Wild throws let runners advance
-- [ ] Fielding drills ("ten grounders to short")
+- [x] Wild throws let runners advance (AI throwing errors by arm and distance; your own wild throws already did)
+- [x] Fielding drills (Fielding > Drill: ten balls hit to your position, stars by catches and errors)
 - [ ] Catcher as a position (framing and blocking mini-game)
-- [ ] Hitting: bat in hand with tracked swing physics (reuse `BattedBall`), pitch recognition, timing feedback
-- [ ] Batting practice and home-run derby
+- [x] Hitting: the controller is the bat (`SwingTracker`, `BatPhysics`: swept contact, two-body collision with a sweet spot, spin from where the ball meets the bat), you bat for your whole lineup against the AI pitcher, swing and miss / take / contact are judged from your bat, timing and contact words after a hit (on the barrel, jammed, out front, deep); not yet felt with a real controller
+- [x] Home run derby (ten outs of easy pitches, homers counted, stars saved); Practice in Hitting mode is the ordinary game loop
 - [ ] Role switching in a game (pitch your half, hit in the bottom, or field)
 
 ### Phase 7 - Rest of the rulebook and the manager (M7) - MOSTLY DONE (open: pickoff moves from the stretch, backing up bases)

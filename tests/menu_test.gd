@@ -31,8 +31,9 @@ func _init() -> void:
 	m.activate(_find(m, "play"))
 	_check(m.screen() == "play", "Play opens the mode list")
 	var hit := m.items()[_find(m, "mode:Hitting")]
-	_check(not hit.enabled, "hitting is disabled")
-	_check(m.activate(_find(m, "mode:Hitting")).is_empty() and m.screen() == "play", "choosing a disabled row does nothing")
+	_check(hit.enabled, "hitting is playable now")
+	var stats_row := m.items()[_find(m, "challenges")]
+	_check(stats_row.enabled, "Challenges is enabled")
 	m.activate(_find(m, "mode:Pitching"))
 	_check(m.screen() == "setup" and m.config.mode == "Pitching", "choosing Pitching opens its setup")
 	_check(_find(m, "position") == -1 and _find(m, "innings") >= 0, "pitching setup has innings and no position")

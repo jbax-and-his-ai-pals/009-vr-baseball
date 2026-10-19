@@ -110,7 +110,7 @@ func items() -> Array[Dictionary]:
 			rows.append(_row("mode:Pitching", "Pitching", "you pitch to AI batters"))
 			rows.append(_row("mode:Fielding", "Fielding", "you play a position"))
 			rows.append(_row("mode:Spectate", "Spectate", "watch an AI game"))
-			rows.append(_row("mode:Hitting", "Hitting", "", false, "coming soon"))
+			rows.append(_row("mode:Hitting", "Hitting", "you swing the bat"))
 			rows.append(_row("career", "Career", "season %d of %d" % [mini(career.matchday + 1, career.league.matchdays), career.league.matchdays] if career != null and not career.is_over() else ("season over" if career != null else "a season in the league"), true, "your own pitcher, one start per matchday"))
 			rows.append(_row("challenges", "Challenges", "%d of %d done" % [_challenges_done(), Scenario.ids().size()], true, "short pitching situations to solve"))
 			rows.append(_row("back", "Back"))
@@ -128,6 +128,8 @@ func items() -> Array[Dictionary]:
 			var start_note := "scored: " + key if key != "" else "not scored"
 			if config.activity == "Drill":
 				start_note = "ten balls to you; best %s" % Scenario.stars_text(int(profile.challenge("drill_f%d" % config.position).best))
+			elif config.activity == "Derby":
+				start_note = "ten outs, easy pitches, count the homers; best %d" % int(profile.challenge("derby").best_pitches)
 			rows.append(_row("start", "Start", "", true, start_note))
 			rows.append(_row("back", "Back"))
 		"options":
@@ -249,6 +251,8 @@ func _activity_label() -> String:
 			return "Practice"
 		"Drill":
 			return "Drill"
+		"Derby":
+			return "Home run derby"
 		_:
 			return "Bullpen"
 
@@ -256,6 +260,8 @@ func _activity_label() -> String:
 func _activities() -> Array:
 	if config.mode == "Pitching":
 		return ["Game", "Practice", "Bullpen"]
+	if config.mode == "Hitting":
+		return ["Game", "Practice", "Derby"]
 	return ["Game", "Practice", "Drill"] if config.mode == "Fielding" else ["Game", "Practice"]
 
 

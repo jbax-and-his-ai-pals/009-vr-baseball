@@ -61,7 +61,7 @@ func _init() -> void:
 	_check(prac.leaderboard_key() == "" and not prac.is_scored(), "practice is not scored")
 	var spec := GameConfig.from_dict({"mode": "Spectate", "activity": "Practice"})
 	_check(spec.activity == "Game" and not spec.is_scored(), "spectating is a game you watch, and is not scored")
-	var weird := GameConfig.from_dict({"mode": "Hitting", "position": 42, "innings": 5, "batter": "Nobody", "assist": "??"})
+	var weird := GameConfig.from_dict({"mode": "Nonsense", "position": 42, "innings": 5, "batter": "Nobody", "assist": "??"})
 	_check(weird.mode == "Pitching" and weird.position == 9 and weird.innings == 9 and weird.batter == "Contact Hitter" and weird.assist == "Standard",
 		"a nonsense config is repaired")
 	var bp := GameConfig.from_dict({"mode": "Fielding", "activity": "Bullpen"})
