@@ -128,7 +128,6 @@ var _daily := 0                            # a daily game: the day it belongs to
 var _haptics := Haptics.new()     # controller vibration
 var _sound: SoundDirector
 var _audio: AudioManager          # _sound.audio, for the loops that follow the ball
-var _was_in_menu := true
 # The running game.
 var _delivery_start: float:               # when your motion began (seconds), -1 if it has not
 	get: return _human.delivery_start
@@ -181,12 +180,12 @@ var results := GameResults.new()                 # what a finished game is worth
 var world := WorldBuilder.new()                 # builds the park, the people and the headset rig
 var flight := PitchFlight.new()                 # pitches and batted balls: launch, flight, landing, contact, the play
 var flow := GameFlow.new()                 # the batter's turn, the play's end and what follows an event
+var menus := MenuHost.new()                 # opening, closing and answering the menus
 var _game_seed := 0
 var forced_seed := -1                       # tests and replays: use this seed (the --seed= flag does the same)
 var _origin: XROrigin3D
 var _settings := Settings.new()
 var _menu: GameMenu
-var _menu_button_was := false
 var _config := GameConfig.new()
 var _catch_radius := HumanFielding.CATCH_RADIUS
 var _throw_cone := HumanFielding.THROW_CONE_DEG
@@ -195,6 +194,7 @@ const SWING_RECOVERY := 0.75
 
 
 func _init() -> void:
+	menus.host = self
 	flow.host = self
 	flight.host = self
 	world.host = self
@@ -279,7 +279,7 @@ func _ready() -> void:
 	PitchLocation.colorblind = _settings.colorblind
 	if _mode.human_batter:
 		_ensure_bat_view()
-	_build_menu(want_menu)
+	menus.build_menu(want_menu)
 	_sound = SoundDirector.new()
 	add_child(_sound)
 	_audio = _sound.audio
@@ -448,7 +448,7 @@ func _on_quality_changed(level: int) -> void:
 
 
 func _process(delta: float) -> void:
-	_poll_menu_button()
+	menus.poll_menu_button()
 	if _menu != null and _menu.is_open():
 		if _sound != null:
 			_sound.update_menu(delta, _menu.model.screen())
@@ -544,7 +544,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_P:
 		_cycle_profile()
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
-		_toggle_pause()
+		menus.toggle_pause()
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F:
 		slog.mark_moment()
 
@@ -623,97 +623,6 @@ func apply_config(c: GameConfig) -> void:
 
 
 # ------------------------------------------------------------------ menus
-func _build_menu(show_main: bool) -> void:
-	_menu = GameMenu.new()
-	add_child(_menu)
-	var ctrls: Array[XRController3D] = []
-	for c in [_hand, _off_hand]:
-		if c != null:
-			ctrls.append(c)
-	var menu_model := MenuModel.new(_settings)
-	menu_model.profile = _profile
-	menu_model.career = _career
-	_menu.setup(menu_model, _camera, ctrls)
-	_menu.chosen.connect(_on_menu_event)
-	Session.current = _current_config()
-	if show_main:
-		_open_menu_main()
-
-
-func _open_menu_main() -> void:
-	_menu.open_main()
-	hud.hud.visible = false
-
-
-func _toggle_pause() -> void:
-	if _menu == null:
-		return
-	if _menu.is_open():
-		if _menu.model.screen() == "pause":
-			_close_menu()
-		return
-	var in_game := _mode.human_pitcher and lineup_mode == "Game" and _game != null and not _game.over and acts.scenario == null
-	_menu.model.can_mound_visit = in_game and not manager.visit_used
-	_menu.model.can_leave = in_game
-	_menu.open_pause(Session.current if Session.current != null else _config)
-	_sfx("ui_pause_open")
-	hud.hud.visible = false
-
-
-func _close_menu() -> void:
-	_sfx("ui_pause_close")
-	_menu.close()
-	hud.hud.visible = true
-
-
-func _poll_menu_button() -> void:
-	if not _xr_active or _off_hand == null or not _off_hand.get_is_active():
-		return
-	var down := _off_hand.is_button_pressed("menu_button")
-	if down and not _menu_button_was:
-		_toggle_pause()
-	_menu_button_was = down
-
-
-func _on_menu_event(ev: Dictionary) -> void:
-	slog.record("menu", {"event": ev.get("type", ""), "config": (ev.config as GameConfig).to_dict() if ev.has("config") else {}})
-	match String(ev.get("type", "")):
-		"career_changed":
-			_career = _menu.model.career
-			if _career != null:
-				_career.save()
-			else:
-				Career.delete_saved()
-		"settings":
-			_settings.save()
-			apply_assist(_settings)
-			_haptics.set_level(_settings.haptics)
-			PitchLocation.colorblind = _settings.colorblind
-			if _audio:
-				_audio.apply_volumes(_settings.volumes)
-		"start":
-			Session.pending = ev.config
-			_settings.save()
-			get_tree().reload_current_scene.call_deferred()
-		"restart":
-			Session.pending = Session.current if Session.current != null else _config
-			get_tree().reload_current_scene.call_deferred()
-		"main_menu":
-			Session.show_menu = true
-			get_tree().reload_current_scene.call_deferred()
-		"resume":
-			_close_menu()
-		"intentional_walk":
-			_close_menu()
-			manager.issue_intentional_walk()
-		"mound_visit":
-			_close_menu()
-			manager.mound_visit()
-		"leave_game":
-			_close_menu()
-			manager.leave_game()
-		"quit":
-			get_tree().quit()
 
 
 func _ensure_bat_view() -> void:

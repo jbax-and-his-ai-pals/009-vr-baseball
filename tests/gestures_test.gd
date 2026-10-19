@@ -58,7 +58,7 @@ func _init() -> void:
 	bp.menu_on_start = false
 	root.add_child(bp)
 	await process_frame
-	bp._toggle_pause()
+	bp.menus.toggle_pause()
 	bp._menu.model.can_leave = true
 	bp._menu.goto("confirm_leave")
 	_check(bp._menu.is_open() and bp._menu.model.screen() == "confirm_leave", "the bullpen signal opens the pause menu on its confirmation")

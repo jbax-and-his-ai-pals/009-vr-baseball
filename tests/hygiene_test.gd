@@ -132,7 +132,7 @@ func _init() -> void:
 		bm._process(0.5)
 		bm._audio._process(0.5)
 	_check(bm._audio.music_id() == "music_game_base" and not bm._audio.paused, "closing the menu starts the game's music")
-	bm._toggle_pause()
+	bm.menus.toggle_pause()
 	bm._sound._tick = 0.0
 	bm._process(0.5)
 	_check(bm._audio.paused and bm._audio.music_id() == "music_game_base", "a pause keeps the game music, ducked")

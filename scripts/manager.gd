@@ -154,7 +154,7 @@ func poll_gestures(delta: float) -> void:
 			host.slog.record("gesture", {"signal": sig})
 			host._haptics.play("ui_select")
 			if host._menu != null and not host._menu.is_open() and host.lineup_mode == "Game":
-				host._toggle_pause()
+				host.menus.toggle_pause()
 				host._menu.model.can_leave = true
 				host._menu.goto("confirm_leave")
 
