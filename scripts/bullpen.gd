@@ -151,6 +151,11 @@ var _node_moves: Array = []                 # fielders walking into position for
 var _tracker := SwingTracker.new()          # your controller as a bat (Hitting)
 var _bat_view: MeshInstance3D               # the bat in your hand
 var _bat_call := ""                         # a play called with this pitch: "squeeze" or "hit_and_run" ("" for none)
+var _two_way := false                       # you also bat: the bottom halves are played live
+var _top_game: GameState                    # while you bat, the pitching game waits here
+var _bottom_end_timer := -1.0               # counts down once your half is over, then hands the game back
+var _opp_pitcher: AIPitcher                 # their pitcher, kept from one bottom half to the next
+var _bat_log: Dictionary = {"ab": 0, "h": 0, "hr": 0, "rbi": 0, "bb": 0, "k": 0}
 var _tutorial: Tutorial                     # the pitching lesson, when that is what you are playing
 var _derby := false                         # home run derby: ten outs of easy pitches
 var _derby_outs := 0
@@ -322,10 +327,7 @@ func _ready() -> void:
 	_haptics.set_level(_settings.haptics)
 	PitchLocation.colorblind = _settings.colorblind
 	if _mode.human_batter:
-		_bat_view = MeshInstance3D.new()          # the bat in your hand
-		_bat_view.mesh = Figure.bat_mesh()
-		_bat_view.material_override = MeshMerger.vertex_color_material()
-		add_child(_bat_view)
+		_ensure_bat_view()
 	_build_menu(want_menu)
 	_sound = SoundDirector.new()
 	add_child(_sound)
@@ -1289,6 +1291,7 @@ func _process(delta: float) -> void:
 			_mark_moment()
 		_mark_pressed = flag
 	_update_batter_lifecycle(delta)
+	_update_roles(delta)
 	if _game_over_timer > 0.0:
 		_game_over_timer -= delta
 		if _game_over_timer <= 0.0:
@@ -1419,6 +1422,7 @@ func _current_config() -> GameConfig:
 	c.activity = "Game" if lineup_mode == "Game" else "Practice"
 	c.scenario = _scenario_id
 	c.career = _career_game
+	c.two_way = _two_way
 	if _career_game:
 		c.innings = _career.innings_per_start
 	return c.normalized()
@@ -1437,6 +1441,7 @@ func apply_config(c: GameConfig) -> void:
 	_drill = c.activity == "Drill" and not _mode_is_not_fielding(c)
 	_derby = c.activity == "Derby" and c.mode == "Hitting"
 	_tutorial = Tutorial.new(_settings.tutorial_step) if c.tutorial else null
+	_two_way = c.two_way
 	_career_game = c.career and _career != null and not _career.is_over()
 
 
@@ -1534,10 +1539,29 @@ func _on_menu_event(ev: Dictionary) -> void:
 			get_tree().quit()
 
 
+## Your pitching line only counts the pitches you threw, not the ones you hit.
+func _stat_pitch(label: String, mph: float, outcome: String) -> void:
+	if _top_game == null:
+		_stats.record_pitch(label, mph, outcome)
+
+
+func _ensure_bat_view() -> void:
+	if _bat_view != null:
+		return
+	_bat_view = MeshInstance3D.new()          # the bat in your hand
+	_bat_view.mesh = Figure.bat_mesh()
+	_bat_view.material_override = MeshMerger.vertex_color_material()
+	add_child(_bat_view)
+
+
 func _new_game() -> void:
 	var order: Array[Player] = _away.lineup
 	_game = GameState.new(order, game_innings)
 	_game.allow_extra = true
+	_game.bottom_live = _two_way and _mode.human_pitcher
+	_top_game = null
+	_bottom_end_timer = -1.0
+	_bat_log = {"ab": 0, "h": 0, "hr": 0, "rbi": 0, "bb": 0, "k": 0}
 	_game.bottom_sim = Callable(self, "_simulate_bottom_half")
 	_home_order = 0
 	if _sound != null:
@@ -1917,7 +1941,7 @@ func _land(pitch: LivePitch) -> void:
 	# The at-bat ended on a pitch a runner was running on (strike 'em out, throw 'em out).
 	if ev.get("pa_over", false) and not _steal.is_empty() and _steal.has("apply_at"):
 		_finish_steal()
-	_stats.record_pitch(pitch.label, a.speed_mph, outcome)
+	_stat_pitch(pitch.label, a.speed_mph, outcome)
 	var loc := PitchLocation.classify(plate.x, plate.y)
 	_log("pitch", {"n": _game.pitch_count, "label": pitch.label, "mph": a.speed_mph, "plate": plate,
 		"reached": a.get("reached", false), "loc": loc.kind, "strike_zone": a.get("strike", false), "outcome": outcome,
@@ -1970,7 +1994,7 @@ func _contact(pitch: LivePitch) -> void:
 	_derby_tally(pitch, bool(sim.get("home_run", false)), false)
 	_tutorial_pitch(pitch)
 	_grade_sign(pitch, a.get("plate_pos", Vector3.ZERO))
-	_stats.record_pitch(pitch.label, a.speed_mph, "in_play" if in_play else "foul")
+	_stat_pitch(pitch.label, a.speed_mph, "in_play" if in_play else "foul")
 	if in_play:
 		_in_play += 1
 	_best_ev = maxf(_best_ev, b.ev)
@@ -2410,6 +2434,9 @@ func _begin_pa_exit(ev: Dictionary, bases_before: Array) -> void:
 
 ## The next batter comes from the dugout to the box. Pitching waits until he is there.
 func _begin_walk_on() -> void:
+	if _on_break():
+		_batter_ready = false         # between the halves: nobody walks up
+		return
 	_crew.return_to_plate()      # the umpire is back behind the plate for the next batter
 	if _game != null and not _game.over:
 		_sfx("pa_now_batting")
@@ -2454,7 +2481,7 @@ func _update_batter_lifecycle(delta: float) -> void:
 	for h in _hits:
 		if not h.result_shown:
 			busy = true
-	if _batter_ready or busy:
+	if _batter_ready or busy or _on_break():
 		_unready_for = 0.0
 	else:
 		_unready_for += delta
@@ -2686,6 +2713,7 @@ func _leave_game() -> void:
 		return
 	_left_line = _game_line()
 	_user_left = true
+	_game.bottom_live = false              # with you out of the game the bottom halves are played for you
 	_drop_held()
 	_relievers_used += 1
 	var rp := Team.relief_pitcher(52.0, 5000 + _relievers_used * 31)
@@ -2935,10 +2963,139 @@ func _record_finished_game() -> void:
 	_show_notice(text, true)
 
 
+## ---------------------------------------------------------------- two-way games: pitch, then bat
+## Between the halves of a two-way game you change roles: when your pitching half is over the game waits a
+## moment, then you are the batter for the bottom (a one-inning GameState of your lineup against their
+## pitcher), and when that is over you are on the mound again. The pitching game is kept in `_top_game`.
+var _role_timer := 2.5
+
+
+## True while the game is between the halves: nobody pitches and no batter walks up.
+func _on_break() -> bool:
+	return _game != null and (_game.awaiting_bottom or _bottom_end_timer > 0.0)
+
+
+func _update_roles(delta: float) -> void:
+	if _game == null or not _two_way:
+		return
+	var settled := _aux_play.is_empty() and _walk_on.is_empty() and not _play_in_progress()
+	for h in _hits:
+		if not h.result_shown:
+			settled = false
+	if _top_game == null and _game.awaiting_bottom and settled:
+		_role_timer -= delta
+		if _role_timer <= 0.0:
+			_role_timer = 2.5
+			_enter_bottom()
+	elif _top_game != null and _bottom_end_timer > 0.0 and settled:
+		_bottom_end_timer -= delta
+		if _bottom_end_timer <= 0.0:
+			_bottom_end_timer = -1.0
+			_finish_bottom_half()
+	else:
+		_role_timer = 2.5
+
+
+## Where you stand for the role: on the mound, or in the box.
+func _place_for_role() -> void:
+	var mz := PitchPhysics.MOUND_Z
+	var mh := PitchPhysics.MOUND_H
+	if _origin != null:
+		if _mode.human_batter:
+			var side := 1.0 if _settings.hand == "right" else -1.0
+			_origin.position = Vector3(side * 1.2, 0.0, -0.1)
+			_origin.rotation = Vector3(0.0, PI, 0.0)
+		else:
+			_origin.position = Vector3(0.0, mh, mz)
+			_origin.rotation = Vector3.ZERO
+	elif _camera != null:
+		if _mode.human_batter:
+			_camera.global_position = Vector3(3.5, 1.7, -5.0)
+			_camera.look_at(Vector3(0.0, 1.5, 18.0))
+		else:
+			_camera.global_position = Vector3(0.0, mh + 1.7, mz + 0.5)
+			_camera.look_at(Vector3(0.0, 1.0, 0.0))
+
+
+func _enter_bottom() -> void:
+	_top_game = _game
+	var half := GameState.new(_home.lineup, 1)
+	half.order_index = _home_order % maxi(_home.lineup.size(), 1)
+	_game = half
+	_drop_held()
+	_mode = GameMode.hitting()
+	_sound.mode = _mode
+	_ensure_bat_view()
+	_bat_view.visible = true
+	if _opp_pitcher == null:
+		_opp_pitcher = AIPitcher.new(_away.player_at(1))
+	_ai_pitcher = _opp_pitcher
+	_ensure_pitcher_doll()
+	(_field_nodes[1] as Node3D).visible = true
+	_place_for_role()
+	_spectate_timer = 2.5
+	if _zone_markers:
+		_zone_markers.clear()
+	_batter_ready = false
+	_sync_batter()
+	_begin_walk_on()
+	_log("role_switch", {"to": "batting", "inning": _top_game.inning, "score": "%d-%d" % [_top_game.runs, _top_game.home_score]})
+	_show_notice("Bottom of %d: you are up to bat" % _top_game.inning, true)
+	_sfx("pa_pitching_change")
+	_refresh_base_runners()
+	_refresh_hud()
+
+
+## Your half is over (three outs, or a walk-off): the runs go on the board and you take the mound again.
+func _finish_bottom_half() -> void:
+	var half := _game
+	_bat_log.h += half.hits
+	_bat_log.hr += half.home_runs
+	_bat_log.bb += half.walks
+	_bat_log.k += half.strikeouts
+	_bat_log.rbi += half.runs
+	_home_order = half.order_index
+	_opp_pitcher = _ai_pitcher
+	_game = _top_game
+	_top_game = null
+	_mode = GameMode.pitching()
+	_sound.mode = _mode
+	if _bat_view != null:
+		_bat_view.visible = false
+	if _field_nodes.has(1):
+		(_field_nodes[1] as Node3D).visible = false
+	_place_for_role()
+	_batter.visible = true
+	_batter.transform = _batter_home
+	if _zone_markers:
+		_zone_markers.clear()
+	var ev := _game.finish_bottom(half.runs, half.hits)
+	_log("role_switch", {"to": "pitching", "runs": half.runs, "hits": half.hits, "game_over": _game.over})
+	_show_notice("Bottom %d: Home %s" % [int(ev.get("inning_ended", 0)), "scores %d" % half.runs if half.runs > 0 else "goes down in order"], true)
+	_after_event(ev)
+	if not _game.over:
+		_sync_batter()
+		_begin_walk_on()
+	_refresh_hud()
+
+
+## An event of the bottom half you are batting: the mini-game ending is the half ending, not the game.
+func _bottom_event(ev: Dictionary, extra: Dictionary) -> Dictionary:
+	var out := ev.duplicate()
+	var walk_off: bool = _top_game.inning >= _top_game.innings and _top_game.home_score + _game.runs > _top_game.runs
+	if bool(out.get("game_over", false)) or walk_off:
+		out["game_over"] = false
+		out["half_over"] = false
+		_bottom_end_timer = 2.5
+	return out
+
+
 ## After anything that changes the game: next batter, runners, scoreboard, game over.
 func _after_event(ev: Dictionary, extra: Dictionary = {}) -> void:
 	if ev.is_empty():
 		return
+	if _top_game != null:
+		ev = _bottom_event(ev, extra)
 	if _sound != null:
 		_sound.crowd_react(ev, _game)
 	match String(ev.get("result", "")):
@@ -2947,7 +3104,7 @@ func _after_event(ev: Dictionary, extra: Dictionary = {}) -> void:
 		"strikeout":
 			_haptics.play("rumble", 0.3)
 	if ev.get("pa_over", false):
-		if _batter_player:
+		if _batter_player and _top_game == null:
 			_stats.record_result(_batter_player.name, String(ev.get("result", "out")),
 				float(extra.get("ev", 0.0)), float(extra.get("dist", 0.0)))
 		_sync_batter()
@@ -2983,7 +3140,8 @@ func _after_event(ev: Dictionary, extra: Dictionary = {}) -> void:
 func _refresh_scoreboard() -> void:
 	if _stadium == null or _game == null:
 		return
-	var g := _game
+	var g := _top_game if _top_game != null else _game
+	var live: GameState = _game if _top_game != null else null
 	var who := _batter_player.name if _batter_player else ""
 	var line := ""
 	if _batter_player:
@@ -2991,10 +3149,20 @@ func _refresh_scoreboard() -> void:
 		line = StatsTracker.avg_text(int(bs.get("h", 0)), int(bs.get("ab", 0))) if not bs.is_empty() else ""
 		line = ("%s  %d-%d today" % [line, int(bs.get("h", 0)), int(bs.get("ab", 0))]) if not bs.is_empty() else ""
 	var pitcher := "YOU" if _mode.human_pitcher else _ai_pitcher.player.name
+	var home_by_inning: Array = g.home_inning_runs
+	var home_runs := g.home_score
+	var home_hits := g.home_team_hits
+	if live != null:
+		home_by_inning = g.home_inning_runs.duplicate()
+		while home_by_inning.size() < g.inning:
+			home_by_inning.append(0)
+		home_by_inning[g.inning - 1] = live.runs
+		home_runs += live.runs
+		home_hits += live.hits
 	_stadium.set_scoreboard({
 		"inning": g.inning, "innings": maxi(g.innings, g.inning), "inning_runs": g.inning_runs, "runs": g.runs,
-		"home_inning_runs": g.home_inning_runs, "home_runs": g.home_score, "home_hits": g.home_team_hits,
-		"hits": g.hits, "errors": g.errors, "balls": g.balls, "strikes": g.strikes, "outs": g.outs,
+		"home_inning_runs": home_by_inning, "home_runs": home_runs, "home_hits": home_hits,
+		"hits": g.hits, "errors": g.errors, "balls": _game.balls, "strikes": _game.strikes, "outs": _game.outs,
 		"batter": who, "batter_line": line, "pitcher": pitcher,
 		"last_kind": String(_stats.last_pitch.get("kind", "")), "last_mph": float(_stats.last_pitch.get("mph", 0.0)),
 		"final": g.over})
@@ -3251,7 +3419,7 @@ func _refresh_hud() -> void:
 	if _pitch_board == null:
 		return
 	# --- Pitching: what you have thrown.
-	var g := _game
+	var g := _top_game if _top_game != null else _game
 	var t := _stats.pitch_totals()
 	_pitch_board.title = "PITCHING"
 	_pitch_board.subtitle = _mode.name if _mode else ""
@@ -3276,7 +3444,9 @@ func _refresh_hud() -> void:
 	_pitch_board.total_row = prow.size() > 1
 	var pl: Array = []
 	if g:
-		pl.append("%s   |   %d R" % [g.situation_text(), g.runs])
+		pl.append("%s   |   %d R" % [_game.situation_text(), g.runs])
+		if _top_game != null:
+			pl.append("YOU ARE BATTING: bottom %d, Home %d - Away %d" % [g.inning, g.home_score + _game.runs, g.runs])
 		if _scenario != null:
 			pl.append("%s: %s" % [_scenario.title.to_upper(), _scenario.progress_text(g)])
 		if _tutorial != null:

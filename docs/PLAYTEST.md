@@ -207,3 +207,12 @@ Options > Haptics: Off / Low / Normal / Strong.
 - [ ] Fielding > Drill: ten balls come at your position, with a notice per ball and a stars result.
 - [ ] Pitching: a ball hit right back at you becomes your chance: glove hand on it, grip and throw to first (a missed one goes by and the defense plays it).
 - [ ] AI throwing errors: now and then a throw to first sails and the runner is on.
+
+## 17. Two-way games (pitch the top, bat the bottom)
+
+Play > Pitching > setup > **Also bat: On**, then Start. Check in the headset:
+- When your third out is made the game waits about 2 s, then you are standing in the box with the bat; the pitcher is a person on the mound.
+- The scoreboard shows the bottom live (runs and hits update as you bat); the pitching board keeps your pitching line.
+- Three outs, or a walk-off in the last inning, hand you back to the mound; the walk to the mound/box is instant (no transition yet) - note if it is disorienting.
+- Leaving the game (pause menu) switches the bottoms back to simulated.
+- Not done yet: your batting line is not saved to the profile (only counted in the game), and the fielders keep your jerseys in the bottom.

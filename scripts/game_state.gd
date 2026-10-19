@@ -46,6 +46,8 @@ var sacrifices := 0
 # moment the third out is made. With no bottom_sim and allow_extra false the game is the old
 # one-sided "innings of three outs" (used by simple tests).
 var bottom_sim := Callable()
+var bottom_live := false                    # the bottom half is played by someone (finish_bottom), not simulated
+var awaiting_bottom := false                # the top is over and the bottom has not been reported yet
 var allow_extra := false
 var max_extra := 6                          # extra innings before a tie is called
 var home_score := 0                         # the home team's runs
@@ -532,9 +534,31 @@ func _finish_top_half(ev: Dictionary) -> void:
 		over = true
 		ev.game_over = true
 		return
+	if bottom_live:
+		# The bottom half is played by someone: wait here until finish_bottom() brings the result.
+		awaiting_bottom = true
+		ev["bottom_live"] = true
+		return
 	var result := {"runs": 0, "hits": 0}
 	if bottom_sim.is_valid():
 		result = bottom_sim.call(inning)
+	_resolve_bottom(result, ev)
+
+
+## A bottom half that was played live is over: `runs` and `hits` are what the home team did in it.
+## Returns an event with game_over set if that ends the game.
+func finish_bottom(runs: int, hits: int) -> Dictionary:
+	var ev := _event()
+	if not awaiting_bottom:
+		return ev
+	awaiting_bottom = false
+	ev["inning_ended"] = inning
+	_resolve_bottom({"runs": runs, "hits": hits}, ev)
+	return ev
+
+
+func _resolve_bottom(result: Dictionary, ev: Dictionary) -> void:
+	var regulation_done := inning >= innings
 	while home_inning_runs.size() < inning:
 		home_inning_runs.append(0)
 	home_inning_runs[inning - 1] = int(result.runs)

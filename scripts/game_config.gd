@@ -26,6 +26,7 @@ var batter := "Contact Hitter"
 var assist := "Standard"
 var scenario := ""             # a challenge id (see Scenario); "" for an ordinary game
 var tutorial := false          # the pitching lesson (a bullpen with prompts)
+var two_way := false           # pitch the top halves, bat the bottom halves yourself
 var career := false            # the next start of your saved career (teams, pitcher and innings come from it)
 
 
@@ -59,6 +60,7 @@ func normalized() -> GameConfig:
 		c.mode = "Pitching"
 		c.activity = "Game"
 		c.innings = int(Scenario.by_id(scenario).setup.get("innings", 9)) if int(Scenario.by_id(scenario).setup.get("innings", 9)) in INNINGS else 9
+	c.two_way = two_way and c.mode == "Pitching" and c.activity == "Game" and c.scenario == "" and not c.career and not c.tutorial
 	# Spectating is always a full game of watching; there is nothing to practise.
 	if c.mode == "Spectate":
 		c.activity = "Game"
@@ -82,7 +84,7 @@ func is_scored() -> bool:
 func leaderboard_key() -> String:
 	if not is_scored():
 		return ""
-	var where := "%s/%dinn" % [mode, innings]
+	var where := "%s/%dinn%s" % [mode, innings, "+bat" if two_way else ""]
 	if mode == "Fielding":
 		where = "Fielding%d/%dinn" % [position, innings]
 	return "%s/%s" % [where, assist]
@@ -100,6 +102,8 @@ func title() -> String:
 		who = "Fielding (%s)" % Defense.NAMES.get(position, "?")
 	match activity:
 		"Game":
+			if two_way:
+				return "Two-way - %d-inning game" % innings
 			return "%s - %d-inning game" % [who, innings] if mode != "Spectate" else "Spectate - watch a game"
 		"Practice":
 			return "%s - practice vs %s" % [who, batter]
@@ -113,7 +117,7 @@ func title() -> String:
 
 func to_dict() -> Dictionary:
 	return {"mode": mode, "activity": activity, "position": position, "innings": innings,
-		"batter": batter, "assist": assist, "scenario": scenario, "career": career, "tutorial": tutorial}
+		"batter": batter, "assist": assist, "scenario": scenario, "career": career, "tutorial": tutorial, "two_way": two_way}
 
 
 static func from_dict(d: Dictionary) -> GameConfig:
@@ -127,4 +131,5 @@ static func from_dict(d: Dictionary) -> GameConfig:
 	c.scenario = str(d.get("scenario", ""))
 	c.career = bool(d.get("career", false))
 	c.tutorial = bool(d.get("tutorial", false))
+	c.two_way = bool(d.get("two_way", false))
 	return c.normalized()

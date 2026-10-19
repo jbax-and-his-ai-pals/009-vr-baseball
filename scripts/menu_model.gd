@@ -122,6 +122,8 @@ func items() -> Array[Dictionary]:
 				rows.append(_row("activity", "Session", _activity_label()))
 			if config.activity == "Game" or config.mode == "Spectate":
 				rows.append(_row("innings", "Innings", str(config.innings)))
+			if config.mode == "Pitching" and config.activity == "Game":
+				rows.append(_row("two_way", "Also bat", "On" if config.two_way else "Off", true, "pitch the top halves, bat the bottom halves yourself" if not config.two_way else "you bat in the bottom of every inning"))
 			if config.activity == "Practice":
 				rows.append(_row("batter", "Batter", config.batter))
 			rows.append(_row("assist", "Assist", config.assist, true, Settings.ASSIST_NOTES.get(config.assist, "")))
@@ -386,6 +388,8 @@ func activate(index: int) -> Dictionary:
 			config.activity = _cycle(_activities(), config.activity)
 		"innings":
 			config.innings = _cycle(GameConfig.INNINGS, config.innings)
+		"two_way":
+			config.two_way = not config.two_way
 		"batter":
 			config.batter = _cycle(GameConfig.BATTERS, config.batter)
 		"assist":
