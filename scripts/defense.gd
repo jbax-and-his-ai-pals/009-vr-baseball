@@ -274,6 +274,12 @@ func _fielded(hit: Dictionary, sim: Dictionary, fair: bool, landing_t: float, ru
 	return _throw_play(f, p, t, sim, run_times, [movement])
 
 
+## Chance a routine throw to first sails: about 1% overall, up with distance, down with a good arm.
+func throwing_error_chance(f: Dictionary, throw_distance: float) -> float:
+	var arm_unit := clampf(float(f.player.arm) / 100.0, 0.0, 1.0) if f.has("player") and f.player != null else 0.5
+	return clampf((0.006 + 0.010 * throw_distance / 30.0) * lerpf(1.6, 0.6, arm_unit), 0.0, 0.05)
+
+
 ## He has the ball at p at time t_field: throw to first. Out if it beats the runner.
 func _throw_play(f: Dictionary, p: Vector3, t_field: float, sim: Dictionary, run_times: Array, movements: Array) -> Dictionary:
 	var release: float = t_field + f.transfer
@@ -283,6 +289,16 @@ func _throw_play(f: Dictionary, p: Vector3, t_field: float, sim: Dictionary, run
 	if unassisted:
 		arrive = t_field + 0.25
 	var margin := float(run_times[0]) - arrive + rng.randfn(0.0, 0.07)
+	# A throw that would have got him can sail: more often on a long throw from a weak arm.
+	if margin > 0.0 and not unassisted and rng.randf() < throwing_error_chance(f, to_first):
+		var err := _hit_after(f, p, t_field + 1.1, sim, run_times, "Throwing error", movements, false)
+		err["result"] = "error"
+		err["error"] = true
+		err["throwing_error"] = true
+		err["bases"] = maxi(int(err.bases), 1)
+		err["short"] = "Throwing error, %s (E%d)" % [f.name, f.num]
+		err["text"] = err.short
+		return err
 	if margin > 0.0:
 		var label := "Groundout %s" % ("3U" if unassisted else "%d-3" % f.num)
 		var covering := fielder_by_num(3)

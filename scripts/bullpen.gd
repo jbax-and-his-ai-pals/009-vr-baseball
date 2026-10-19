@@ -149,6 +149,11 @@ var _gestures := Gestures.new()
 var _pickoff_override := ""                 # tests: force a throw over's outcome
 var _node_moves: Array = []                 # fielders walking into position for a rundown
 var _bat_call := ""                         # a play called with this pitch: "squeeze" or "hit_and_run" ("" for none)
+var _drill := false                         # ten balls hit to your fielding position
+var _drill_left := 10
+var _drill_timer := 3.0
+var _drill_started := 0
+var _drill_done := false
 var _scenario: Scenario            # the challenge being played (null in an ordinary game)
 var _scenario_id := ""
 var _scenario_done := false
@@ -1249,6 +1254,7 @@ func _process(delta: float) -> void:
 		_call_label.visible = false
 	_seat_check()
 	_poll_gestures(delta)
+	_run_drill(delta)
 	if _visit_timer > 0.0:
 		_visit_timer -= delta
 	_crew.update(delta)
@@ -1408,6 +1414,7 @@ func apply_config(c: GameConfig) -> void:
 	batter_profile = c.batter
 	lineup_mode = "Game" if c.activity == "Game" else "Practice"
 	_scenario_id = c.scenario
+	_drill = c.activity == "Drill" and not _mode_is_not_fielding(c)
 	_career_game = c.career and _career != null and not _career.is_over()
 
 
@@ -1515,6 +1522,10 @@ func _new_game() -> void:
 		_sound.new_game()
 	_game_recorded = false
 	_fld = {"chances": 0, "caught": 0, "missed": 0, "errors": 0, "assists": 0}
+	_drill_left = 10
+	_drill_started = 0
+	_drill_timer = 3.0
+	_drill_done = false
 	_sign_tally = {"called": 0, "perfect": 0, "type": 0, "loc": 0, "shaken": 0}
 	_sign = {}
 	_visit_used = false
@@ -2470,6 +2481,50 @@ func _event_text(ev: Dictionary) -> String:
 	return " | ".join(parts)
 
 
+func _mode_is_not_fielding(c: GameConfig) -> bool:
+	return c.mode != "Fielding"
+
+
+## The drill: every few seconds a ball is hit at your position (grounders to an infielder, fly balls to an
+## outfielder); after ten the result is saved as stars and you go back to the menu.
+func _run_drill(delta: float) -> void:
+	if not _drill or _drill_done or _game == null:
+		return
+	var busy := not _hits.is_empty() and not (_hits[_hits.size() - 1] as LiveHit).result_shown
+	if busy or not _aux_play.is_empty() or not _walk_on.is_empty():
+		return
+	_drill_timer -= delta
+	if _drill_timer > 0.0:
+		return
+	if _drill_left <= 0:
+		_finish_drill()
+		return
+	var n := _human_num()
+	var home: Vector3 = _defense.fielder_by_num(n).home
+	var spray := rad_to_deg(atan2(home.x, home.z)) + _run_rng.randf_range(-5.0, 5.0)
+	var infield := n in [3, 4, 5, 6]
+	var ev := _run_rng.randf_range(68.0, 92.0) if infield else _run_rng.randf_range(86.0, 98.0)
+	var la := _run_rng.randf_range(-8.0, 3.0) if infield else _run_rng.randf_range(20.0, 34.0)
+	_drill_left -= 1
+	_drill_started += 1
+	_drill_timer = 3.5
+	_show_notice("Drill: ball %d of %d" % [_drill_started, _drill_started + _drill_left], true)
+	_debug_hit(ev, la, spray)
+
+
+func _finish_drill() -> void:
+	_drill_done = true
+	var caught := int(_fld.caught) + int(_fld.assists)
+	var stars := 3 if (int(_fld.caught) >= 9 and int(_fld.errors) == 0) else (2 if int(_fld.caught) >= 7 else (1 if int(_fld.caught) >= 5 else 0))
+	var r := _profile.record_challenge("drill_f%d" % _human_num(), stars, int(_fld.caught))
+	_profile.save()
+	_log("drill", {"position": _human_num(), "chances": _fld.chances, "caught": _fld.caught, "errors": _fld.errors, "assists": _fld.assists, "stars": stars})
+	_show_notice("DRILL: %d of %d fielded, %d errors   %s%s" % [int(_fld.caught), _drill_started, int(_fld.errors), Scenario.stars_text(stars), "  (new best!)" if r.improved else ""], true)
+	_props.later(7.0, func():
+		Session.show_menu = true
+		get_tree().reload_current_scene.call_deferred())
+
+
 ## A challenge is judged after every event; when it ends the result is saved and you go back to the menu.
 func _update_scenario(ev: Dictionary) -> void:
 	if _scenario == null or _scenario_done:
@@ -2712,7 +2767,7 @@ func _game_line() -> Dictionary:
 
 ## A finished game goes in the book (only games you pitch that count for a leaderboard).
 func _record_finished_game() -> void:
-	if _game_recorded or not (_mode.human_pitcher or _user_left or not _mode.human_fielders.is_empty()):
+	if _drill or _game_recorded or not (_mode.human_pitcher or _user_left or not _mode.human_fielders.is_empty()):
 		return
 	_game_recorded = true
 	var cfg := _current_config()
@@ -2755,6 +2810,14 @@ func _after_event(ev: Dictionary, extra: Dictionary = {}) -> void:
 			_begin_walk_on()          # after a ball in play the next batter comes up now
 	elif _aux_play.is_empty() and _walk_on.is_empty() and not _play_in_progress():
 		_batter_ready = true          # a foul (or any pitch that did not end the at-bat): he is still up
+	if _drill:
+		# A drill is not a game: nobody is ever out, nobody stays on, the count never fills.
+		_game.outs = 0
+		_game.bases = [null, null, null]
+		_game.balls = 0
+		_game.strikes = 0
+		_game.inning = 1
+		_game.over = false
 	_update_scenario(ev)
 	_update_alignment()
 	_refresh_sign()

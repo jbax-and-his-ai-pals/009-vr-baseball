@@ -125,7 +125,10 @@ func items() -> Array[Dictionary]:
 				rows.append(_row("batter", "Batter", config.batter))
 			rows.append(_row("assist", "Assist", config.assist, true, Settings.ASSIST_NOTES.get(config.assist, "")))
 			var key := config.leaderboard_key()
-			rows.append(_row("start", "Start", "", true, "scored: " + key if key != "" else "not scored"))
+			var start_note := "scored: " + key if key != "" else "not scored"
+			if config.activity == "Drill":
+				start_note = "ten balls to you; best %s" % Scenario.stars_text(int(profile.challenge("drill_f%d" % config.position).best))
+			rows.append(_row("start", "Start", "", true, start_note))
 			rows.append(_row("back", "Back"))
 		"options":
 			rows.append(_row("hand", "Throwing hand", settings.hand, true, "applies next game"))
@@ -244,12 +247,16 @@ func _activity_label() -> String:
 			return "Game"
 		"Practice":
 			return "Practice"
+		"Drill":
+			return "Drill"
 		_:
 			return "Bullpen"
 
 
 func _activities() -> Array:
-	return ["Game", "Practice", "Bullpen"] if config.mode == "Pitching" else ["Game", "Practice"]
+	if config.mode == "Pitching":
+		return ["Game", "Practice", "Bullpen"]
+	return ["Game", "Practice", "Drill"] if config.mode == "Fielding" else ["Game", "Practice"]
 
 
 ## Choose row `index` of the current screen.
