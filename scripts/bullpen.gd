@@ -122,7 +122,9 @@ var _doll_demo: Array = []
 var _home_order := 0
 var _catcher: Doll
 var _umpire: Doll
+var _base_ump_dolls: Array[Doll] = []
 var _director := PlayDirector.new()   # puts a play on the field: fielders, ball, runners, callouts
+var _base_umps: BaseUmpires   # the three umpires at the bases
 var _crew: PlateCrew          # drives the catcher and the umpire
 var _props: FieldProps        # dust, dropped bats, and calls that wait for their moment
 var _dust: DustPuffs          # _props.dust
@@ -309,6 +311,11 @@ func _ready() -> void:
 	_director.leads = _leads
 	_director.presenter = _presenter
 	_director.crew = _crew
+	_base_umps = BaseUmpires.new()
+	add_child(_base_umps)
+	_base_umps.setup(_base_ump_dolls[0], _base_ump_dolls[1], _base_ump_dolls[2])
+	_base_umps.umpire_voice.connect(func(id: String, at: Vector3): _sfx(id, at))
+	_director.base_umps = _base_umps
 	_director.props = _props
 	_director.sound = _sound
 	_director.human_num = Callable(self, "_human_num")
@@ -836,6 +843,10 @@ func _build_world() -> void:
 	_field_nodes[2] = _catcher
 	_umpire = Doll.create(self, Vector3(0.0, 0.0, PlateCrew.UMP_HOME_Z), Color(0.20, 0.20, 0.25), Color(0.38, 0.38, 0.43),
 		Color(0.08, 0.08, 0.10), false, _doll_style(3), "umpire")
+	# The base umpires: first and third in foul ground, second behind the bag (one draw call each).
+	for i in 3:
+		_base_ump_dolls.append(Doll.create(self, Vector3.ZERO, Color(0.20, 0.20, 0.25), Color(0.38, 0.38, 0.43),
+			Color(0.08, 0.08, 0.10), false, _doll_style(40 + i), "base_umpire"))
 	# The rest of the defense: one draw call each. The pitcher is the player, so he is abstract.
 	var navy := _home.jersey
 	for f in _defense.fielders:
@@ -1092,6 +1103,7 @@ func _process(delta: float) -> void:
 		return       # the game waits while a menu is up
 	_game_time += delta
 	_crew.update(delta)
+	_base_umps.update(delta)
 	_props.update(delta)
 	if _sound != null:
 		_sound.update(delta, _game)
@@ -2154,6 +2166,8 @@ func _play_in_progress() -> bool:
 
 func _update_batter_lifecycle(delta: float) -> void:
 	_update_flights(delta)
+	if _play_hit == null or _play_hit.done:
+		_director.drift_to_homes(delta)        # between plays the fielders walk to where they should stand
 	if not _steal.is_empty():
 		if _steal.has("apply_at") and not _steal.get("done", false):
 			# Decided on the base: put it in the book (also if the run animation has already ended).
@@ -2301,6 +2315,18 @@ func _update_scenario(ev: Dictionary) -> void:
 		get_tree().reload_current_scene.call_deferred())
 
 
+## The infield plays in when a run at the plate matters (see Defense.wants_infield_in).
+func _update_alignment() -> void:
+	if _game == null or _defense == null:
+		return
+	var want := Defense.wants_infield_in(_game.outs, _game.bases, _game.inning, _game.home_score - _game.runs) and not _game.over
+	if want != _defense.infield_in:
+		_defense.set_infield_in(want)
+		_log("alignment", {"infield_in": want})
+		if want:
+			_show_notice("Infield in", true)
+
+
 ## A career pitcher's command narrows or widens the aim funnel (1.0 for everyone else).
 func _command_scale() -> float:
 	return _career.funnel_factor() if _career_game and _career != null else 1.0
@@ -2379,6 +2405,7 @@ func _after_event(ev: Dictionary, extra: Dictionary = {}) -> void:
 	elif _aux_play.is_empty() and _walk_on.is_empty() and not _play_in_progress():
 		_batter_ready = true          # a foul (or any pitch that did not end the at-bat): he is still up
 	_update_scenario(ev)
+	_update_alignment()
 	if ev.get("game_over", false):
 		_record_finished_game()
 		_game_over_timer = -1.0 if (_scenario != null or _career_game) else 8.0

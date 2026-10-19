@@ -243,6 +243,10 @@ static func create(parent: Node, at: Vector3, jersey_c: Color, pants_c: Color, c
 			d._squat = 0.55
 			d._squat_goal = 0.55
 			d.has_glove = false
+		"base_umpire":
+			d._squat = 0.08
+			d._squat_goal = 0.08
+			d.has_glove = false
 		"batter":
 			d._squat = 0.2
 			d._squat_goal = 0.2

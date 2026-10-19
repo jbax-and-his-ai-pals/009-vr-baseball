@@ -21,6 +21,7 @@ var play_labels: Array[Label3D]
 var leads: Array
 var presenter: BatterPresenter
 var crew: PlateCrew
+var base_umps: BaseUmpires
 var props: FieldProps
 var sound: SoundDirector
 var human_num := Callable()                 # () -> int: the position you play in Fielding mode (0 if none)
@@ -182,6 +183,24 @@ func start_play(h: LiveHit) -> void:
 		lab.visible = false
 	# The men on base are already in place: they run when the plan says so.
 	refresh_base_runners.call()
+
+
+## Between plays the fielders walk to where the defense wants them (the infield comes in, or goes
+## back), instead of jumping there. Call every frame while no play is on.
+func drift_to_homes(delta: float) -> void:
+	for f in defense.fielders:
+		if int(f.num) == 2:
+			continue
+		var node: Node3D = field_nodes.get(f.num)
+		if node == null or not node.visible:
+			continue
+		var home: Vector3 = f.home
+		var d := Vector3(home.x - node.position.x, 0.0, home.z - node.position.z)
+		if d.length() > 0.05:
+			node.position += d.normalized() * minf(d.length(), 6.0 * delta)
+			node.rotation.y = atan2(d.x, d.z)
+		else:
+			node.rotation.y = atan2(-home.x, -home.z)
 
 
 func reset_fielders() -> void:
@@ -490,6 +509,16 @@ func animate_plan(plan: Dictionary, t: float) -> void:
 				if not plan.get("ump_safe_called", false):
 					plan["ump_safe_called"] = true
 					crew.call_it("ump_safe", 0.1, 1.0)
+	# The base umpires rule on a play at their base.
+	if base_umps != null:
+		for ei in plan.events.size():
+			var be: Dictionary = plan.events[ei]
+			var eb := int(be.base)
+			if eb >= 1 and eb <= 3 and (be.text == "OUT" or be.text == "SAFE") and t >= float(be.t):
+				var bkey := "bu%d" % ei
+				if not plan.get(bkey, false):
+					plan[bkey] = true
+					base_umps.call_it(eb, "ump_out" if be.text == "OUT" else "ump_safe")
 	# Callouts: each event shows once its time has come.
 	var shown := {}
 	var slot := 0

@@ -30,6 +30,30 @@ const RUNNER_TIMES := [4.15, 7.55, 10.95, 14.45]   # contact -> 1st, 2nd, 3rd, h
 var fielders: Array[Dictionary] = []
 var team: Team
 var rng := RandomNumberGenerator.new()
+var infield_in := false              # the four infielders play on the grass to cut off the run at the plate
+
+## Where each infielder stands when the infield is in (number -> home spot): about four metres forward and a little in.
+const INFIELD_IN_SPOTS := {
+	3: Vector3(-16.0, 0.0, 18.0),
+	4: Vector3(-8.0, 0.0, 28.0),
+	5: Vector3(16.0, 0.0, 18.0),
+	6: Vector3(8.0, 0.0, 28.0),
+}
+
+
+## Infield in: a runner on third, fewer than two outs, late, and a run that matters (the defense leads
+## by at most one, or the game is tied). `lead` is the defense's runs minus the offense's.
+static func wants_infield_in(outs: int, bases: Array, inning: int, lead: int) -> bool:
+	return bases[2] != null and outs < 2 and inning >= 7 and lead >= -1 and lead <= 1
+
+
+## Put the infield in (or back at normal depth). Fielders' positions move; ratings do not.
+func set_infield_in(on: bool) -> void:
+	infield_in = on
+	for f in fielders:
+		var base: Vector3 = f.get("base_home", f.home)
+		f["base_home"] = base
+		f["home"] = INFIELD_IN_SPOTS[f.num] if on and INFIELD_IN_SPOTS.has(f.num) else base
 
 
 ## defense_skill (0..1) is the quick way to get a whole team of the same quality (0.6 = average).
