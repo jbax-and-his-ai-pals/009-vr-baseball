@@ -401,6 +401,14 @@ func _ready() -> void:
 	_sync_batter()
 	if not _xr_active:
 		_governor.set_refresh_rate(60.0)  # a desktop window is judged against 60 Hz, not a headset's 90
+	if _props != null and (Park.now().wind.length() >= 1.0 or Park.now().air < 0.95) and not _derby:
+		_props.later(2.5, func():
+			var bits: Array = [Park.now().name]
+			if Park.now().air < 0.95:
+				bits.append("thin air")
+			if Park.now().wind.length() >= 1.0:
+				bits.append(Park.now().wind_text())
+			_show_notice(", ".join(bits), false))
 	if "--excite" in OS.get_cmdline_user_args():
 		_stadium.pulse(1.0)                  # debug: the crowd on its feet (it settles over about five seconds)
 	_perf_log = "--perf" in OS.get_cmdline_user_args()
@@ -1499,6 +1507,8 @@ func apply_config(c: GameConfig) -> void:
 	if _daily > 0:
 		forced_seed = GameConfig.daily_seed(_daily)
 	Park.current = Park.by_id("harbor" if c.career else c.park)
+	if _daily > 0:
+		Park.now().wind = GameConfig.daily_wind(_daily)        # the day's weather
 	_career_game = c.career and _career != null and not _career.is_over()
 
 

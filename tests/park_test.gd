@@ -35,7 +35,7 @@ func _init() -> void:
 	var canyon := Park.by_id("canyon")
 	_check(canyon.night and canyon.wall_height > 4.0 and canyon.center > 130.0, "Canyon Park is a big night park with a tall wall")
 	_check(Park.by_id("nonsense").id == "harbor", "an unknown park is the default")
-	_check(Park.ids().size() == 3 and Park.by_id("cozy").describe().contains("Cozy Yard"), "three parks, each with a one-line description")
+	_check(Park.ids().size() == 4 and Park.by_id("cozy").describe().contains("Cozy Yard"), "four parks, each with a one-line description")
 	# Continuity: no jump at 45 degrees.
 	for p in [harbor, cozy, canyon]:
 		_check(absf(p.fence_radius(44.99) - p.fence_radius(45.01)) < 0.5 and absf(p.fence_radius(-44.99) - p.fence_radius(-45.01)) < 0.5, "%s has no gap in the fence at 45 degrees" % p.name)
@@ -80,6 +80,35 @@ func _init() -> void:
 				low_wall = true
 	Park.current = harbor
 	_check(low_wall, "a hard line drive clears Cozy Yard's low wall and not Canyon Park's tall one")
+
+	# Weather: thin air carries a fly ball, wind pushes it.
+	Park.current = Park.by_id("harbor")
+	var base_d: float = _hit(96.0, 28.0, 0.0).distance
+	Park.current = Park.by_id("summit")
+	var thin_d: float = _hit(96.0, 28.0, 0.0).distance
+	_check(thin_d > base_d * 1.05, "a fly ball carries farther in the thin air of Summit Field (%.0f m vs %.0f m)" % [thin_d, base_d])
+	Park.current = Park.by_id("harbor")
+	Park.current.wind = Vector3(0.0, 0.0, 5.0)
+	var out_d: float = _hit(96.0, 28.0, 0.0).distance
+	Park.current.wind = Vector3(0.0, 0.0, -5.0)
+	var in_d: float = _hit(96.0, 28.0, 0.0).distance
+	Park.current.wind = Vector3(5.0, 0.0, 0.0)
+	var cross: Dictionary = _hit(96.0, 28.0, 0.0)
+	Park.current = Park.by_id("harbor")
+	_check(out_d > base_d + 3.0 and in_d < base_d - 3.0, "wind blowing out adds distance and wind blowing in takes it away (%.0f / %.0f / %.0f m)" % [in_d, base_d, out_d])
+	_check(float(cross.landing_pos.x) > 3.0, "a crosswind carries it sideways (%.1f m)" % float(cross.landing_pos.x))
+	var w := Park.by_id("harbor")
+	w.wind = Vector3(0.0, 0.0, 4.0)
+	_check(w.wind_text() == "wind 9 mph, blowing out", "wind text: %s" % w.wind_text())
+	w.wind = Vector3(0.0, 0.0, -4.0)
+	_check(w.wind_text() == "wind 9 mph, blowing in", w.wind_text())
+	w.wind = Vector3(3.0, 0.0, 3.0)
+	_check(w.wind_text().contains("out to left"), w.wind_text())
+	w.wind = Vector3(0.0, 0.0, 0.5)
+	_check(w.wind_text() == "calm", "a breath of wind is calm")
+	_check(Park.by_id("summit").describe().contains("thin air") and Park.by_id("canyon").describe().contains("blowing in"), "the park descriptions mention the weather")
+	var d1 := GameConfig.daily_wind(20000)
+	_check(d1 == GameConfig.daily_wind(20000) and d1 != GameConfig.daily_wind(20001) and d1.length() <= 5.5 and d1.y == 0.0, "the day's wind is the same for everybody and different tomorrow")
 
 	# Config and menu.
 	var c := GameConfig.new()

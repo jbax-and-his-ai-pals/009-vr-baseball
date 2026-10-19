@@ -127,7 +127,7 @@ criteria for each phase are in section 5; this is the at-a-glance view. Updated 
 - [ ] Commit to one art style (decision 3 below)
 - [ ] Proper character models, or the procedural rig refined in the chosen style
 - [ ] Hero pass: catcher, batter, your own hands
-- [x] 2-3 parks, day and night (`Park`: Harbor Field, Cozy Yard with a short porch and low wall, Canyon Park at night with a tall wall; fence and wall change homers, colors/sky/light the look; Play > setup > Park; tests/park_test.gd)
+- [x] 2-3 parks, day and night (`Park`: four now - Summit Field with thin air as well as Harbor Field, Cozy Yard with a short porch and low wall, Canyon Park at night with a tall wall; fence and wall change homers, colors/sky/light the look; Play > setup > Park; tests/park_test.gd)
 - [x] Animated crowd (shaders/crowd.gdshader: every fan sways, the park stands and bounces for homers, doubles, runs and strikeouts, settling over ~5 s; `Stadium.pulse`; tests/crowd_test.gd; BUDGET OK)
 - [ ] Record and source the P0 audio (mitt, bat, crowd, umpire voice), then P1; real music
 - [ ] Menu and board art pass, transitions, between-innings presentation
@@ -135,7 +135,7 @@ criteria for each phase are in section 5; this is the at-a-glance view. Updated 
 
 ### Later
 - [~] Async ghost multiplayer (same seed, same lineup): the daily game is in (Play > Daily game: the day's visitors and dice are the same for everyone, three innings, a board per day kept two weeks; tests/daily_test.gd); sharing scores and ghosts between players needs a server and is open
-- [ ] Weather and altitude
+- [x] Weather and altitude for batted balls (`Park.air` thin air at Summit Field, `Park.wind` steady wind; Canyon Park has a headwind; the daily game has the day's wind; notice at the start; pitches are deliberately not affected so the tuned pitching feel is unchanged; tests/park_test.gd). Rain and changing wind are open
 - [ ] Replay camera for big plays
 
 ### Decisions waiting for you

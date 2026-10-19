@@ -110,6 +110,15 @@ static func today() -> int:
 	return today_override if today_override > 0 else int(Time.get_unix_time_from_system() / 86400.0)
 
 
+## The day's wind, the same for everyone: up to about 12 mph from any direction.
+static func daily_wind(day: int) -> Vector3:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = daily_seed(day) ^ 0x71D
+	var speed := rng.randf_range(0.0, 5.5)
+	var angle := rng.randf_range(0.0, TAU)
+	return Vector3(sin(angle) * speed, 0.0, cos(angle) * speed)
+
+
 ## The seed everyone shares for a daily game.
 static func daily_seed(day: int) -> int:
 	return day * 7919 + 13

@@ -20,6 +20,8 @@ var right_line := 100.0         # down the first-base (right field) line
 var center := 122.0             # dead center
 var wall_height := 3.0
 var night := false
+var air := 1.0                  # air density relative to sea level: thin air (< 1) lets a fly ball carry
+var wind := Vector3.ZERO        # m/s, the way the air moves: +z blows out to center, +x toward left field
 var note := ""
 var grass := Color(0.30, 0.62, 0.30)
 var grass_stripe := Color(0.36, 0.70, 0.34)
@@ -39,7 +41,7 @@ static func now() -> Park:
 
 
 static func ids() -> Array:
-	return ["harbor", "cozy", "canyon"]
+	return ["harbor", "cozy", "canyon", "summit"]
 
 
 static func by_id(park_id: String) -> Park:
@@ -64,6 +66,22 @@ static func make(park_id: String) -> Park:
 			p.wall = Color(0.55, 0.12, 0.14)
 			p.tiers = [Color(0.55, 0.14, 0.18), Color(0.90, 0.80, 0.55), Color(0.55, 0.14, 0.18), Color(0.30, 0.38, 0.30)]
 			p.sky = Color(0.74, 0.84, 0.92)
+		"summit":
+			p.id = "summit"
+			p.name = "Summit Field"
+			p.left_line = 104.0
+			p.right_line = 104.0
+			p.center = 128.0
+			p.wall_height = 3.3
+			p.air = 0.80
+			p.note = "high in the mountains: thin air, fly balls carry a long way"
+			p.grass = Color(0.36, 0.60, 0.28)
+			p.grass_stripe = Color(0.42, 0.66, 0.32)
+			p.infield_grass = Color(0.32, 0.55, 0.26)
+			p.dirt = Color(0.60, 0.46, 0.34)
+			p.wall = Color(0.22, 0.26, 0.20)
+			p.tiers = [Color(0.30, 0.24, 0.55), Color(0.85, 0.80, 0.90), Color(0.30, 0.24, 0.55), Color(0.55, 0.50, 0.40)]
+			p.sky = Color(0.45, 0.72, 0.98)
 		"canyon":
 			p.id = "canyon"
 			p.name = "Canyon Park"
@@ -81,6 +99,7 @@ static func make(park_id: String) -> Park:
 			p.tiers = [Color(0.12, 0.20, 0.42), Color(0.20, 0.34, 0.60), Color(0.12, 0.20, 0.42), Color(0.60, 0.62, 0.70)]
 			p.sky = Color(0.06, 0.08, 0.20)
 			p.ambient = 0.34
+			p.wind = Vector3(0.0, 0.0, -3.5)
 		_:
 			p.note = "a fair park: 100 m down the lines, 122 to center"
 	return p
@@ -99,4 +118,25 @@ func fence_radius(psi_deg: float) -> float:
 
 ## A short sentence for the menu.
 func describe() -> String:
-	return "%s - %d m down the lines, %d to center, %.1f m wall%s" % [name, int((left_line + right_line) * 0.5), int(center), wall_height, ", night" if night else ""]
+	var extra := ""
+	if air < 0.95:
+		extra += ", thin air"
+	if wind.length() >= 1.0:
+		extra += ", " + wind_text()
+	return "%s - %d m down the lines, %d to center, %.1f m wall%s%s" % [name, int((left_line + right_line) * 0.5), int(center), wall_height, ", night" if night else "", extra]
+
+
+## "wind 8 mph, blowing out to left" - how the air is moving, for a notice.
+func wind_text() -> String:
+	var mph := wind.length() * 2.237
+	if mph < 2.0:
+		return "calm"
+	var out := wind.z >= 0.0
+	var along := absf(wind.z)
+	var across := absf(wind.x)
+	var way := "out" if out else "in"
+	if across > along * 1.5:
+		way = "across, toward left" if wind.x > 0.0 else "across, toward right"
+	elif across > along * 0.4:
+		way = way + " to " + ("left" if wind.x > 0.0 else "right") if out else way + " from " + ("right" if wind.x > 0.0 else "left")
+	return "wind %d mph, blowing %s" % [roundi(mph), way]

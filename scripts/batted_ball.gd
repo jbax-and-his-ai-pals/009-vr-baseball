@@ -16,17 +16,22 @@ const RECORD_EVERY := 2          # path sample interval = 2 * DT = 1/120 s
 const MAX_TIME := 14.0
 
 
+## The park's air changes it: thin air (altitude) carries a fly ball farther, and a wind pushes it (drag and
+## lift act on the ball's speed through the air, not over the ground). Pitches do not feel it (see PitchPhysics).
 static func accel(v: Vector3, spin: Vector3) -> Vector3:
-	var speed := v.length()
+	var park := Park.now()
+	var rho := AIR_DENSITY * park.air
+	var rel := v - park.wind
+	var speed := rel.length()
 	if speed < 0.01:
 		return GRAVITY
-	var a := GRAVITY - v * (0.5 * AIR_DENSITY * DRAG_CD * AREA * speed / MASS)
-	var dir := spin.cross(v)
+	var a := GRAVITY - rel * (0.5 * rho * DRAG_CD * AREA * speed / MASS)
+	var dir := spin.cross(rel)
 	var w := dir.length() / speed
 	if w > 0.01:
 		var s := BALL_RADIUS * w / speed
 		var cl := PitchPhysics.LIFT_SCALE * s / (2.32 * s + 0.4)
-		a += dir.normalized() * (0.5 * AIR_DENSITY * AREA * cl * speed * speed / MASS)
+		a += dir.normalized() * (0.5 * rho * AREA * cl * speed * speed / MASS)
 	return a
 
 
