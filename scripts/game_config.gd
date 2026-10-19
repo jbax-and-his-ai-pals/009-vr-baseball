@@ -25,6 +25,7 @@ var innings := 9
 var batter := "Contact Hitter"
 var assist := "Standard"
 var scenario := ""             # a challenge id (see Scenario); "" for an ordinary game
+var tutorial := false          # the pitching lesson (a bullpen with prompts)
 var career := false            # the next start of your saved career (teams, pitcher and innings come from it)
 
 
@@ -43,6 +44,11 @@ func normalized() -> GameConfig:
 	c.innings = innings if innings in INNINGS else 9
 	c.batter = batter if batter in BATTERS else "Contact Hitter"
 	c.assist = assist if assist in Settings.ASSISTS else "Standard"
+	if tutorial and scenario == "" and not career:
+		c.tutorial = true
+		c.mode = "Pitching"
+		c.activity = "Bullpen"
+		c.assist = "Casual"
 	if career and scenario == "":
 		c.career = true
 		c.mode = "Pitching"
@@ -85,6 +91,8 @@ func leaderboard_key() -> String:
 func title() -> String:
 	if scenario != "":
 		return "Challenge - %s" % Scenario.by_id(scenario).title
+	if tutorial:
+		return "Learn to pitch"
 	if career:
 		return "Career - season start"
 	var who := mode
@@ -105,7 +113,7 @@ func title() -> String:
 
 func to_dict() -> Dictionary:
 	return {"mode": mode, "activity": activity, "position": position, "innings": innings,
-		"batter": batter, "assist": assist, "scenario": scenario, "career": career}
+		"batter": batter, "assist": assist, "scenario": scenario, "career": career, "tutorial": tutorial}
 
 
 static func from_dict(d: Dictionary) -> GameConfig:
@@ -118,4 +126,5 @@ static func from_dict(d: Dictionary) -> GameConfig:
 	c.assist = str(d.get("assist", c.assist))
 	c.scenario = str(d.get("scenario", ""))
 	c.career = bool(d.get("career", false))
+	c.tutorial = bool(d.get("tutorial", false))
 	return c.normalized()

@@ -21,6 +21,7 @@ var flutter_seed := 0.0
 var bat := {}            # BatterAI.evaluate() result for this pitch
 var sim := {}            # BattedBall.simulate() result when the pitch is hit
 var play := {}           # Defense.resolve() result for it
+var shape := {}                     # what the wrist model measured of the throw (your pitch only)
 var swing_peak := 0.0               # the fastest your bat's barrel moved while the ball was near the plate
 var human_chance := false          # the human fielder owns this ball
 var play_fallback := {}            # what happens if he does not get it

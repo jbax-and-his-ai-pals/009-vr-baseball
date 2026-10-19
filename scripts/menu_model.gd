@@ -107,6 +107,7 @@ func items() -> Array[Dictionary]:
 			rows.append(_row("stats", "Stats & leaderboards"))
 			rows.append(_row("quit", "Quit"))
 		"play":
+			rows.append(_row("tutorial", "Learn to pitch", "lesson %d of %d" % [mini(settings.tutorial_step + 1, Tutorial.STEPS.size()), Tutorial.STEPS.size()] if settings.tutorial_step < Tutorial.STEPS.size() else "done (replay)", true, "a short lesson: your usual throw, then one gesture per pitch"))
 			rows.append(_row("mode:Pitching", "Pitching", "you pitch to AI batters"))
 			rows.append(_row("mode:Fielding", "Fielding", "you play a position"))
 			rows.append(_row("mode:Spectate", "Spectate", "watch an AI game"))
@@ -318,6 +319,14 @@ func activate(index: int) -> Dictionary:
 			cc = cc.normalized()
 			settings.last_game = cc.to_dict()
 			return {"type": "start", "config": cc}
+	if id == "tutorial":
+		var tc := GameConfig.new()
+		tc.tutorial = true
+		tc = tc.normalized()
+		if settings.tutorial_step >= Tutorial.STEPS.size():
+			settings.tutorial_step = 0                  # replaying it starts over
+		settings.last_game = tc.to_dict()
+		return {"type": "start", "config": tc}
 	if id.begins_with("challenge:"):
 		var c := GameConfig.new()
 		c.scenario = id.substr(10)

@@ -72,12 +72,12 @@ criteria for each phase are in section 5; this is the at-a-glance view. Updated 
 - [~] Test: a seed replays the game (only the bottom half is covered so far)
 - [~] Each presenter has a test (`PlateCrew`, `FieldProps`, `BatterPresenter` do; `SoundDirector` and `PlayDirector` are covered only through the full-game tests)
 
-### Phase 4 - Core VR feel (M4) - MOSTLY DONE (open: hands and glove models, pitch lab, tutorial)
+### Phase 4 - Core VR feel (M4) - MOSTLY DONE (open: hands and glove models)
 - [x] Controller haptics (event table, Options > Haptics, menu pulses in the pointing hand)
 - [ ] Hand model holding the ball; grip shape that teaches the recognised pitch at easier assists
 - [ ] Glove model on the off hand
-- [ ] Pitch lab (Bullpen mode rebuilt): recognised pitch, spin axis, break, speed, location, "what made it a slider"
-- [ ] First-run tutorial: calibrate your normal throw, then one gesture per pitch type
+- [x] Pitch lab (Bullpen mode rebuilt): recognised pitch, spin axis, break, speed, location, "what made it a slider" (done: the report explains each pitch in words, `PitchLab`)
+- [x] First-run tutorial: calibrate your normal throw, then one gesture per pitch type (done: `Tutorial`, five lessons from Play > Learn to pitch)
 - [x] Catcher signs: a pitch and a spot called from the count, runners and batter side, shown by the catcher's knee and a marker on the zone; Y shakes him off; sign hits are graded, notified, and counted in your line and lifetime totals (a gameplay bonus for hitting the sign is not added)
 - [x] Comebackers: a ball hit back at the mound is yours to field with the glove hand and throw to first
 - [x] Seated mode (Options > Seated play: lifts the rig so a seated head is at standing height once tracking starts; a manual recalibrate is open)

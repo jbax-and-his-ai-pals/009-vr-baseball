@@ -151,6 +151,7 @@ var _node_moves: Array = []                 # fielders walking into position for
 var _tracker := SwingTracker.new()          # your controller as a bat (Hitting)
 var _bat_view: MeshInstance3D               # the bat in your hand
 var _bat_call := ""                         # a play called with this pitch: "squeeze" or "hit_and_run" ("" for none)
+var _tutorial: Tutorial                     # the pitching lesson, when that is what you are playing
 var _derby := false                         # home run derby: ten outs of easy pitches
 var _derby_outs := 0
 var _derby_hr := 0
@@ -1435,6 +1436,7 @@ func apply_config(c: GameConfig) -> void:
 	_scenario_id = c.scenario
 	_drill = c.activity == "Drill" and not _mode_is_not_fielding(c)
 	_derby = c.activity == "Derby" and c.mode == "Hitting"
+	_tutorial = Tutorial.new(_settings.tutorial_step) if c.tutorial else null
 	_career_game = c.career and _career != null and not _career.is_over()
 
 
@@ -1637,6 +1639,7 @@ func _release_from_hand(release_t: float, vel_latency: float, spin_latency: floa
 		"pitch":
 			_last_delivery = float(r.delivery)
 			var pitch := _launch(from, r.vel, r.spin, "Your pitch", float(r.flutter), _run_rng.randf() * 100.0)
+			pitch.shape = r.shape
 			pitch.label = PitchNamer.name_pitch(pitch.analysis, _human.wrist.typical_mph(velocity_gain), float(r.hand_sign), bool(r.knuckle))
 			_haptics.play("release", clampf(float(pitch.analysis.get("speed_mph", 60.0)) / 90.0, 0.0, 1.0))
 			_log_throw(pitch, from, release_t, vel_latency, r)
@@ -1855,6 +1858,7 @@ func _land(pitch: LivePitch) -> void:
 		outcome = "hit_by_pitch"
 	_mark_pitch(a, outcome)
 	_derby_tally(pitch, false, outcome in ["called_strike", "swinging_strike"])
+	_tutorial_pitch(pitch)
 	_grade_sign(pitch, plate)
 	if _scenario != null and a.get("reached", false):
 		_scenario.on_pitch(String(PitchLocation.classify(plate.x, plate.y).kind), bool(a.get("strike", false)) and outcome != "hit_by_pitch")
@@ -1929,7 +1933,7 @@ func _land(pitch: LivePitch) -> void:
 		_crew.chase()
 	var wild_text := _event_text(wild_ev)
 	_last_report = _format_report(pitch.label, a) + _bat_line(pitch) + ("\n" + wild_text if wild_text != "" else "") \
-		+ "\n" + _event_text(ev)
+		+ "\n" + _event_text(ev) + _lab_lines(pitch)
 	_after_event(ev)
 	_refresh_hud()
 	print(_last_report.replace("\n", " | "))
@@ -1964,6 +1968,7 @@ func _contact(pitch: LivePitch) -> void:
 		_batter_ready = false
 	_mark_pitch(a, "in_play" if in_play else "foul")
 	_derby_tally(pitch, bool(sim.get("home_run", false)), false)
+	_tutorial_pitch(pitch)
 	_grade_sign(pitch, a.get("plate_pos", Vector3.ZERO))
 	_stats.record_pitch(pitch.label, a.speed_mph, "in_play" if in_play else "foul")
 	if in_play:
@@ -2838,6 +2843,28 @@ func _fielding_line() -> Dictionary:
 	return l
 
 
+## The pitch lab: in the bullpen (and the lesson) every pitch is explained under its report.
+func _lab_lines(pitch: LivePitch) -> String:
+	if not (_config.activity == "Bullpen" or _config.tutorial) or pitch.shape.is_empty():
+		return ""
+	return "\n" + "\n".join(PitchLab.explain(pitch.label, pitch.analysis, pitch.shape))
+
+
+## One pitch of the lesson: it moves on by itself and says what it saw.
+func _tutorial_pitch(pitch: LivePitch) -> void:
+	if _tutorial == null or pitch.shape.is_empty() or not pitch.analysis.get("reached", false):
+		return
+	var r := _tutorial.on_pitch(pitch.label, bool(pitch.analysis.get("strike", false)))
+	if String(r.text) != "":
+		_show_notice(String(r.text), true)
+	if r.advanced:
+		_settings.tutorial_step = _tutorial.step
+		_settings.save()
+		_sfx("corner_chime")
+		_haptics.play("ui_select")
+	_refresh_hud()
+
+
 ## A career pitcher's command narrows or widens the aim funnel (1.0 for everyone else).
 func _command_scale() -> float:
 	return _career.funnel_factor() if _career_game and _career != null else 1.0
@@ -3252,6 +3279,8 @@ func _refresh_hud() -> void:
 		pl.append("%s   |   %d R" % [g.situation_text(), g.runs])
 		if _scenario != null:
 			pl.append("%s: %s" % [_scenario.title.to_upper(), _scenario.progress_text(g)])
+		if _tutorial != null:
+			pl.append(_tutorial.prompt())
 	_pitch_board.lines = pl
 	_pitch_board.refresh()
 

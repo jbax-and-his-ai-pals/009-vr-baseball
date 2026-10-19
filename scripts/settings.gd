@@ -35,6 +35,7 @@ var hand := "right"                # throwing hand
 var assist := "Standard"
 var quality := "Auto"              # Auto: governor decides; Quest: tuned settings; High: no tuning
 var locomotion := "smooth"
+var tutorial_step := 0             # how far through the pitching lesson you are
 var haptics := "Normal"            # controller vibration strength
 var colorblind := false            # zone colours that avoid red against green
 var call_text := true              # the umpire's calls are also shown as words
@@ -59,7 +60,7 @@ func throwing_hand_name() -> StringName:
 
 func to_dict() -> Dictionary:
 	return {"version": VERSION, "hand": hand, "assist": assist, "quality": quality,
-		"locomotion": locomotion, "haptics": haptics, "colorblind": colorblind, "call_text": call_text, "seated": seated, "gestures": gestures, "signs": signs, "vignette": vignette, "snap_turn": snap_turn,
+		"locomotion": locomotion, "tutorial_step": tutorial_step, "haptics": haptics, "colorblind": colorblind, "call_text": call_text, "seated": seated, "gestures": gestures, "signs": signs, "vignette": vignette, "snap_turn": snap_turn,
 		"developer": developer, "volumes": volumes, "last_game": last_game}
 
 
@@ -71,6 +72,7 @@ static func from_dict(d: Dictionary) -> Settings:
 	s.assist = d.get("assist", s.assist) if d.get("assist", "") in ASSISTS else s.assist
 	s.quality = d.get("quality", s.quality) if d.get("quality", "") in QUALITY else s.quality
 	s.locomotion = d.get("locomotion", s.locomotion) if d.get("locomotion", "") in LOCOMOTION else s.locomotion
+	s.tutorial_step = clampi(int(d.get("tutorial_step", 0)), 0, 99)
 	s.haptics = d.get("haptics", s.haptics) if d.get("haptics", "") in HAPTICS else s.haptics
 	s.colorblind = bool(d.get("colorblind", s.colorblind))
 	s.call_text = bool(d.get("call_text", s.call_text))
