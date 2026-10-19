@@ -925,16 +925,18 @@ func _spawn_doll_demo() -> void:
 func _build_world() -> void:
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color(0.53, 0.78, 0.95)
+	env.background_color = Park.now().sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_color = Color.WHITE
-	env.ambient_light_energy = 0.6
+	env.ambient_light_energy = Park.now().ambient
 	var world_env := WorldEnvironment.new()
 	world_env.environment = env
 	add_child(world_env)
 
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-55.0, 30.0, 0.0)
+	if Park.now().night:
+		sun.light_energy = 0.45
 	add_child(sun)
 
 	var mz := PitchPhysics.MOUND_Z
@@ -1460,6 +1462,7 @@ func _current_config() -> GameConfig:
 	c.scenario = _scenario_id
 	c.career = _career_game
 	c.two_way = _two_way
+	c.park = Park.now().id
 	if _career_game:
 		c.innings = _career.innings_per_start
 	return c.normalized()
@@ -1479,6 +1482,7 @@ func apply_config(c: GameConfig) -> void:
 	_derby = c.activity == "Derby" and c.mode == "Hitting"
 	_tutorial = Tutorial.new(_settings.tutorial_step) if c.tutorial else null
 	_two_way = c.two_way
+	Park.current = Park.by_id("harbor" if c.career else c.park)
 	_career_game = c.career and _career != null and not _career.is_over()
 
 

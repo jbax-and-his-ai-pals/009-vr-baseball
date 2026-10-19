@@ -127,7 +127,7 @@ criteria for each phase are in section 5; this is the at-a-glance view. Updated 
 - [ ] Commit to one art style (decision 3 below)
 - [ ] Proper character models, or the procedural rig refined in the chosen style
 - [ ] Hero pass: catcher, batter, your own hands
-- [ ] 2-3 parks, day and night
+- [x] 2-3 parks, day and night (`Park`: Harbor Field, Cozy Yard with a short porch and low wall, Canyon Park at night with a tall wall; fence and wall change homers, colors/sky/light the look; Play > setup > Park; tests/park_test.gd)
 - [ ] Animated crowd (shader bob, stand for home runs)
 - [ ] Record and source the P0 audio (mitt, bat, crowd, umpire voice), then P1; real music
 - [ ] Menu and board art pass, transitions, between-innings presentation

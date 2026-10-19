@@ -238,3 +238,7 @@ Play > Fielding > Position: P. The AI throws every pitch; you stand beside the r
 - Pitching with a runner on: throw over fast (start your motion and release within about half a second) and it gets more runners than a slow lob; a left-hander's throws to first and a right-hander's to third are the best (the log line `pickoff` has `quick` and `lefty`).
 - Watch the AI pitcher in Spectate or Fielding: with a runner leading far off he sometimes steps off and throws over; the runner's lead shrinks after.
 - On a ball hit to the infield the right fielder jogs in behind first; on a steal the center fielder does not (not wired for steals). Tune `Backup.DEPTH`, and whether the outfielders should creep in with runners on.
+
+## 21. Parks
+
+Play > any mode > setup > Park: Harbor Field (the old park), Cozy Yard (84 m short porch in left, 94 in right, 2.4 m wall, warm colors) or Canyon Park (108 m lines, 135 to center, 4.6 m wall, night). Check the homer rate feels different, that the night park is readable (ambient 0.34, sun 0.45), and that the foul poles and chalk line up with the fence. Career games are always at Harbor Field.

@@ -87,11 +87,14 @@ func _init() -> void:
 	bp._leads[0] = 5.2
 	bp._since_throw = [8, 8, 8]
 	var threw := false
-	for i in 60 * 80:
-		bp._leads[0] = 5.2 if int(bp._since_throw[0]) > 0 else bp._leads[0]
-		bp._process(1.0 / 60.0)
-		if int(bp._since_throw[0]) == 0:
-			threw = true
+	for i in 400:
+		bp._aux_play = {}
+		bp._steal = {}
+		bp._game.bases = [bp._away.lineup[0], null, null]
+		bp._leads[0] = 5.2
+		bp._since_throw = [8, 8, 8]
+		if bp._ai_throw_over():
+			threw = int(bp._since_throw[0]) == 0
 			break
 	_check(threw, "an AI pitcher throws over to hold a runner who is leading far off")
 	bp.queue_free()

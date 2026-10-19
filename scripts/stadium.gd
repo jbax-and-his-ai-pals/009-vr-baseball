@@ -33,11 +33,7 @@ var _clouds: MultiMeshInstance3D
 ## (degrees from straight out to center field). ~122 m to dead center, 100 m down the
 ## lines, closing to ~22 m behind home plate.
 static func fence_radius(psi_deg: float) -> float:
-	var a := absf(psi_deg)
-	if a <= 45.0:
-		return 100.0 + 22.0 * cos(deg_to_rad(a) * 2.0)
-	var t := (180.0 - a) / 135.0
-	return 22.0 + 78.0 * pow(t, 3.0)
+	return Park.now().fence_radius(psi_deg)
 
 
 ## How many stand tiers exist in direction psi: full stands behind the plate and down the
@@ -69,7 +65,7 @@ func _ready() -> void:
 func _build_ground() -> void:
 	var grass := PlaneMesh.new()
 	grass.size = Vector2(420.0, 420.0)
-	_add(grass, Color(0.30, 0.62, 0.30), Vector3(0.0, 0.0, 40.0))
+	_add(grass, Park.now().grass, Vector3(0.0, 0.0, 40.0))
 
 	# Mowing stripes across the outfield: one MultiMesh.
 	var stripe := BoxMesh.new()
@@ -81,7 +77,7 @@ func _build_ground() -> void:
 		var x := (i - count * 0.5 + 0.5) * width * 1.0
 		var xf := Transform3D(Basis.IDENTITY.scaled(Vector3(width * 0.5, 1.0, 70.0)), Vector3(x, 0.006, 88.0))
 		mm.multimesh.set_instance_transform(i, xf)
-	mm.material_override = _mat(Color(0.36, 0.70, 0.34))
+	mm.material_override = _mat(Park.now().grass_stripe)
 	add_child(mm)
 
 
@@ -93,18 +89,18 @@ func _build_infield() -> void:
 	dirt.bottom_radius = INFIELD_RADIUS
 	dirt.height = 0.01
 	dirt.radial_segments = 48
-	_add(dirt, Color(0.72, 0.52, 0.34), Vector3(0.0, 0.004, mz))
+	_add(dirt, Park.now().dirt, Vector3(0.0, 0.004, mz))
 	var home_dirt := CylinderMesh.new()
 	home_dirt.top_radius = 4.6
 	home_dirt.bottom_radius = 4.6
 	home_dirt.height = 0.01
 	home_dirt.radial_segments = 32
-	_add(home_dirt, Color(0.72, 0.52, 0.34), Vector3(0.0, 0.006, 0.0))
+	_add(home_dirt, Park.now().dirt, Vector3(0.0, 0.006, 0.0))
 
 	# Infield grass: the diamond between the bases, with base paths cut through it.
 	var diamond := BoxMesh.new()
 	diamond.size = Vector3(BASE_DIST - 1.4, 0.01, BASE_DIST - 1.4)
-	_add(diamond, Color(0.27, 0.58, 0.27), Vector3(0.0, 0.008, BASE_DIST * 0.7071), 45.0)
+	_add(diamond, Park.now().infield_grass, Vector3(0.0, 0.008, BASE_DIST * 0.7071), 45.0)
 
 	# Base paths and bases.
 	var corner := BASE_DIST * 0.7071
@@ -117,7 +113,7 @@ func _build_infield() -> void:
 		[Vector3(corner * 0.5, 0.010, corner * 1.5), 45.0],
 	]
 	for s in segs:
-		_add(path, Color(0.72, 0.52, 0.34), s[0], s[1])
+		_add(path, Park.now().dirt, s[0], s[1])
 	var base := BoxMesh.new()
 	base.size = Vector3(0.38, 0.08, 0.38)
 	for b in [Vector3(-corner, 0.05, corner), Vector3(0.0, 0.05, corner * 2.0), Vector3(corner, 0.05, corner)]:
@@ -128,17 +124,18 @@ func _build_infield() -> void:
 func _build_chalk() -> void:
 	var chalk := Color(0.97, 0.97, 0.97)
 	# Foul lines to the poles (100 m down each line).
-	var line := BoxMesh.new()
-	line.size = Vector3(0.11, 0.012, 100.0)
 	for s in [-1.0, 1.0]:
-		_add(line, chalk, Vector3(s * 35.35, 0.014, 35.35), s * 45.0)
+		var pole_line := Park.now().left_line if s > 0.0 else Park.now().right_line
+		var line := BoxMesh.new()
+		line.size = Vector3(0.11, 0.012, pole_line)
+		_add(line, chalk, Vector3(s * pole_line * 0.3535, 0.014, pole_line * 0.3535), s * 45.0)
 		# Foul pole.
 		var pole := CylinderMesh.new()
 		pole.top_radius = 0.12
 		pole.bottom_radius = 0.12
 		pole.height = 14.0
 		pole.radial_segments = 8
-		_add(pole, Color(1.0, 0.85, 0.1), Vector3(s * 70.7, 7.0, 70.7))
+		_add(pole, Color(1.0, 0.85, 0.1), Vector3(s * pole_line * 0.7071, 7.0, pole_line * 0.7071))
 	# Batter's boxes: 4 ft x 6 ft, 6 inches off the plate, one each side.
 	var thick := 0.07
 	for s in [-1.0, 1.0]:
@@ -198,13 +195,14 @@ func _fence_point(psi_deg: float) -> Vector3:
 
 func _build_fence_and_track() -> void:
 	# Warning track just inside the fence, the fence itself, and a bright cap.
-	_ring(Vector3(1.0, 0.012, 5.0), Color(0.72, 0.52, 0.34), -5.0, 0.0)
-	_ring(Vector3(1.0, 3.0, 0.5), Color(0.10, 0.28, 0.20), 0.0, 0.0)
-	_ring(Vector3(1.0, 0.18, 0.7), Color(1.0, 0.85, 0.1), -0.1, 3.0)
+	var park := Park.now()
+	_ring(Vector3(1.0, 0.012, 5.0), park.dirt, -5.0, 0.0)
+	_ring(Vector3(1.0, park.wall_height, 0.5), park.wall, 0.0, 0.0)
+	_ring(Vector3(1.0, 0.18, 0.7), Color(1.0, 0.85, 0.1), -0.1, park.wall_height)
 
 
 func _build_stands() -> void:
-	var tier_colors := [Color(0.22, 0.32, 0.65), Color(0.70, 0.20, 0.24), Color(0.22, 0.32, 0.65), Color(0.90, 0.78, 0.28)]
+	var tier_colors := Park.now().tiers
 	for k in TIER_COUNT:
 		var base_y := 1.0 + k * TIER_STEP
 		_ring(Vector3(1.0, TIER_HEIGHT, TIER_DEPTH), tier_colors[k], 1.5 + k * TIER_DEPTH * 0.92, base_y, 96, k)

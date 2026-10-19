@@ -14,7 +14,6 @@ const GRAVITY := Vector3(0.0, -9.81, 0.0)
 const DT := 1.0 / 240.0
 const RECORD_EVERY := 2          # path sample interval = 2 * DT = 1/120 s
 const MAX_TIME := 14.0
-const WALL_HEIGHT := 3.0
 
 
 static func accel(v: Vector3, spin: Vector3) -> Vector3:
@@ -112,12 +111,12 @@ static func simulate(origin: Vector3, vel: Vector3, spin: Vector3) -> Dictionary
 		if pos.z > 0.0:
 			var psi := rad_to_deg(atan2(pos.x, pos.z))
 			if Vector2(pos.x, pos.z).length() >= Stadium.fence_radius(psi) and is_fair(pos):
-				if pos.y >= WALL_HEIGHT + BALL_RADIUS and not landed:
+				if pos.y >= Park.now().wall_height + BALL_RADIUS and not landed:
 					# Over the fence: keep flying so the full distance is known.
 					if not home_run:
 						home_run = true
 						hr_cross = pos
-				elif landed and not home_run and pos.y >= WALL_HEIGHT + BALL_RADIUS:
+				elif landed and not home_run and pos.y >= Park.now().wall_height + BALL_RADIUS:
 					# It hit the ground first and bounced over the fence: a ground-rule double.
 					ground_rule = true
 					ended = true
