@@ -57,7 +57,7 @@ func _init() -> void:
 	root.add_child(bp)
 	await process_frame
 	bp._drill = true
-	bp._auto_field = true
+	bp.fielding.auto_field = true
 	var worst_outs := 0
 	for i in 60 * 400:
 		bp._process(1.0 / 60.0)
@@ -66,7 +66,7 @@ func _init() -> void:
 			break
 	_check(bp._drill_done and bp._drill_started == 10, "ten balls were hit and the drill finished (%d)" % bp._drill_started)
 	_check(worst_outs <= 1 and bp._game.inning == 1, "no inning ever ended on you (most outs seen: %d)" % worst_outs)
-	_check(int(bp._fld.chances) >= 3 and int(bp._fld.caught) + int(bp._fld.missed) + int(bp._fld.errors) >= 3, "your chances were counted (%s)" % str(bp._fld))
+	_check(int(bp.fielding.fld.chances) >= 3 and int(bp.fielding.fld.caught) + int(bp.fielding.fld.missed) + int(bp.fielding.fld.errors) >= 3, "your chances were counted (%s)" % str(bp.fielding.fld))
 	var rec: Dictionary = bp._profile.challenge("drill_f6")
 	_check(int(rec.attempts) == 1, "the result is saved against your position (%s)" % str(rec))
 	_check(bp._props.pending_count() > 0 and not bp._game_recorded, "a way back to the menu is scheduled, and it is not recorded as a game")

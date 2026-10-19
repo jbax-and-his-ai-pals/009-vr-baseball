@@ -32,7 +32,7 @@ func _run_pitches(bp: Node3D, glove_dx: float, n: int) -> Dictionary:
 		if pitch == null:
 			break
 		var pp: Vector3 = pitch.analysis.plate_pos
-		bp._glove_override = Vector3(pp.x + glove_dx, pp.y, -0.9)
+		bp.fielding.glove_override = Vector3(pp.x + glove_dx, pp.y, -0.9)
 		for i in 60 * 6:
 			bp._process(1.0 / 60.0)
 			if pitch.landed:
@@ -42,7 +42,7 @@ func _run_pitches(bp: Node3D, glove_dx: float, n: int) -> Dictionary:
 			if bp._batter_ready and bp._aux_play.is_empty():
 				break
 		done += 1
-	return {"pitches": done, "frames": int(bp._fld.frames), "lost": int(bp._fld.lost), "passed": int(bp._fld.passed)}
+	return {"pitches": done, "frames": int(bp.fielding.fld.frames), "lost": int(bp.fielding.fld.lost), "passed": int(bp.fielding.fld.passed)}
 
 
 func _init() -> void:
@@ -114,44 +114,44 @@ func _init() -> void:
 	bp.spectate_interval = 0.8
 	root.add_child(bp)
 	await process_frame
-	_check(bp._is_catcher() and not bp._mode.human_pitcher, "you are the catcher")
+	_check(bp.fielding.is_catcher() and not bp._mode.human_pitcher, "you are the catcher")
 	_check(not bp._catcher.visible, "his stand-in is out of the way")
 	var good_run := _run_pitches(bp, 0.0, 10)
 	print("  good glove: %s" % str(good_run))
 	_check(good_run.pitches >= 8 and good_run.lost <= 1, "with the glove on every ball you almost never lose a call")
 	# The call itself, on a corner strike and a pitch just off the plate, many times over.
-	bp._fld = {"chances": 0, "caught": 0, "missed": 0, "errors": 0, "assists": 0, "frames": 0, "lost": 0, "blocks": 0, "passed": 0}
+	bp.fielding.fld = {"chances": 0, "caught": 0, "missed": 0, "errors": 0, "assists": 0, "frames": 0, "lost": 0, "blocks": 0, "passed": 0}
 	bp._spectate_timer = 1e9                      # no more real pitches: only the ones this test makes
 	for i in 60 * 8:
 		bp._process(1.0 / 60.0)
 		if bp._pitches.is_empty() and bp._batter_ready and bp._aux_play.is_empty():
 			break
-	bp._fld = {"chances": 0, "caught": 0, "missed": 0, "errors": 0, "assists": 0, "frames": 0, "lost": 0, "blocks": 0, "passed": 0, "covers": 0, "uncovered": 0}
+	bp.fielding.fld = {"chances": 0, "caught": 0, "missed": 0, "errors": 0, "assists": 0, "frames": 0, "lost": 0, "blocks": 0, "passed": 0, "covers": 0, "uncovered": 0}
 	var corner := Vector3(PitchPhysics.ZONE_HALF_W + PitchPhysics.BALL_RADIUS - 1.0 * inch, 0.85, 0.0)
 	var off := Vector3(PitchPhysics.ZONE_HALF_W + PitchPhysics.BALL_RADIUS + 1.5 * inch, 0.85, 0.0)
 	var dummy := LivePitch.new()
-	bp._glove_override = Vector3(corner.x, corner.y, -0.9)
+	bp.fielding.glove_override = Vector3(corner.x, corner.y, -0.9)
 	for i in 40:
 		bp._process(1.0 / 60.0)
 	var kept := 0
 	for i in 20:
-		if bp._receive(dummy, corner, "called_strike") == "called_strike":
+		if bp.fielding.receive(dummy, corner, "called_strike") == "called_strike":
 			kept += 1
-	_check(kept == 20 and bp._fld.lost == 0, "a still glove on a corner strike keeps it every time")
+	_check(kept == 20 and bp.fielding.fld.lost == 0, "a still glove on a corner strike keeps it every time")
 	var stolen := 0
 	for i in 20:
-		if bp._receive(dummy, off, "ball") == "called_strike":
+		if bp.fielding.receive(dummy, off, "ball") == "called_strike":
 			stolen += 1
-	_check(stolen >= 12 and bp._fld.frames == stolen, "and steals the one just off the plate (%d of 20)" % stolen)
-	bp._glove_override = Vector3(1.5, 0.2, -0.9)
+	_check(stolen >= 12 and bp.fielding.fld.frames == stolen, "and steals the one just off the plate (%d of 20)" % stolen)
+	bp.fielding.glove_override = Vector3(1.5, 0.2, -0.9)
 	for i in 40:
 		bp._process(1.0 / 60.0)
-	bp._fld.lost = 0
+	bp.fielding.fld.lost = 0
 	var kept2 := 0
 	for i in 20:
-		if bp._receive(dummy, corner, "called_strike") == "called_strike":
+		if bp.fielding.receive(dummy, corner, "called_strike") == "called_strike":
 			kept2 += 1
-	_check(kept2 <= 6 and bp._fld.lost == 20 - kept2, "a glove that is somewhere else loses it (%d kept)" % kept2)
+	_check(kept2 <= 6 and bp.fielding.fld.lost == 20 - kept2, "a glove that is somewhere else loses it (%d kept)" % kept2)
 	bp.queue_free()
 
 	print("FAILURES: %d" % _failures)

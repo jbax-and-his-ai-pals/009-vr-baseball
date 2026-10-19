@@ -137,7 +137,6 @@ var _visit_timer := 0.0                      # seconds left of a visit (no pitch
 var _fatigue_credit := 0                     # pitches your arm is rested by (a mound visit)
 var _user_left := false                      # you handed the ball to the bullpen
 var _left_line := {}                         # your line at that moment
-var _fld := {"chances": 0, "caught": 0, "missed": 0, "errors": 0, "assists": 0, "frames": 0, "lost": 0, "blocks": 0, "passed": 0}   # your fielding this game
 var _game_recorded := false
 var _sign := {}                              # the catcher's call for the next pitch ({} when none)
 var _sign_tally := {"called": 0, "perfect": 0, "type": 0, "loc": 0, "shaken": 0}
@@ -242,6 +241,7 @@ var _runner: Node3D
 var _play_labels: Array[Label3D] = []
 var _run_rng := RandomNumberGenerator.new()
 var _fx_rng := RandomNumberGenerator.new()   # presentation choices only: never shares a stream with the rules
+var fielding := FieldingControl.new()                 # human fielding, catching and the catcher's throw
 var _game_seed := 0
 var forced_seed := -1                       # tests and replays: use this seed (the --seed= flag does the same)
 var _last_report_extra := ""
@@ -252,11 +252,6 @@ var _menu_button_was := false
 var _config := GameConfig.new()
 var _catch_radius := HumanFielding.CATCH_RADIUS
 var _throw_cone := HumanFielding.THROW_CONE_DEG
-var _glove_hist: Array = []                 # [time, glove position] for the last moments (the catcher judges them)
-var _glove_override := Vector3.INF          # debug / tests: a glove that is exactly here
-var _auto_field := false          # debug: the glove finds the ball and throws to first on its own
-var _field_samples: Array = []    # [time, hand position] while holding a ball to throw
-const FIELD_LOCOMOTION_MIN := 0.15
 var _play_hit: LiveHit
 var _outs := 0
 var _hit_count := 0
@@ -269,6 +264,11 @@ const SWING_RECOVERY := 0.75
 var _whiffs := 0
 var _in_play := 0
 var _best_ev := 0.0
+
+
+func _init() -> void:
+	fielding.host = self
+	# --- directors are wired to the scene here
 
 
 func _ready() -> void:
@@ -300,7 +300,7 @@ func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--field-pos="):
 			fielding_position = clampi(int(a.substr(12)), 1, 9)
-	_auto_field = "--auto-field" in OS.get_cmdline_user_args()
+	fielding.auto_field = "--auto-field" in OS.get_cmdline_user_args()
 	apply_config(_current_config())
 	for pa in OS.get_cmdline_user_args():
 		if pa.begins_with("--park="):
@@ -372,7 +372,7 @@ func _ready() -> void:
 	_director.base_umps = _base_umps
 	_director.props = _props
 	_director.sound = _sound
-	_director.human_num = Callable(self, "_human_num")
+	_director.human_num = Callable(fielding, "human_num")
 	_director.refresh_base_runners = Callable(self, "_refresh_base_runners")
 	_director.batter_hidden.connect(_on_batter_hidden)
 	_crew.umpire_voice.connect(func(id: String): _sound.umpire_says(id))
@@ -603,10 +603,10 @@ func _resolve_steal(a: Dictionary) -> void:
 		return
 	var base := int(_steal.from)
 	var t_now := float(_aux_play.get("t", 0.0)) if not _aux_play.is_empty() else 0.0
-	if _is_catcher() and base < 3 and not _steal.has("call"):
+	if fielding.is_catcher() and base < 3 and not _steal.has("call"):
 		# He is going: get the ball out of the glove with your throwing hand and throw it to the base.
 		_steal["await"] = {"left": maxf(float(_steal.run_t) - t_now - 0.2, 0.8), "a_time": float(a.get("time", 0.5))}
-		_field_samples.clear()
+		fielding.field_samples.clear()
 		_show_notice("THROW HIM OUT!", true)
 		_haptics.play("ui_error", 0.5)
 		return
@@ -631,7 +631,7 @@ func _apply_steal(safe: bool, t_ball_raw: float, flight: float, info: Dictionary
 	var dur := Vector2(0.0 - glove.x, -1.35 - glove.z).length() / 33.0 + 0.1
 	if base < 3:
 		_spawn_flight(Vector3(0.0, 1.5, -1.2), glove, maxf(t_ball - dur - t_now, 0.05), dur, cover, not safe)
-		if not _is_catcher():
+		if not fielding.is_catcher():
 			# He comes up out of the crouch and throws; the arm starts early enough that the ball leaves on time.
 			_crew.pop_throw_in(maxf(maxf(t_ball - dur - t_now, 0.05) - 0.42, 0.0), glove)
 	_steal["safe"] = safe
@@ -640,69 +640,6 @@ func _apply_steal(safe: bool, t_ball_raw: float, flight: float, info: Dictionary
 	entry.merge(info)
 	_log("steal_resolve", entry)
 	_last_report_extra = "STEAL ATTEMPT: %s" % ("safe" if safe else "OUT")
-
-
-## You are the catcher and a runner is going: every frame, wait for you to take the ball out of the glove with
-## your throwing hand and let it go toward the base (or for the time to run out).
-func _poll_catcher_throw(delta: float, now: float) -> void:
-	var w: Dictionary = _steal.get("await", {}) if not _steal.is_empty() else {}
-	if w.is_empty():
-		return
-	w["left"] = float(w.left) - delta
-	if _xr_active and _hand != null and _hand.get_is_active():
-		_field_samples.append([now, _hand.global_position])
-		while _field_samples.size() > 2 and now - float(_field_samples[0][0]) > 0.15:
-			_field_samples.pop_front()
-		var grip := _hand.get_float("grip")
-		if not w.get("gripped", false):
-			if grip > HumanPitcher.GRAB_THRESHOLD and _hand.global_position.distance_to(_glove_pos(null)) < 0.45:
-				w["gripped"] = true
-				_field_samples.clear()
-		elif grip < HumanPitcher.RELEASE_THRESHOLD and _field_samples.size() >= 2:
-			var first: Array = _field_samples[0]
-			var last: Array = _field_samples[_field_samples.size() - 1]
-			var dt := maxf(float(last[0]) - float(first[0]), 0.02)
-			var vel: Vector3 = ((last[1] as Vector3) - (first[1] as Vector3)) / dt * velocity_gain
-			_field_samples.clear()
-			_catcher_release(vel)
-			return
-	if float(w.left) <= 0.0:
-		_catcher_release(Vector3.ZERO)
-
-
-## The ball leaves your hand with this velocity (zero: you never threw). Fast and straight at the base gets him
-## when it beats his run; anything else, or too slow, and he is safe.
-func _catcher_release(vel: Vector3) -> void:
-	var w: Dictionary = _steal.get("await", {})
-	_steal.erase("await")
-	var target := int(_steal.from) + 1
-	var t_rel := float(_aux_play.get("t", 0.0)) if not _aux_play.is_empty() else 0.0
-	var from := _glove_pos(null)
-	if from.y < -10.0:
-		from = Vector3(0.0, 1.2, -1.0)                  # no controller: the throw starts from behind the plate
-	var safe := true
-	var t_ball := t_rel + 0.6
-	var why := "no throw"
-	var speed := 0.0
-	var err := 0.0
-	if vel.length() >= HumanFielding.MIN_THROW_SPEED:
-		var arm := float(_defense.fielder_by_num(2).get("arm", 33.0))
-		speed = HumanFielding.throw_speed(vel.length(), 1.0, arm)
-		var choice := HumanFielding.pick_base(from, vel, _throw_cone)
-		err = float(choice.err)
-		if int(choice.base) == target:
-			t_ball = t_rel + HumanFielding.arrival_delay(from, target, speed, err) + _run_rng.randfn(0.0, 0.04)
-			safe = float(_steal.run_t) <= t_ball
-			why = "on the bag"
-		else:
-			why = "wild"
-	_haptics.play("throw", clampf(speed / 35.0, 0.2, 1.0))
-	_apply_steal(safe, t_ball, float(w.get("a_time", 0.0)), {"t_ball": t_ball, "t_run": _steal.run_t, "human": true, "why": why, "speed": speed, "err": err})
-	if not safe:
-		_fld.assists += 1
-		_show_notice("Caught him!", true)
-	else:
-		_show_notice("Wild throw - safe!" if why == "wild" else ("Too slow - safe" if why == "on the bag" else "No throw - he is safe"), true)
 
 
 func _finish_steal() -> void:
@@ -721,8 +658,6 @@ func _finish_steal() -> void:
 
 
 const RECEIVE_FOR_STEAL := {1: 6, 2: 5}
-
-
 
 
 ## A throw to a base (not a pitch): where it goes, whether it gets him, or a balk.
@@ -1411,9 +1346,9 @@ func _process(delta: float) -> void:
 	if _mode.human_batter and _batter != null:
 		_batter.visible = false              # you are the batter
 	_update_human_bat(Time.get_ticks_usec() / 1_000_000.0)
-	if _is_catcher():
-		_sample_glove(_game_time)
-		_poll_catcher_throw(delta, _game_time)
+	if fielding.is_catcher():
+		fielding.sample_glove(_game_time)
+		fielding.poll_catcher_throw(delta, _game_time)
 	_poll_gestures(delta)
 	_run_drill(delta)
 	if _visit_timer > 0.0:
@@ -1464,9 +1399,9 @@ func _process(delta: float) -> void:
 		if _mode.human_pitcher:
 			_poll_hand(now)
 		if not _mode.human_fielders.is_empty():
-			_move_fielder(delta)
+			fielding.move_fielder(delta)
 		if not _mode.human_fielders.is_empty() or _mode.human_pitcher:
-			_poll_fielding(now)
+			fielding.poll_fielding(now)
 	elif _demo:
 		_demo_timer -= delta
 		if _demo_timer <= 0.0 and _batter_ready:
@@ -1724,7 +1659,7 @@ func _new_game() -> void:
 	if _sound != null:
 		_sound.new_game()
 	_game_recorded = false
-	_fld = {"chances": 0, "caught": 0, "missed": 0, "errors": 0, "assists": 0, "frames": 0, "lost": 0, "blocks": 0, "passed": 0, "covers": 0, "uncovered": 0}
+	fielding.fld = {"chances": 0, "caught": 0, "missed": 0, "errors": 0, "assists": 0, "frames": 0, "lost": 0, "blocks": 0, "passed": 0, "covers": 0, "uncovered": 0}
 	_derby_outs = 0
 	_derby_hr = 0
 	_derby_done = false
@@ -2029,8 +1964,8 @@ func _land(pitch: LivePitch) -> void:
 		_strikes += 1
 	var outcome := "ball"
 	var plate: Vector3 = a.get("plate_pos", Vector3.ZERO)
-	if _is_catcher():
-		_receive_cover = float(Framing.assess(_glove_hist, plate).cover)
+	if fielding.is_catcher():
+		fielding.receive_cover = float(Framing.assess(fielding.glove_hist, plate).cover)
 	if _mode.human_batter and not pitch.bat.get("contact", false) and pitch.swing_peak > 8.0:
 		pitch.bat = {"swing": true, "contact": false, "kind": "whiff", "p_swing": 1.0}      # you swung and missed
 	if pitch.bat.get("swing", false):
@@ -2039,8 +1974,8 @@ func _land(pitch: LivePitch) -> void:
 		outcome = "called_strike"
 	elif a.get("reached", false) and PitchLocation.hits_batter(plate.x, plate.y, _batter_is_lefty()):
 		outcome = "hit_by_pitch"
-	if _is_catcher() and a.get("reached", false) and outcome in ["ball", "called_strike"]:
-		outcome = _receive(pitch, plate, outcome)
+	if fielding.is_catcher() and a.get("reached", false) and outcome in ["ball", "called_strike"]:
+		outcome = fielding.receive(pitch, plate, outcome)
 	_mark_pitch(a, outcome)
 	_derby_tally(pitch, false, outcome in ["called_strike", "swinging_strike"])
 	_tutorial_pitch(pitch)
@@ -2052,7 +1987,7 @@ func _land(pitch: LivePitch) -> void:
 	if a.get("reached", false) and outcome != "hit_by_pitch":
 		# The mitt: felt less when it was in the dirt.
 		_haptics.play("pop", clampf(float(a.get("plate_mph", 60.0)) / 90.0, 0.0, 1.0) * (0.3 if plate.y < 0.18 else 1.0))
-		if _dust != null and plate.y >= 0.18 and float(a.get("plate_mph", 0.0)) >= 62.0 and not _is_catcher():
+		if _dust != null and plate.y >= 0.18 and float(a.get("plate_mph", 0.0)) >= 62.0 and not fielding.is_catcher():
 			_dust.flash(Vector3(clampf(plate.x, -1.0, 1.0), plate.y, -0.75), 0.22)       # the mitt's pop
 	var third := _game.strikes >= 2              # this strike is the third: the call is the strikeout's
 	match outcome:
@@ -2079,14 +2014,14 @@ func _land(pitch: LivePitch) -> void:
 			p_wild = 0.04 + 0.5 * clampf((off - 0.25) / 1.0, 0.0, 1.0)
 		else:
 			p_wild = 0.008                    # the odd passed ball
-		if _is_catcher():
-			p_wild = Framing.gets_away(p_wild, _receive_cover)
-			if off > 0.25 and _receive_cover > 0.6:
-				_fld.blocks += 1
+		if fielding.is_catcher():
+			p_wild = Framing.gets_away(p_wild, fielding.receive_cover)
+			if off > 0.25 and fielding.receive_cover > 0.6:
+				fielding.fld.blocks += 1
 				_show_notice("Blocked!", false)
 		if _run_rng.randf() < p_wild:
-			if _is_catcher():
-				_fld.passed += 1
+			if fielding.is_catcher():
+				fielding.fld.passed += 1
 			var before := _game.bases.duplicate()
 			wild_ev = _game.wild_pitch(off <= 0.25)
 			if wild_ev.get("result", "") != "":
@@ -2316,11 +2251,11 @@ func _update_hit(h: LiveHit, delta: float) -> void:
 		return
 	h.t += delta
 	if h.cover_t > 0.0 and h.t >= h.cover_t:
-		_check_cover(h)
+		fielding.check_cover(h)
 	var n := h.points.size()
 	var path_end := (n - 1) * h.dt
 	if h.human_state in ["waiting", "holding", "gripped"]:
-		_update_human(h, delta)
+		fielding.update_human(h, delta)
 	var fielded: bool = not h.play.is_empty() and int(h.play.get("fielder", 0)) != 0 \
 		and h.play.get("result", "") not in ["home_run", "foul"] and h.human_state not in ["waiting"]
 	var field_t: float = float(h.play.get("field_time", INF)) if fielded else INF
@@ -2339,7 +2274,7 @@ func _update_hit(h: LiveHit, delta: float) -> void:
 		h.ball.global_position = _director.ball_with_fielder(h)
 
 	if h.human_state in ["holding", "gripped"]:
-		h.ball.global_position = _held_by_human(h)
+		h.ball.global_position = fielding.held_by_human(h)
 
 	# Grow the trail while the ball is still on its own flight.
 	if idx - h.last_idx >= 3 or h.t >= path_end:
@@ -2376,275 +2311,6 @@ func _update_hit(h: LiveHit, delta: float) -> void:
 
 
 # ------------------------------------------------------------------ human fielding
-func _human_num() -> int:
-	if _mode.human_pitcher:
-		return 1                          # a ball hit back at you is yours to field
-	return int(_mode.human_fielders[0]) if not _mode.human_fielders.is_empty() else 0
-
-
-## ---------------------------------------------------------------- the catcher (Fielding at position 2)
-var _receive_cover := 0.0
-const COVER_RADIUS := 1.6        # m: close enough to the bag to take the flip
-
-
-func _is_catcher() -> bool:
-	return _mode != null and _mode.human_fielders.has(2)
-
-
-func _sample_glove(now: float) -> void:
-	var g := _glove_pos(null)
-	_glove_hist.append([now, g])
-	while _glove_hist.size() > 2 and now - float(_glove_hist[0][0]) > 0.6:
-		_glove_hist.pop_front()
-
-
-## A pitch the batter took arrives in your mitt: the umpire's call depends on how you caught it.
-func _receive(pitch: LivePitch, plate: Vector3, outcome: String) -> String:
-	var q := Framing.assess(_glove_hist, plate)
-	_receive_cover = float(q.cover)
-	var c := Framing.call_strike(plate, float(q.quality), _run_rng.randf())
-	var result := "called_strike" if c.strike else "ball"
-	if c.framed:
-		_fld.frames += 1
-		_show_notice("Framed it!", true)
-		_haptics.play("catch", 0.8)
-	elif c.lost:
-		_fld.lost += 1
-		_show_notice("Lost the call - too much glove movement" if float(q.speed) > Framing.STILL_SPEED else "Lost the call - get the glove on it", false)
-	_log("receive", {"miss": snappedf(float(q.miss), 0.001), "speed": snappedf(float(q.speed), 0.01), "quality": snappedf(float(q.quality), 0.01),
-		"p": snappedf(float(c.p), 0.01), "call": result, "was": outcome})
-	return result
-
-
-## Where your glove is: the off-hand controller, a little in front of it.
-func _glove_pos(h: LiveHit) -> Vector3:
-	if _glove_override != Vector3.INF:
-		return _glove_override
-	if _xr_active and _off_hand and _off_hand.get_is_active():
-		return _off_hand.global_transform * Vector3(0.0, 0.0, -0.12)
-	if _auto_field and h != null:
-		# Debug: a glove that is where the ball will be when the fielder would have reached it.
-		if h.t >= float(h.play.get("field_time", 0.0)) - 0.05:
-			return h.ball.global_position
-	return Vector3(0.0, -50.0, 0.0)
-
-
-func _held_by_human(h: LiveHit) -> Vector3:
-	if h.human_state == "gripped" and _xr_active and _hand:
-		return _hand.global_transform * HumanPitcher.HOLD_OFFSET
-	if _xr_active and _off_hand:
-		return _glove_pos(h)
-	return h.catch_pos
-
-
-## Each frame while the ball is yours: did the glove get it? did you run out of time?
-func _update_human(h: LiveHit, _delta: float) -> void:
-	match h.human_state:
-		"waiting":
-			var ball := h.ball.global_position
-			if ball.y < 3.2 and HumanFielding.in_glove(_glove_pos(h), ball, _catch_radius):
-				_human_catch(h, ball)
-			elif h.t > h.chance_end:
-				_human_miss(h)
-		"holding", "gripped":
-			if _auto_field and h.human_state == "holding" and h.t - h.catch_t > 0.7:
-				var from := h.ball.global_position
-				var to_first: Vector3 = Defense.FIRST - from
-				_human_throw(h, to_first.normalized() * 27.0)
-			elif h.t - h.catch_t > HumanFielding.HOLD_LIMIT:
-				_human_hold_too_long(h)
-
-
-func _fielder_play(h: LiveHit, result: String, text: String, extra: Dictionary) -> Dictionary:
-	var hn := _human_num()
-	var fn := _defense.fielder_by_num(hn)
-	var play := {"result": result, "text": text, "short": text, "fielder": hn, "fielder_name": fn.get("name", ""),
-		"field_pos": h.catch_pos, "field_time": h.catch_t, "arm": float(fn.get("arm", 33.0)),
-		"release_time": h.catch_t + float(fn.get("transfer", 0.45)), "bases": 0, "movements": [],
-		"run_times": Defense.RUNNER_TIMES, "caught_in_air": false, "error": false}
-	for k in extra:
-		play[k] = extra[k]
-	return play
-
-
-func _human_catch(h: LiveHit, ball: Vector3) -> void:
-	_haptics.play("catch")
-	_fld.chances += 1
-	_fld.caught += 1
-	print("FIELDING: caught at t=%.2f y=%.2f" % [h.t, ball.y])
-	h.catch_pos = ball
-	h.catch_t = h.t
-	var sim := h.summary
-	var airborne: bool = ball.y > 0.30 and float(sim.get("landing_time", 0.0)) > 0.0 \
-		and h.t <= float(sim.get("landing_time", 0.0)) + 0.04
-	var fair: bool = sim.get("fair", false)
-	var who: String = _defense.fielder_by_num(_human_num()).get("name", "")
-	if airborne:
-		var label := "Popout" if sim.get("kind", "") == "Pop-up" else ("Flyout" if sim.get("kind", "") == "Fly ball" else "Lineout")
-		var text := "%s to %s" % [label, who] if fair else "Foul out to %s" % who
-		h.play = _fielder_play(h, "out", text, {"caught_in_air": true, "foul_out": not fair})
-		h.plan = Baserunning.plan(h.play, _game.bases, _game.outs, _batter_player, _run_rng)
-		h.play_end = maxf(h.t + 0.6, float(h.plan.end_time))
-		h.human_state = "done"
-		_last_report_extra = "CAUGHT!"
-		return
-	if not fair:
-		h.play = _fielder_play(h, "foul", "Foul ball", {})
-		h.plan = {}
-		h.play_end = h.t + 0.5
-		h.human_state = "done"
-		return
-	h.play = _fielder_play(h, "out", "", {})
-	h.human_state = "holding"
-	_last_report_extra = "GOT IT - throw to a base!"
-	h.play_end = 1e9
-
-
-## The ball got past you (or you never reached it): the rest of the defense plays it.
-func _human_miss(h: LiveHit) -> void:
-	_fld.chances += 1
-	_fld.missed += 1
-	print("FIELDING: missed at t=%.2f" % h.t)
-	h.human_state = "done"
-	h.play = h.fallback if not h.fallback.is_empty() else {"result": "single", "text": "Single", "bases": 1,
-		"field_pos": h.ball.global_position, "field_time": h.t, "movements": [], "fielder": 0}
-	if h.play.get("result", "") in ["foul", ""]:
-		h.plan = {}
-		h.play_end = maxf(h.t + 0.5, float(h.play.get("field_time", 0.0)))
-	else:
-		h.plan = Baserunning.plan(h.play, _game.bases, _game.outs, _batter_player, _run_rng)
-		h.play_end = maxf(h.t + 0.5, float(h.plan.end_time))
-	_last_report_extra = "Got by you"
-
-
-## The batter is about to reach first: is the pitcher (you) standing on the bag to take the flip?
-func _check_cover(h: LiveHit) -> void:
-	h.cover_t = -1.0
-	var head := _camera.global_position
-	var d := Vector2(head.x - h.cover_spot.x, head.z - h.cover_spot.z).length()
-	if d <= COVER_RADIUS:
-		_fld.covers += 1
-		_show_notice("Covered first", true)
-		_haptics.play("catch", 0.6)
-		_log("cover_first", {"covered": true, "distance": snappedf(d, 0.01)})
-		return
-	_fld.uncovered += 1
-	_log("cover_first", {"covered": false, "distance": snappedf(d, 0.01)})
-	var spot: Vector3 = h.play.get("field_pos", h.ball.global_position)
-	h.play = {"result": "single", "text": "Safe - nobody covered first", "short": "Safe - nobody covered first", "bases": 1,
-		"fielder": int(h.play.get("fielder", 3)), "fielder_name": String(h.play.get("fielder_name", "1B")), "field_pos": spot,
-		"field_time": float(h.play.get("field_time", h.t)), "movements": [], "run_times": h.play.get("run_times", Defense.RUNNER_TIMES),
-		"caught_in_air": false, "error": false}
-	h.plan = Baserunning.plan(h.play, _game.bases, _game.outs, _batter_player, _run_rng)
-	h.play_end = maxf(h.t + 0.8, float(h.plan.end_time))
-	_last_report_extra = "Nobody covered first!"
-	_show_notice("Nobody covered first - he is safe", true)
-
-
-func _human_hold_too_long(h: LiveHit) -> void:
-	_fld.errors += 1
-	h.human_state = "done"
-	h.play = _fielder_play(h, "single", "Infield single (held the ball)", {"bases": 1})
-	Baserunning.apply_throw(h.plan, 0, 0.0, _game.outs, h.catch_pos, _run_rng)
-	h.play_end = maxf(h.t + 0.5, float(h.plan.end_time))
-
-
-## You let go of the ball with this velocity (m/s, world space).
-func _human_throw(h: LiveHit, vel: Vector3) -> void:
-	_haptics.play("throw")
-	var hn := _human_num()
-	var fn := _defense.fielder_by_num(hn)
-	var from := h.ball.global_position
-	var choice := HumanFielding.pick_base(from, vel, _throw_cone)
-	var speed := HumanFielding.throw_speed(vel.length(), 1.0, float(fn.get("arm", 33.0)))
-	h.human_state = "thrown"
-	h.catch_pos = from if h.catch_pos == Vector3.ZERO else h.catch_pos
-	if choice.base == 0:
-		# It sails: runners take the base they were going to and one more.
-		var wild := _fielder_play(h, "error", "Throwing error, %s (E%d)" % [fn.get("name", ""), hn],
-			{"bases": 1, "error": true})
-		h.play = wild
-		h.plan = Baserunning.plan(wild, _game.bases, _game.outs, _batter_player, _run_rng)
-		h.play_end = maxf(h.t + 0.8, float(h.plan.end_time))
-		_last_report_extra = "Wild throw!"
-		_fld.errors += 1
-		return
-	var base: int = choice.base
-	print("FIELDING: throw to base %d at %.1f m/s (%.0f deg off)" % [base, speed, choice.err])
-	var t_arrive := h.t + HumanFielding.arrival_delay(from, base, speed, float(choice.err))
-	var target := HumanFielding.base_position(base)
-	Baserunning.apply_throw(h.plan, base, t_arrive, _game.outs, from, _run_rng)
-	(h.plan.throws as Array).insert(0, {"from": from, "to": target + Vector3(0.0, 1.0, 0.0),
-		"t0": h.t, "t1": t_arrive, "base": base})
-	var to_pos := HumanFielding.receiver(base, hn)
-	var outs: int = h.plan.outs_added
-	var text := ""
-	var result := "out"
-	if outs >= 2:
-		text = "Double play %d-%d-3" % [hn, to_pos]
-	elif outs == 1:
-		var batter_out := false
-		for r in h.plan.runners:
-			if r.out and int(r.from) == 0:
-				batter_out = true
-		text = ("Groundout %d-%d" % [hn, to_pos]) if batter_out else ("Force out at %s, %d-%d" % [
-			["", "first", "second", "third", "home"][base], hn, to_pos])
-	else:
-		result = "single"
-		text = "Infield single"
-	h.play = _fielder_play(h, result, text, {"bases": 1 if result == "single" else 0,
-		"throw": h.plan.throws[0]})
-	h.plan["text"] = text
-	h.play_end = maxf(t_arrive + 0.6, float(h.plan.end_time))
-	_last_report_extra = ("Throw to %s: %s" % [["", "first", "second", "third", "home"][base], "OUT" if outs > 0 else "safe"])
-	if outs > 0:
-		_fld.assists += 1
-
-
-## Thumbstick locomotion: you run to the ball. Speed is your fielder's.
-func _move_fielder(delta: float) -> void:
-	if _origin == null or _off_hand == null or not _off_hand.get_is_active() or _camera == null:
-		return
-	var stick: Vector2 = _off_hand.get_vector2("primary")
-	if stick.length() < FIELD_LOCOMOTION_MIN:
-		return
-	var speed := float(_defense.fielder_by_num(_human_num()).get("speed", 7.0))
-	var yaw := _camera.global_rotation.y
-	var fwd := Vector3(-sin(yaw), 0.0, -cos(yaw))
-	var right := Vector3(cos(yaw), 0.0, -sin(yaw))
-	var step := (fwd * stick.y + right * stick.x) * speed * delta
-	_origin.global_position += step
-	_origin.global_position.y = 0.0
-
-
-## Holding a ball in the glove: grab it with your throwing hand and throw.
-func _poll_fielding(now: float) -> void:
-	var h := _holding_hit()
-	if h == null or not _hand.get_is_active():
-		_field_samples.clear()
-		return
-	_field_samples.append([now, _hand.global_position])
-	while _field_samples.size() > 2 and now - float(_field_samples[0][0]) > 0.15:
-		_field_samples.pop_front()
-	var grip := _hand.get_float("grip")
-	if h.human_state == "holding":
-		if grip > HumanPitcher.GRAB_THRESHOLD and _hand.global_position.distance_to(_glove_pos(h)) < 0.45:
-			h.human_state = "gripped"
-			_field_samples.clear()
-	elif h.human_state == "gripped" and grip < HumanPitcher.RELEASE_THRESHOLD and _field_samples.size() >= 2:
-		var a: Array = _field_samples[0]
-		var b: Array = _field_samples[_field_samples.size() - 1]
-		var dt := maxf(float(b[0]) - float(a[0]), 0.02)
-		var vel: Vector3 = ((b[1] as Vector3) - (a[1] as Vector3)) / dt * velocity_gain
-		_human_throw(h, vel)
-		_field_samples.clear()
-
-
-func _holding_hit() -> LiveHit:
-	for h in _hits:
-		if h.human_state in ["holding", "gripped"]:
-			return h
-	return null
 
 
 ## A strikeout or a walk ended the at-bat on the pitch: the batter leaves the box (walks off,
@@ -2714,7 +2380,7 @@ func _update_batter_lifecycle(delta: float) -> void:
 			if _aux_play.is_empty() or float(_aux_play.t) >= float(_steal.apply_at):
 				_finish_steal()
 		elif _steal.has("await") and _aux_play.is_empty():
-			_catcher_release(Vector3.ZERO)       # the run is over and you never threw
+			fielding.catcher_release(Vector3.ZERO)       # the run is over and you never threw
 		elif _aux_play.is_empty():
 			_steal = {}            # the delivery never became a pitch: nothing to resolve
 			_bat_call = ""
@@ -2883,7 +2549,7 @@ func _run_drill(delta: float) -> void:
 	if _drill_left <= 0:
 		_finish_drill()
 		return
-	var n := _human_num()
+	var n := fielding.human_num()
 	var home: Vector3 = _defense.fielder_by_num(n).home
 	var spray := rad_to_deg(atan2(home.x, home.z)) + _run_rng.randf_range(-5.0, 5.0)
 	var infield := n in [3, 4, 5, 6]
@@ -2898,12 +2564,12 @@ func _run_drill(delta: float) -> void:
 
 func _finish_drill() -> void:
 	_drill_done = true
-	var caught := int(_fld.caught) + int(_fld.assists)
-	var stars := 3 if (int(_fld.caught) >= 9 and int(_fld.errors) == 0) else (2 if int(_fld.caught) >= 7 else (1 if int(_fld.caught) >= 5 else 0))
-	var r := _profile.record_challenge("drill_f%d" % _human_num(), stars, int(_fld.caught))
+	var caught := int(fielding.fld.caught) + int(fielding.fld.assists)
+	var stars := 3 if (int(fielding.fld.caught) >= 9 and int(fielding.fld.errors) == 0) else (2 if int(fielding.fld.caught) >= 7 else (1 if int(fielding.fld.caught) >= 5 else 0))
+	var r := _profile.record_challenge("drill_f%d" % fielding.human_num(), stars, int(fielding.fld.caught))
 	_profile.save()
-	_log("drill", {"position": _human_num(), "chances": _fld.chances, "caught": _fld.caught, "errors": _fld.errors, "assists": _fld.assists, "stars": stars})
-	_show_notice("DRILL: %d of %d fielded, %d errors   %s%s" % [int(_fld.caught), _drill_started, int(_fld.errors), Scenario.stars_text(stars), "  (new best!)" if r.improved else ""], true)
+	_log("drill", {"position": fielding.human_num(), "chances": fielding.fld.chances, "caught": fielding.fld.caught, "errors": fielding.fld.errors, "assists": fielding.fld.assists, "stars": stars})
+	_show_notice("DRILL: %d of %d fielded, %d errors   %s%s" % [int(fielding.fld.caught), _drill_started, int(fielding.fld.errors), Scenario.stars_text(stars), "  (new best!)" if r.improved else ""], true)
 	_props.later(7.0, func():
 		Session.show_menu = true
 		get_tree().reload_current_scene.call_deferred())
@@ -3098,7 +2764,7 @@ func _hitting_line() -> Dictionary:
 
 ## What you did as a fielder this game (see PlayerProfile.fielding_score).
 func _fielding_line() -> Dictionary:
-	return GameRecords.fielding(_game, _fld, _human_num(), _away.name)
+	return GameRecords.fielding(_game, fielding.fld, fielding.human_num(), _away.name)
 
 
 ## The pitch lab: in the bullpen (and the lesson) every pitch is explained under its report.

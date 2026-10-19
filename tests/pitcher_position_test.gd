@@ -52,18 +52,18 @@ func _init() -> void:
 	bp.fielding_position = 1
 	root.add_child(bp)
 	await process_frame
-	_check(bp._mode.human_fielders.has(1) and not bp._mode.human_pitcher and bp._human_num() == 1, "you are the pitcher, not pitching")
+	_check(bp._mode.human_fielders.has(1) and not bp._mode.human_pitcher and bp.fielding.human_num() == 1, "you are the pitcher, not pitching")
 	var spot: Vector3 = Defense.FIRST + Vector3(0.8, 0.0, -0.4)
 
 	var h1 := _hit(bp, wide)
 	bp._camera.global_position = Vector3(spot.x + 0.5, 1.7, spot.z)
-	bp._check_cover(h1)
-	_check(bp._fld.covers == 1 and bp._fld.uncovered == 0 and h1.play.result == "out", "on the bag when he arrives: the out stands")
+	bp.fielding.check_cover(h1)
+	_check(bp.fielding.fld.covers == 1 and bp.fielding.fld.uncovered == 0 and h1.play.result == "out", "on the bag when he arrives: the out stands")
 
 	var h2 := _hit(bp, wide)
 	bp._camera.global_position = Vector3(0.0, 1.7, 17.4)
-	bp._check_cover(h2)
-	_check(bp._fld.uncovered == 1 and h2.play.result == "single" and h2.play.text.contains("nobody covered"), "still on the mound: he is safe")
+	bp.fielding.check_cover(h2)
+	_check(bp.fielding.fld.uncovered == 1 and h2.play.result == "single" and h2.play.text.contains("nobody covered"), "still on the mound: he is safe")
 	_check(h2.plan.has("runners") and not h2.plan.runners.is_empty(), "and the runners are replanned")
 	_check(h2.cover_t < 0.0, "the duty is settled once")
 	var line: Dictionary = bp._fielding_line()
