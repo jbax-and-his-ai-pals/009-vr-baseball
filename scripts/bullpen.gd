@@ -1949,6 +1949,8 @@ func _land(pitch: LivePitch) -> void:
 	if a.get("reached", false) and outcome != "hit_by_pitch":
 		# The mitt: felt less when it was in the dirt.
 		_haptics.play("pop", clampf(float(a.get("plate_mph", 60.0)) / 90.0, 0.0, 1.0) * (0.3 if plate.y < 0.18 else 1.0))
+		if _dust != null and plate.y >= 0.18 and float(a.get("plate_mph", 0.0)) >= 62.0 and not _is_catcher():
+			_dust.flash(Vector3(clampf(plate.x, -1.0, 1.0), plate.y, -0.75), 0.22)       # the mitt's pop
 	var third := _game.strikes >= 2              # this strike is the third: the call is the strikeout's
 	match outcome:
 		"ball":
@@ -2067,6 +2069,8 @@ func _contact(pitch: LivePitch) -> void:
 	if _sound != null:
 		_sound.contact(b, sim, pitch.pos)
 	_haptics.play("contact", clampf(float(b.ev) / 110.0, 0.0, 1.0))
+	if _dust != null and float(b.ev) > 55.0:
+		_dust.flash(pitch.pos, clampf(float(b.ev) / 250.0, 0.15, 0.45))        # the bat meets the ball
 	var head := _format_report(pitch.label, a)
 	if "--contact-demo" in OS.get_cmdline_user_args():
 		var gap := _batter.sweet_spot_world().distance_to(pitch.pos)
@@ -3338,6 +3342,11 @@ func _refresh_base_runners(bases: Array = []) -> void:
 		_base_runners[i].rotation.y = atan2(-Baserunning.BASE_POS[i + 1].x, -Baserunning.BASE_POS[i + 1].z)
 
 
+## Meters from the nearer foul line (the lines run out from the plate at 45 degrees).
+static func foul_line_distance(p: Vector3) -> float:
+	return absf(absf(p.x) - p.z) * 0.7071
+
+
 func _show_landing(h: LiveHit) -> void:
 	var sim := h.summary
 	var bounce: Vector3 = sim.get("landing_pos", Vector3.ZERO)
@@ -3356,6 +3365,11 @@ func _show_landing(h: LiveHit) -> void:
 		_sfx("ball_bounce_dirt" if dirt else "ball_bounce_grass", bounce, -3.0)
 	if _dust != null and not sim.home_run and Vector2(bounce.x, bounce.z - 14.0).length() < 26.0:
 		_dust.puff(Vector3(bounce.x, 0.0, bounce.z), 0.5, 3)           # it came down in the infield dirt
+	elif _dust != null and not sim.home_run and not sim.wall and bounce.z > 0.0:
+		if foul_line_distance(bounce) < 0.6:
+			_dust.puff(Vector3(bounce.x, 0.0, bounce.z), 0.4, 4, DustPuffs.CHALK)      # it hit the chalk
+		else:
+			_dust.puff(Vector3(bounce.x, 0.0, bounce.z), 0.3, 4, DustPuffs.GRASS, 0.5) # it kicked up the outfield grass
 	var spot: Vector3 = sim.landing_pos
 	var shown_distance: float = sim.distance
 	if sim.wall or (sim.apex < 2.0 and not sim.home_run):

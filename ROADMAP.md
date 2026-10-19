@@ -151,7 +151,7 @@ criteria for each phase are in section 5; this is the at-a-glance view. Updated 
 - [x] Runner lead bounce, fly-ball watching, turn lean, slide, dive-back, celebration
 - [x] Dust puffs; throws end in the receiver's glove; double-play pivot man throws on
 - [x] `AudioManager` with buses, crowd beds, music and stems, loops that follow the ball; 457 placeholder files; all but two sounds wired
-- [ ] Chalk puffs, grass kick, glove-pop ring, bat-hit flash; coaches; dugout reactions; high fives and helmet toss
+- [~] Chalk puffs (a ball that hits a foul line), grass kick (outfield bounces), a flash at the mitt's pop and where the bat meets the ball (all in the `DustPuffs` pool, one draw call; tests/effects_test.gd); coaches, dugout reactions, high fives and helmet toss are still open
 - [ ] Real recordings replacing the placeholders (`docs/AUDIO.md`, `docs/AUDIO_LIST.md`)
 
 ---

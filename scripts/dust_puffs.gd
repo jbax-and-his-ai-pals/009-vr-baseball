@@ -4,11 +4,18 @@ extends Node3D
 ## block. A fixed pool of soft spheres drawn as one MultiMesh (one draw call), recycled oldest
 ## first, that rise, swell and fade. Nothing is allocated while the game runs.
 ##
-##   puffs.puff(world_point, size, count)
+##   puffs.puff(world_point, size, count)                        dirt
+##   puffs.puff(point, size, count, DustPuffs.CHALK)             chalk off a foul line
+##   puffs.puff(point, size, count, DustPuffs.GRASS, 0.5)        grass kicked up (shorter life)
+##   puffs.flash(point, size)                                    a quick bright burst (bat meets ball, the mitt's pop)
 
 const CAPACITY := 48
 const LIFE := 0.75
 const DIRT := Color(0.80, 0.64, 0.44)
+const CHALK := Color(0.97, 0.97, 0.97)
+const GRASS := Color(0.50, 0.78, 0.38)
+const FLASH := Color(1.0, 0.96, 0.7)
+const FLASH_LIFE := 0.14
 
 var _mm := MultiMesh.new()
 var _inst := MultiMeshInstance3D.new()
@@ -16,6 +23,8 @@ var _age := PackedFloat32Array()
 var _size := PackedFloat32Array()
 var _pos := PackedVector3Array()
 var _vel := PackedVector3Array()
+var _col := PackedColorArray()
+var _life := PackedFloat32Array()
 var _next := 0
 var _rng := RandomNumberGenerator.new()
 var active := 0                       # puffs currently alive (tests read this)
@@ -45,20 +54,30 @@ func _init() -> void:
 	_size.resize(CAPACITY)
 	_pos.resize(CAPACITY)
 	_vel.resize(CAPACITY)
+	_col.resize(CAPACITY)
+	_life.resize(CAPACITY)
+	_life.fill(LIFE)
 	_age.fill(LIFE)                    # all spent
 	_rng.randomize()
 
 
 ## A burst of `count` puffs about `at`, each about `size` metres across.
-func puff(at: Vector3, size: float = 0.5, count: int = 3) -> void:
+func puff(at: Vector3, size: float = 0.5, count: int = 3, color: Color = DIRT, life: float = LIFE) -> void:
 	for i in count:
 		var k := _next
 		_next = (_next + 1) % CAPACITY
 		_age[k] = 0.0
+		_col[k] = color
+		_life[k] = life
 		_size[k] = size * _rng.randf_range(0.7, 1.3)
 		_pos[k] = Vector3(at.x + _rng.randf_range(-0.2, 0.2), maxf(at.y, 0.0) + 0.05, at.z + _rng.randf_range(-0.2, 0.2))
 		_vel[k] = Vector3(_rng.randf_range(-0.5, 0.5), _rng.randf_range(0.25, 0.7), _rng.randf_range(-0.5, 0.5))
 	_inst.visible = true
+
+
+## A quick bright burst: one soft ball that swells and is gone in a blink.
+func flash(at: Vector3, size: float = 0.3) -> void:
+	puff(at, size, 1, FLASH, FLASH_LIFE)
 
 
 func _process(delta: float) -> void:
@@ -66,20 +85,20 @@ func _process(delta: float) -> void:
 		return
 	var alive := 0
 	for k in CAPACITY:
-		if _age[k] >= LIFE:
+		if _age[k] >= _life[k]:
 			_mm.set_instance_transform(k, Transform3D(Basis.from_scale(Vector3.ZERO), Vector3.ZERO))
 			continue
 		_age[k] += delta
-		if _age[k] >= LIFE:
+		if _age[k] >= _life[k]:
 			_mm.set_instance_transform(k, Transform3D(Basis.from_scale(Vector3.ZERO), Vector3.ZERO))
 			continue
 		alive += 1
-		var u := clampf(_age[k] / LIFE, 0.0, 1.0)
+		var u := clampf(_age[k] / _life[k], 0.0, 1.0)
 		_pos[k] += _vel[k] * delta
 		_vel[k] *= maxf(1.0 - 2.5 * delta, 0.0)
 		var s: float = _size[k] * (0.45 + 1.1 * u)
 		_mm.set_instance_transform(k, Transform3D(Basis.from_scale(Vector3(s, s * 0.7, s)), _pos[k]))
-		_mm.set_instance_color(k, Color(DIRT.r, DIRT.g, DIRT.b, 0.55 * (1.0 - u) * (1.0 - u)))
+		_mm.set_instance_color(k, Color(_col[k].r, _col[k].g, _col[k].b, 0.55 * (1.0 - u) * (1.0 - u)))
 	active = alive
 	if alive == 0:
 		_inst.visible = false
