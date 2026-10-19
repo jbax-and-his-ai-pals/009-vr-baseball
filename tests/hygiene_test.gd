@@ -46,7 +46,7 @@ func _init() -> void:
 		if fname.ends_with(".gd"):
 			sources.append("res://scripts/" + fname)           # every script: the sounds are played from many classes now
 	for f in sources:
-		for line in _src(f).split("\n"):
+		for line in _src(f).replace("\r", "").split("\n"):
 			var from := -1
 			for c in calls:
 				var at: int = line.find(c)
