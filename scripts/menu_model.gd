@@ -16,6 +16,11 @@ var config := GameConfig.new()
 var stack: Array[String] = ["main"]
 var current_game: GameConfig = null       # the game being played, for the pause screen
 var profile: PlayerProfile = PlayerProfile.new()   # what the Stats screen shows
+var career: Career = null                 # the saved career, if any
+var new_name := Career.NAMES[0]           # the career being set up
+var new_build := "Balanced"
+var new_length := 10
+var new_innings := 3
 var stats_key := ""                       # the leaderboard the Stats screen is showing
 const VOLUME_ROWS := {"Master": "Master volume", "SFX": "Effects", "Crowd": "Crowd", "Music": "Music", "Voice": "Voices"}
 const VOLUME_STEPS := [0.0, 0.25, 0.5, 0.75, 1.0]
@@ -58,6 +63,14 @@ func title() -> String:
 			return "Sound"
 		"challenges":
 			return "Challenges"
+		"career":
+			return "Career"
+		"career_new":
+			return "New career"
+		"standings":
+			return "Standings"
+		"career_abandon":
+			return "Abandon career?"
 		"stats":
 			return "Stats"
 		"pause":
@@ -90,6 +103,7 @@ func items() -> Array[Dictionary]:
 			rows.append(_row("mode:Fielding", "Fielding", "you play a position"))
 			rows.append(_row("mode:Spectate", "Spectate", "watch an AI game"))
 			rows.append(_row("mode:Hitting", "Hitting", "", false, "coming soon"))
+			rows.append(_row("career", "Career", "season %d of %d" % [mini(career.matchday + 1, career.league.matchdays), career.league.matchdays] if career != null and not career.is_over() else ("season over" if career != null else "a season in the league"), true, "your own pitcher, one start per matchday"))
 			rows.append(_row("challenges", "Challenges", "%d of %d done" % [_challenges_done(), Scenario.ids().size()], true, "short pitching situations to solve"))
 			rows.append(_row("back", "Back"))
 		"setup":
@@ -116,6 +130,43 @@ func items() -> Array[Dictionary]:
 			rows.append(_row("developer", "Developer options", "on" if settings.developer else "off"))
 			rows.append(_row("audio", "Sound", "volume, crowd, music"))
 			rows.append(_row("back", "Back"))
+		"career":
+			if career == null:
+				rows.append(_row("info", "No career yet", "", false))
+				rows.append(_row("career_new", "New career", "", true, "create a pitcher and play a season"))
+			else:
+				var tot := career.season_totals()
+				rows.append(_row("info", "%s  (%s)" % [career.pitcher_name, career.build], "%d-%d, %s IP" % [tot.w, tot.l, PlayerProfile.ip_text(int(tot.outs))], false))
+				rows.append(_row("info", "Rank #%d of %d" % [career.league.rank_of(League.USER), League.TEAM_COUNT],
+					"CMD %d  STA %d  VEL %d" % [roundi(float(career.ratings.command)), roundi(float(career.ratings.stamina)), roundi(float(career.ratings.velocity))], false))
+				if career.is_over():
+					rows.append(_row("info", "Season complete", "", false))
+					rows.append(_row("career_abandon", "Start a new career", "", true, "this ends the saved one"))
+				else:
+					rows.append(_row("career_play", "Play next start", "vs %s" % career.opponent_name(), true,
+						"%d-inning start, matchday %d of %d" % [career.innings_per_start, career.matchday + 1, career.league.matchdays]))
+					rows.append(_row("standings", "Standings"))
+					rows.append(_row("career_abandon", "Abandon career"))
+			if career != null and career.is_over():
+				rows.append(_row("standings", "Final standings"))
+			rows.append(_row("back", "Back"))
+		"career_new":
+			rows.append(_row("new_name", "Pitcher", new_name))
+			rows.append(_row("new_build", "Build", new_build, true, _build_note(new_build)))
+			rows.append(_row("new_length", "Season", "%d starts" % new_length))
+			rows.append(_row("new_innings", "Innings per start", str(new_innings)))
+			rows.append(_row("career_create", "Start career"))
+			rows.append(_row("back", "Back"))
+		"standings":
+			if career != null:
+				for r in career.league.standings():
+					var me := int(r.team) == League.USER
+					rows.append(_row("info", "%s%d. %s" % [">" if me else " ", int(r.rank), r.name], "%d-%d  (%+d)" % [int(r.w), int(r.l), int(r.rs) - int(r.ra)], false))
+			rows.append(_row("back", "Back"))
+		"career_abandon":
+			rows.append(_row("info", "This deletes your pitcher and season.", "", false))
+			rows.append(_row("career_abandon_yes", "Yes, abandon it"))
+			rows.append(_row("back", "No, keep it"))
 		"challenges":
 			for sc in Scenario.catalog():
 				var rec := profile.challenge(sc.id)
@@ -176,6 +227,47 @@ func activate(index: int) -> Dictionary:
 		config = config.normalized()
 		stack.append("setup")
 		return {}
+	match id:
+		"career":
+			stack.append("career")
+			return {}
+		"career_new":
+			stack.append("career_new")
+			return {}
+		"standings":
+			stack.append("standings")
+			return {}
+		"career_abandon":
+			stack.append("career_abandon")
+			return {}
+		"new_name":
+			new_name = _cycle(Career.NAMES, new_name)
+			return {}
+		"new_build":
+			new_build = _cycle(Career.BUILDS.keys(), new_build)
+			return {}
+		"new_length":
+			new_length = _cycle([6, 10, 14], new_length)
+			return {}
+		"new_innings":
+			new_innings = _cycle(GameConfig.INNINGS, new_innings)
+			return {}
+		"career_create":
+			career = Career.create(new_name, new_build, new_length, new_innings, randi(), settings.hand == "right")
+			stack = ["main", "play", "career"]
+			return {"type": "career_changed"}
+		"career_abandon_yes":
+			career = null
+			stack = ["main", "play", "career"]
+			return {"type": "career_changed"}
+		"career_play":
+			var cc := GameConfig.new()
+			cc.career = true
+			cc.assist = settings.assist
+			cc.innings = career.innings_per_start
+			cc = cc.normalized()
+			settings.last_game = cc.to_dict()
+			return {"type": "start", "config": cc}
 	if id.begins_with("challenge:"):
 		var c := GameConfig.new()
 		c.scenario = id.substr(10)
@@ -267,6 +359,17 @@ func back() -> Dictionary:
 	if stack.size() > 1:
 		stack.pop_back()
 	return {}
+
+
+func _build_note(b: String) -> String:
+	match b:
+		"Power":
+			return "a harder arm, rougher aim"
+		"Control":
+			return "pin-point aim, a lighter arm"
+		"Workhorse":
+			return "goes deep into games"
+	return "no weaknesses, no strengths"
 
 
 func _challenges_done() -> int:

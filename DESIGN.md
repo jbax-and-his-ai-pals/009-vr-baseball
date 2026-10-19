@@ -434,3 +434,7 @@ Options > Sound screen.
 ## Scene script split (in progress)
 
 `bullpen.gd` is being broken up (see `ROADMAP.md`, M3). Extracted so far: `SoundDirector` (decides what is heard; owns the `AudioManager`), `PlateCrew` (catcher and umpire; reports what happened through signals), `FieldProps` (dust, dropped bats, a game-time delay queue). The scene still owns the rest and passes them what happened.
+
+## Career (built, first version)
+
+`League` (`scripts/league.gd`) is eight fictional teams (your team plus seven, strengths about 43 to 59), a double round-robin schedule by the circle method (you are always team 0 and the home side, so you pitch the top half), standings, and a quick Poisson game for every game you do not play (stronger teams win more, no ties). `Career` (`scripts/career.gd`, `user://career.json`) is your created pitcher (name, build, ratings) plus the season: one start per matchday against that matchday's opponent, with the rest of the matchday decided when you finish. Ratings grow after each start (command from strike percentage, stamina from pitch count, movement and velocity a little from a good Game Score) and never gate physics: stamina sets fatigue, command scales the aim funnel (1.25 - command / 200, clamped 0.8..1.2). A career game is a `GameConfig` with `career = true`; the scene builds both teams from the career, scores it, saves it, and returns to the menu. Test runs write to `user://test_career.json`.

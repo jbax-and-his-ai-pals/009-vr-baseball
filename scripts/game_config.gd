@@ -25,6 +25,7 @@ var innings := 9
 var batter := "Contact Hitter"
 var assist := "Standard"
 var scenario := ""             # a challenge id (see Scenario); "" for an ordinary game
+var career := false            # the next start of your saved career (teams, pitcher and innings come from it)
 
 
 static func from_settings(s: Settings) -> GameConfig:
@@ -42,6 +43,10 @@ func normalized() -> GameConfig:
 	c.innings = innings if innings in INNINGS else 9
 	c.batter = batter if batter in BATTERS else "Contact Hitter"
 	c.assist = assist if assist in Settings.ASSISTS else "Standard"
+	if career and scenario == "":
+		c.career = true
+		c.mode = "Pitching"
+		c.activity = "Game"
 	# A challenge is always you pitching a short game: it has its own results, not a leaderboard.
 	if scenario != "" and scenario in Scenario.ids():
 		c.scenario = scenario
@@ -58,7 +63,7 @@ func normalized() -> GameConfig:
 
 
 func is_scored() -> bool:
-	return activity == "Game" and mode != "Spectate" and scenario == ""
+	return activity == "Game" and mode != "Spectate" and scenario == "" and not career
 
 
 ## What a leaderboard is keyed on. Only scored games have one.
@@ -74,6 +79,8 @@ func leaderboard_key() -> String:
 func title() -> String:
 	if scenario != "":
 		return "Challenge - %s" % Scenario.by_id(scenario).title
+	if career:
+		return "Career - season start"
 	var who := mode
 	if mode == "Fielding":
 		who = "Fielding (%s)" % Defense.NAMES.get(position, "?")
@@ -88,7 +95,7 @@ func title() -> String:
 
 func to_dict() -> Dictionary:
 	return {"mode": mode, "activity": activity, "position": position, "innings": innings,
-		"batter": batter, "assist": assist, "scenario": scenario}
+		"batter": batter, "assist": assist, "scenario": scenario, "career": career}
 
 
 static func from_dict(d: Dictionary) -> GameConfig:
@@ -100,4 +107,5 @@ static func from_dict(d: Dictionary) -> GameConfig:
 	c.batter = str(d.get("batter", c.batter))
 	c.assist = str(d.get("assist", c.assist))
 	c.scenario = str(d.get("scenario", ""))
+	c.career = bool(d.get("career", false))
 	return c.normalized()

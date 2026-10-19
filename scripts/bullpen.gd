@@ -134,6 +134,8 @@ var _crew: PlateCrew          # drives the catcher and the umpire
 var _props: FieldProps        # dust, dropped bats, and calls that wait for their moment
 var _dust: DustPuffs          # _props.dust
 var _profile := PlayerProfile.load_from()   # lifetime stats, leaderboards, challenge results
+var _career: Career = Career.load_from()    # the saved season, if any
+var _career_game := false                    # this game is the next start of the career
 var _game_recorded := false
 var _scenario: Scenario            # the challenge being played (null in an ordinary game)
 var _scenario_id := ""
@@ -239,6 +241,8 @@ var _best_ev := 0.0
 func _ready() -> void:
 	if ThrowLogger.override_path != "":
 		_profile.save_path = "user://test_profile.json"      # a test run never touches the player's saved history
+		if _career != null:
+			_career.save_path = "user://test_career.json"
 	_director.leads = _leads          # the scene asks where a runner stands before the world is built
 	_demo = "--demo" in OS.get_cmdline_user_args()
 	_settings = Settings.new() if "--no-settings" in OS.get_cmdline_user_args() else Settings.load_from()
@@ -268,11 +272,16 @@ func _ready() -> void:
 	if not _mode.supported:
 		push_warning("Game mode '%s' is not built yet; using Pitching." % _mode.name)
 		_mode = GameMode.pitching()
-	_home = Team.generate("Home", 55.0, 7)
+	if _career_game:
+		_home = _career.user_team()
+		_away = _career.opponent_team()
+		game_innings = _career.innings_per_start
+	else:
+		_home = Team.generate("Home", 55.0, 7)
+		_away = Team.generate("Away", 52.0, 14)
 	_batting = Team.archetype_roster()
 	_defense = Defense.from_team(_home)
 	_ai_pitcher = AIPitcher.new(_home.player_at(1))
-	_away = Team.generate("Away", 52.0, 14)
 	_new_game()
 	_game_seed = randi()
 	for sa in OS.get_cmdline_user_args():
@@ -807,13 +816,13 @@ func _build_world() -> void:
 	backstop.size = Vector3(24.0, 3.0, 0.3)
 	field.add_at(backstop, Color(0.2, 0.35, 0.25), Vector3(0.0, 1.5, BACKSTOP_Z - 0.2))
 	field.build_instance(self)
-	var navy_c := Color(0.12, 0.17, 0.50)
+	var navy_c := _home.jersey
 	_catcher = Doll.create(self, Vector3(0.0, 0.0, -1.35), navy_c, Color(0.62, 0.64, 0.70), navy_c, true, _doll_style(2), "catcher")
 	_field_nodes[2] = _catcher
 	_umpire = Doll.create(self, Vector3(0.0, 0.0, PlateCrew.UMP_HOME_Z), Color(0.20, 0.20, 0.25), Color(0.38, 0.38, 0.43),
 		Color(0.08, 0.08, 0.10), false, _doll_style(3), "umpire")
 	# The rest of the defense: one draw call each. The pitcher is the player, so he is abstract.
-	var navy := Color(0.12, 0.17, 0.50)
+	var navy := _home.jersey
 	for f in _defense.fielders:
 		if f.visible and f.num != 2:
 			var node := Doll.create(self, f.home, navy, Color(0.62, 0.64, 0.70), navy, true, _doll_style(f.num))
@@ -1239,6 +1248,9 @@ func _current_config() -> GameConfig:
 	c.assist = _settings.assist
 	c.activity = "Game" if lineup_mode == "Game" else "Practice"
 	c.scenario = _scenario_id
+	c.career = _career_game
+	if _career_game:
+		c.innings = _career.innings_per_start
 	return c.normalized()
 
 
@@ -1252,6 +1264,7 @@ func apply_config(c: GameConfig) -> void:
 	batter_profile = c.batter
 	lineup_mode = "Game" if c.activity == "Game" else "Practice"
 	_scenario_id = c.scenario
+	_career_game = c.career and _career != null and not _career.is_over()
 
 
 # ------------------------------------------------------------------ menus
@@ -1264,6 +1277,7 @@ func _build_menu(show_main: bool) -> void:
 			ctrls.append(c)
 	var menu_model := MenuModel.new(_settings)
 	menu_model.profile = _profile
+	menu_model.career = _career
 	_menu.setup(menu_model, _camera, ctrls)
 	_menu.chosen.connect(_on_menu_event)
 	Session.current = _current_config()
@@ -1306,6 +1320,12 @@ func _poll_menu_button() -> void:
 func _on_menu_event(ev: Dictionary) -> void:
 	_log("menu", {"event": ev.get("type", ""), "config": (ev.config as GameConfig).to_dict() if ev.has("config") else {}})
 	match String(ev.get("type", "")):
+		"career_changed":
+			_career = _menu.model.career
+			if _career != null:
+				_career.save()
+			else:
+				Career.delete_saved()
 		"settings":
 			_settings.save()
 			apply_assist(_settings)
@@ -1491,8 +1511,8 @@ func _funnel_target(from: Vector3, release_t: float) -> Dictionary:
 	# A tired arm is less exact: the same wobble lands further from where you meant it.
 	var wobble := 1.0 + 0.30 * _arm_fatigue()
 	var target := Vector3(
-		clampf(ZONE_CENTER.x + z.x * funnel_spread_x * wobble, -2.0, 2.0),
-		clampf(ZONE_CENTER.y + z.y * funnel_spread_y * wobble, 0.0, 2.6), 0.0)
+		clampf(ZONE_CENTER.x + z.x * funnel_spread_x * wobble * _command_scale(), -2.0, 2.0),
+		clampf(ZONE_CENTER.y + z.y * funnel_spread_y * wobble * _command_scale(), 0.0, 2.6), 0.0)
 	var out := {"target": target, "fallback": false, "angle": x, "z": z,
 		"mu_before": _aim_mu, "sigma_before": _aim_sigma}
 	# Learn. The first throws calibrate fast and accept nearly anything; later ones skip
@@ -2438,6 +2458,27 @@ func _update_scenario(ev: Dictionary) -> void:
 		get_tree().reload_current_scene.call_deferred())
 
 
+## A career pitcher's command narrows or widens the aim funnel (1.0 for everyone else).
+func _command_scale() -> float:
+	return _career.funnel_factor() if _career_game and _career != null else 1.0
+
+
+## A career start is over: the result goes into the season, you are told how you did, and you go back to the menu.
+func _finish_career_start() -> void:
+	if _career == null:
+		return
+	var line := _game_line()
+	var res := _career.finish_start(line, _game.home_score, _game.runs)
+	_career.save()
+	var d: Dictionary = res.deltas
+	_log("career_start", {"won": res.won, "rank": res.rank, "over": res.over, "deltas": d, "line": line})
+	_show_notice("%s %d-%d vs %s   CMD %+.1f  STA %+.1f   Rank #%d%s" % ["WIN" if res.won else "LOSS", _game.home_score, _game.runs,
+		res.opponent, float(d.command), float(d.stamina), int(res.rank), "   SEASON OVER" if res.over else ""], true)
+	_props.later(7.0, func():
+		Session.show_menu = true
+		get_tree().reload_current_scene.call_deferred())
+
+
 ## What you did in this game, as one pitching line.
 func _game_line() -> Dictionary:
 	var t := _stats.pitch_totals()
@@ -2455,6 +2496,11 @@ func _record_finished_game() -> void:
 		return
 	_game_recorded = true
 	var cfg := _current_config()
+	if _career_game:
+		_profile.record_game(cfg, _game_line())          # counts in your lifetime totals, on no board
+		_profile.save()
+		_finish_career_start()
+		return
 	if not cfg.is_scored():
 		return
 	var line := _game_line()
@@ -2492,7 +2538,7 @@ func _after_event(ev: Dictionary, extra: Dictionary = {}) -> void:
 	_update_scenario(ev)
 	if ev.get("game_over", false):
 		_record_finished_game()
-		_game_over_timer = -1.0 if _scenario != null else 8.0
+		_game_over_timer = -1.0 if (_scenario != null or _career_game) else 8.0
 		_log("game_over", {"final": _game.final_text(), "line": _game.line_text(), "stats": {"k": _game.strikeouts,
 			"bb": _game.walks, "hits": _game.hits, "wp": _game.wild_pitches, "sb": _game.stolen_bases, "cs": _game.caught_stealing,
 			"po": _game.pickoffs, "balks": _game.balks, "hbp": _game.hit_by_pitches, "sac": _game.sacrifices}})

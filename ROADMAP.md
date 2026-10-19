@@ -86,7 +86,7 @@ criteria for each phase are in section 5; this is the at-a-glance view. Updated 
 - [ ] Text for umpire calls
 - [ ] Exit: a new player can calibrate, learn three pitches and play a game with no one explaining
 
-### Phase 5 - A game you come back to (M5) - HALF DONE
+### Phase 5 - A game you come back to (M5) - MOSTLY DONE
 - [x] Persistence: saved game lines, lifetime totals, best games per leaderboard (`PlayerProfile`)
 - [x] Stats screen (main menu) with lifetime lines and top five per board
 - [x] Local leaderboards per mode, length and assist level, ranked by Game Score
@@ -94,12 +94,12 @@ criteria for each phase are in section 5; this is the at-a-glance view. Updated 
 - [x] Tests never touch the player's profile
 - [ ] Per-pitch-type metrics over time in the profile; box scores per game
 - [ ] Leaderboards for Fielding mode
-- [ ] Create a pitcher (name, hand, look)
-- [ ] A season of starts in a fictional league; the other games simulated with the existing engine (`HalfInningSim` generalised)
-- [ ] Standings and your stat line
-- [ ] Ratings that grow from use (command, stamina, new pitches from the pitch lab); physics never gated
-- [ ] League data: fictional teams, names, parks, uniform colours, a schedule
-- [ ] Exit: a 10-start season playable with saved progress, standings and a stats screen
+- [x] Create a pitcher (name from a list, build, hand from Options; no look options yet)
+- [x] A season of starts in a fictional league (6/10/14 starts); the other games are decided by a quick rating-based sim (`League.quick_game`), not the full engine
+- [x] Standings and your stat line (Career screen)
+- [~] Ratings that grow from use: command, stamina, movement, velocity grow after each start and set aim forgiveness and fatigue; new pitches from the pitch lab are still open
+- [~] League data: eight fictional teams with names, colours and a double round-robin schedule done; parks and per-team rosters beyond generated ones are open
+- [~] Exit: a season is playable with saved progress, standings and a stats screen (tested in the scene; not played in the headset)
 
 ### Phase 6 - More roles (M6)
 - [~] Human fielding: 1B to RF exist (`--field-pos`); open: pitcher and catcher, first base taking throws, tuning in the headset

@@ -166,3 +166,13 @@ Options > Haptics: Off / Low / Normal / Strong.
 - [ ] After a result (6 s) you are back on the menu; the stars show on the Challenges list and "N of 6 done" on Play.
 - [ ] Continue (main menu) replays the last challenge.
 - [ ] Is each challenge fair and fun? Note any that is too easy or impossible (parameters are at the top of `scripts/scenario.gd`).
+
+## 13. Career (new)
+
+- [ ] Play > Career > New career: pick a pitcher, build (Power / Control / Workhorse / Balanced), season length and innings per start. The Career screen then shows him, his rank and the next opponent.
+- [ ] Play next start: your fielders wear your team's colours; the other team is the named opponent. A Control pitcher's strikes should feel a little easier than a Power pitcher's.
+- [ ] At the end: a notice (WIN/LOSS, score, opponent, rating changes, rank), then back to the menu after 7 seconds. The start counts in Stats totals.
+- [ ] Standings: eight teams, you marked with ">"; ranks move as the season goes. After the last start the Career screen says the season is complete.
+- [ ] Quit mid-season and relaunch: the career is still there (Continue also replays the next start).
+- [ ] Abandon career asks first, then clears it.
+- [ ] Do the rating gains feel meaningful over a season (command +0.5 to +1 per good start)? Is the opponent spread (46 to 59) noticeable in the games?
