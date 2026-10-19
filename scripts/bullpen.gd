@@ -135,6 +135,9 @@ var _props: FieldProps        # dust, dropped bats, and calls that wait for thei
 var _dust: DustPuffs          # _props.dust
 var _profile := PlayerProfile.load_from()   # lifetime stats, leaderboards, challenge results
 var _game_recorded := false
+var _scenario: Scenario            # the challenge being played (null in an ordinary game)
+var _scenario_id := ""
+var _scenario_done := false
 var _haptics := Haptics.new()     # controller vibration
 var _sound: SoundDirector
 var _audio: AudioManager          # _sound.audio, for the loops that follow the ball
@@ -234,6 +237,8 @@ var _best_ev := 0.0
 
 
 func _ready() -> void:
+	if ThrowLogger.override_path != "":
+		_profile.save_path = "user://test_profile.json"      # a test run never touches the player's saved history
 	_director.leads = _leads          # the scene asks where a runner stands before the world is built
 	_demo = "--demo" in OS.get_cmdline_user_args()
 	_settings = Settings.new() if "--no-settings" in OS.get_cmdline_user_args() else Settings.load_from()
@@ -1233,6 +1238,7 @@ func _current_config() -> GameConfig:
 	c.batter = batter_profile
 	c.assist = _settings.assist
 	c.activity = "Game" if lineup_mode == "Game" else "Practice"
+	c.scenario = _scenario_id
 	return c.normalized()
 
 
@@ -1245,6 +1251,7 @@ func apply_config(c: GameConfig) -> void:
 	game_innings = c.innings
 	batter_profile = c.batter
 	lineup_mode = "Game" if c.activity == "Game" else "Practice"
+	_scenario_id = c.scenario
 
 
 # ------------------------------------------------------------------ menus
@@ -1364,6 +1371,11 @@ func _new_game() -> void:
 						var c := kv[1].split("-")
 						_game.balls = int(c[0])
 						_game.strikes = int(c[1])
+	_scenario = Scenario.by_id(_scenario_id) if _scenario_id != "" else null
+	_scenario_done = false
+	if _scenario != null:
+		_scenario.apply(_game, _away.lineup)
+		_show_notice("%s: %s" % [_scenario.title, _scenario.goal], true)
 	_game_over_timer = -1.0
 	_refresh_base_runners()
 	_refresh_scoreboard()
@@ -1716,6 +1728,8 @@ func _land(pitch: LivePitch) -> void:
 	elif a.get("reached", false) and PitchLocation.hits_batter(plate.x, plate.y, _batter_is_lefty()):
 		outcome = "hit_by_pitch"
 	_mark_pitch(a, outcome)
+	if _scenario != null and a.get("reached", false):
+		_scenario.on_pitch(String(PitchLocation.classify(plate.x, plate.y).kind), bool(a.get("strike", false)) and outcome != "hit_by_pitch")
 	if _sound != null:
 		_sound.pitch_arrives(a, outcome, plate)
 	if a.get("reached", false) and outcome != "hit_by_pitch":
@@ -2398,6 +2412,32 @@ func _event_text(ev: Dictionary) -> String:
 	return " | ".join(parts)
 
 
+## A challenge is judged after every event; when it ends the result is saved and you go back to the menu.
+func _update_scenario(ev: Dictionary) -> void:
+	if _scenario == null or _scenario_done:
+		return
+	var st := _scenario.update(_game, ev)
+	if st == "running":
+		_refresh_hud()
+		return
+	_scenario_done = true
+	var r := _profile.record_challenge(_scenario.id, _scenario.stars, _scenario.pitches)
+	_profile.save()
+	_log("challenge", {"id": _scenario.id, "state": st, "stars": _scenario.stars, "pitches": _scenario.pitches})
+	if st == "success":
+		_show_notice("CHALLENGE COMPLETE  %s%s" % [Scenario.stars_text(_scenario.stars), "  (new best!)" if r.improved else ""], true)
+		_sfx_later(0.3, "music_victory", null, -4.0)
+		_sfx_later(0.3, "crowd_cheer_big")
+		_haptics.play("rumble", 0.8)
+	else:
+		_show_notice("Challenge failed - try again", true)
+		_sfx_later(0.3, "crowd_groan")
+	_refresh_hud()
+	_props.later(6.0, func():
+		Session.show_menu = true
+		get_tree().reload_current_scene.call_deferred())
+
+
 ## What you did in this game, as one pitching line.
 func _game_line() -> Dictionary:
 	var t := _stats.pitch_totals()
@@ -2449,9 +2489,10 @@ func _after_event(ev: Dictionary, extra: Dictionary = {}) -> void:
 			_begin_walk_on()          # after a ball in play the next batter comes up now
 	elif _aux_play.is_empty() and _walk_on.is_empty() and not _play_in_progress():
 		_batter_ready = true          # a foul (or any pitch that did not end the at-bat): he is still up
+	_update_scenario(ev)
 	if ev.get("game_over", false):
 		_record_finished_game()
-		_game_over_timer = 8.0
+		_game_over_timer = -1.0 if _scenario != null else 8.0
 		_log("game_over", {"final": _game.final_text(), "line": _game.line_text(), "stats": {"k": _game.strikeouts,
 			"bb": _game.walks, "hits": _game.hits, "wp": _game.wild_pitches, "sb": _game.stolen_bases, "cs": _game.caught_stealing,
 			"po": _game.pickoffs, "balks": _game.balks, "hbp": _game.hit_by_pitches, "sac": _game.sacrifices}})
@@ -2753,6 +2794,8 @@ func _refresh_hud() -> void:
 	var pl: Array = []
 	if g:
 		pl.append("%s   |   %d R" % [g.situation_text(), g.runs])
+		if _scenario != null:
+			pl.append("%s: %s" % [_scenario.title.to_upper(), _scenario.progress_text(g)])
 	_pitch_board.lines = pl
 	_pitch_board.refresh()
 

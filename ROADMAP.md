@@ -317,6 +317,8 @@ game replays the same.
 told anything out loud.
 
 ### M5. Make it a game you come back to (L)
+
+**Status: persistence, stats screen, local leaderboards and six challenges done (2026-10-18); career and league data open.** `PlayerProfile` (`scripts/player_profile.gd`, `user://profile.json`) keeps every finished game you pitch, lifetime totals (which outlive the capped history), the ten best games per leaderboard key (mode, length and assist, ranked by Bill James Game Score), and challenge records. Main menu > Stats & leaderboards shows lifetime lines and the top five per board. Play > Challenges lists six `Scenario`s (`scripts/scenario.gd`: Escape the jam, Strike out the side, Pick him off, Paint the corners, Protect the lead, No-hitter): each sets up its inning, outs, runners (real players), count and score, is judged after every event, and earns 0-3 stars; the result is saved and you return to the menu. Tests: `profile_test`, `scenario_test` (including a run in the real scene). Test runs write to `user://test_profile.json`, never the player's profile. Open: a created pitcher, seasons and standings, league data, and the Fielding mode's own boards.
 1. **Persistence:**
    - a save file with your pitching history
    - per-game box scores

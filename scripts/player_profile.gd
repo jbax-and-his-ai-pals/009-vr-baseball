@@ -18,6 +18,7 @@ const TOP_KEPT := 10            # per leaderboard
 var games: Array = []           # newest last: {"t", "key", "title", "line", "score"}
 var boards: Dictionary = {}     # key -> [{"score", "t", "line"}] best first
 var totals: Dictionary = {}     # lifetime counters
+var save_path := PATH           # where save() writes (tests point this elsewhere)
 var challenges: Dictionary = {} # scenario id -> {"best": int stars, "attempts": int, "wins": int, "best_pitches": int}
 
 
@@ -148,7 +149,9 @@ static func from_dict(d: Dictionary) -> PlayerProfile:
 	return p
 
 
-func save(path: String = PATH) -> bool:
+func save(path: String = "") -> bool:
+	if path == "":
+		path = save_path
 	var f := FileAccess.open(path, FileAccess.WRITE)
 	if f == null:
 		push_warning("PlayerProfile: cannot write %s" % path)

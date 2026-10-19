@@ -154,3 +154,15 @@ Options > Haptics: Off / Low / Normal / Strong.
 - [ ] Fielding: closing your glove on a ball is a strong glove-hand pulse; throwing is a pulse in the throwing hand.
 - [ ] Menu: pointing at a row ticks in the pointing hand only; selecting is a firmer pulse; a greyed row buzzes.
 - [ ] Anything too strong, too long or annoying over 50 pitches: note the event name (`scripts/haptics.gd` profile()).
+
+## 12. Stats and challenges (new)
+
+- [ ] Finish a 1-inning Pitching game: a notice shows Game Score and your rank on that board; the Stats screen (main menu) lists it, with lifetime lines.
+- [ ] Easy (Casual) and Pro games have their own boards; practice and bullpen are on none.
+- [ ] Play > Challenges lists six; start each. The situation is right (inning, outs, runners with real names, count, score) and the board's last line shows progress.
+- [ ] Escape the jam / Protect the lead: you finish the half inning with no run: stars by pitch count. A run ends it as failed.
+- [ ] Strike out the side fails on the first non-strikeout; Paint the corners counts only called strikes on the gold corners.
+- [ ] Pick him off: the fast runner breaks; a pickoff or catching him stealing wins; he steals safely and it fails.
+- [ ] After a result (6 s) you are back on the menu; the stars show on the Challenges list and "N of 6 done" on Play.
+- [ ] Continue (main menu) replays the last challenge.
+- [ ] Is each challenge fair and fun? Note any that is too easy or impossible (parameters are at the top of `scripts/scenario.gd`).

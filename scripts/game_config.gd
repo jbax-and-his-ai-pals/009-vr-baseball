@@ -24,6 +24,7 @@ var position := 6
 var innings := 9
 var batter := "Contact Hitter"
 var assist := "Standard"
+var scenario := ""             # a challenge id (see Scenario); "" for an ordinary game
 
 
 static func from_settings(s: Settings) -> GameConfig:
@@ -41,6 +42,12 @@ func normalized() -> GameConfig:
 	c.innings = innings if innings in INNINGS else 9
 	c.batter = batter if batter in BATTERS else "Contact Hitter"
 	c.assist = assist if assist in Settings.ASSISTS else "Standard"
+	# A challenge is always you pitching a short game: it has its own results, not a leaderboard.
+	if scenario != "" and scenario in Scenario.ids():
+		c.scenario = scenario
+		c.mode = "Pitching"
+		c.activity = "Game"
+		c.innings = int(Scenario.by_id(scenario).setup.get("innings", 9)) if int(Scenario.by_id(scenario).setup.get("innings", 9)) in INNINGS else 9
 	# Spectating is always a full game of watching; there is nothing to practise.
 	if c.mode == "Spectate":
 		c.activity = "Game"
@@ -51,7 +58,7 @@ func normalized() -> GameConfig:
 
 
 func is_scored() -> bool:
-	return activity == "Game" and mode != "Spectate"
+	return activity == "Game" and mode != "Spectate" and scenario == ""
 
 
 ## What a leaderboard is keyed on. Only scored games have one.
@@ -65,6 +72,8 @@ func leaderboard_key() -> String:
 
 
 func title() -> String:
+	if scenario != "":
+		return "Challenge - %s" % Scenario.by_id(scenario).title
 	var who := mode
 	if mode == "Fielding":
 		who = "Fielding (%s)" % Defense.NAMES.get(position, "?")
@@ -79,7 +88,7 @@ func title() -> String:
 
 func to_dict() -> Dictionary:
 	return {"mode": mode, "activity": activity, "position": position, "innings": innings,
-		"batter": batter, "assist": assist}
+		"batter": batter, "assist": assist, "scenario": scenario}
 
 
 static func from_dict(d: Dictionary) -> GameConfig:
@@ -90,4 +99,5 @@ static func from_dict(d: Dictionary) -> GameConfig:
 	c.innings = int(d.get("innings", c.innings))
 	c.batter = str(d.get("batter", c.batter))
 	c.assist = str(d.get("assist", c.assist))
+	c.scenario = str(d.get("scenario", ""))
 	return c.normalized()

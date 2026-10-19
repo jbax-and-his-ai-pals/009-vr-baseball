@@ -56,6 +56,8 @@ func title() -> String:
 			return "Options"
 		"audio":
 			return "Sound"
+		"challenges":
+			return "Challenges"
 		"stats":
 			return "Stats"
 		"pause":
@@ -88,6 +90,7 @@ func items() -> Array[Dictionary]:
 			rows.append(_row("mode:Fielding", "Fielding", "you play a position"))
 			rows.append(_row("mode:Spectate", "Spectate", "watch an AI game"))
 			rows.append(_row("mode:Hitting", "Hitting", "", false, "coming soon"))
+			rows.append(_row("challenges", "Challenges", "%d of %d done" % [_challenges_done(), Scenario.ids().size()], true, "short pitching situations to solve"))
 			rows.append(_row("back", "Back"))
 		"setup":
 			if config.mode == "Fielding":
@@ -112,6 +115,11 @@ func items() -> Array[Dictionary]:
 			rows.append(_row("snap_turn", "Snap turn", "on" if settings.snap_turn else "off"))
 			rows.append(_row("developer", "Developer options", "on" if settings.developer else "off"))
 			rows.append(_row("audio", "Sound", "volume, crowd, music"))
+			rows.append(_row("back", "Back"))
+		"challenges":
+			for sc in Scenario.catalog():
+				var rec := profile.challenge(sc.id)
+				rows.append(_row("challenge:" + sc.id, sc.title, Scenario.stars_text(int(rec.best)), true, sc.goal))
 			rows.append(_row("back", "Back"))
 		"stats":
 			for line in profile.lifetime_lines():
@@ -168,6 +176,13 @@ func activate(index: int) -> Dictionary:
 		config = config.normalized()
 		stack.append("setup")
 		return {}
+	if id.begins_with("challenge:"):
+		var c := GameConfig.new()
+		c.scenario = id.substr(10)
+		c.assist = settings.assist
+		c = c.normalized()
+		settings.last_game = c.to_dict()
+		return {"type": "start", "config": c}
 	if id.begins_with("vol:"):
 		var bus := id.substr(4)
 		var cur := float(settings.volumes.get(bus, 1.0))
@@ -183,6 +198,8 @@ func activate(index: int) -> Dictionary:
 			stack.append("audio")
 		"stats":
 			stack.append("stats")
+		"challenges":
+			stack.append("challenges")
 		"stats_key":
 			var ks := profile.keys_played()
 			if not ks.is_empty():
@@ -250,6 +267,14 @@ func back() -> Dictionary:
 	if stack.size() > 1:
 		stack.pop_back()
 	return {}
+
+
+func _challenges_done() -> int:
+	var n := 0
+	for sid in Scenario.ids():
+		if int(profile.challenge(sid).best) > 0:
+			n += 1
+	return n
 
 
 ## "Pitching/9inn/Standard" as words.
