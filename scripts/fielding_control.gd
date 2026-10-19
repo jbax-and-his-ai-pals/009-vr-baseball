@@ -7,6 +7,7 @@ extends RefCounted
 var host                                    # the bullpen scene (untyped: its members are reached by name)
 
 const FIELD_LOCOMOTION_MIN := 0.15
+const THROW_CATCH_RADIUS := 0.6   # m: a first baseman stretching for a throw
 const COVER_RADIUS := 1.6        # m: close enough to the bag to take the flip
 
 var fld := {"chances": 0, "caught": 0, "missed": 0, "errors": 0, "assists": 0, "frames": 0, "lost": 0, "blocks": 0, "passed": 0}   # your fielding this game
@@ -215,6 +216,33 @@ func human_miss(h: LiveHit) -> void:
 		h.plan = Baserunning.plan(h.play, host._game.bases, host._game.outs, host._batter_player, host._run_rng)
 		h.play_end = maxf(h.t + 0.5, float(h.plan.end_time))
 	host.hud.last_report_extra = "Got by you"
+
+
+## A throw reaches first base and you are the first baseman: is your glove where the ball is?
+func check_throw_catch(h: LiveHit) -> void:
+	h.throw_t = -1.0
+	var glove = glove_pos(h)
+	var d = glove.distance_to(h.throw_spot)
+	if d <= THROW_CATCH_RADIUS:
+		fld.chances += 1
+		fld.caught += 1
+		host._haptics.play("catch", 0.8)
+		host.hud.show_notice("Got the throw", true)
+		host.slog.record("first_base_throw", {"caught": true, "distance": snappedf(d, 0.01)})
+		return
+	fld.chances += 1
+	fld.errors += 1
+	host.slog.record("first_base_throw", {"caught": false, "distance": snappedf(d, 0.01)})
+	var spot: Vector3 = h.play.get("field_pos", h.ball.global_position)
+	var thrower := int(h.play.get("fielder", 6))
+	h.play = {"result": "error", "text": "Error, first baseman misses the throw (E3)", "short": "Error, first baseman misses the throw (E3)", "bases": 1,
+		"fielder": thrower, "fielder_name": String(h.play.get("fielder_name", "")), "field_pos": spot, "error": true,
+		"field_time": float(h.play.get("field_time", h.t)), "movements": [], "run_times": h.play.get("run_times", Defense.RUNNER_TIMES),
+		"caught_in_air": false}
+	h.plan = Baserunning.plan(h.play, host._game.bases, host._game.outs, host._batter_player, host._run_rng)
+	h.play_end = maxf(h.t + 0.8, h.plan.end_time)
+	host.hud.last_report_extra = "You missed the throw!"
+	host.hud.show_notice("Missed the throw - he is safe", true)
 
 
 ## The batter is about to reach first: is the pitcher (you) standing on the bag to take the flip?

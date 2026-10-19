@@ -406,6 +406,12 @@ func contact(pitch: LivePitch) -> void:
 			h.cover_spot = h.play.cover_spot
 			host.hud.show_notice("COVER FIRST!", true)
 			host._haptics.play("ui_error", 0.6)
+		var thr = h.play.get("throw")
+		if host._mode.human_fielders.has(3) and h.play.get("result", "") == "out" and int(h.play.get("fielder", 0)) != 3 and thr != null and thr.base == 1:
+			# A throw is coming to first and you are the first baseman: be there with the glove.
+			h.throw_t = thr.t1
+			h.throw_spot = Baserunning.RECEIVE_SPOT[1] + Vector3(0.0, 1.15, 0.0)
+			host.hud.show_notice("THROW TO FIRST!", true)
 		# Everyone on base runs on the same physics as the fielders.
 		var head_start = {}
 		if not host.plays.steal.is_empty():
@@ -487,6 +493,8 @@ func update_hit(h: LiveHit, delta: float) -> void:
 	h.t += delta
 	if h.cover_t > 0.0 and h.t >= h.cover_t:
 		host.fielding.check_cover(h)
+	if h.throw_t > 0.0 and h.t >= h.throw_t:
+		host.fielding.check_throw_catch(h)
 	var n = h.points.size()
 	var path_end = (n - 1) * h.dt
 	if h.human_state in ["waiting", "holding", "gripped"]:

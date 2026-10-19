@@ -102,7 +102,7 @@ criteria for each phase are in section 5; this is the at-a-glance view. Updated 
 - [~] Exit: a season is playable with saved progress, standings and a stats screen (tested in the scene; not played in the headset)
 
 ### Phase 6 - More roles (M6) - MOSTLY DONE (open: tuning in the headset)
-- [~] Human fielding: 1B to RF exist (`--field-pos`); open: first base taking throws, tuning in the headset
+- [~] Human fielding: 1B to RF exist (`--field-pos`); first base taking throws is in (`FieldingControl.check_throw_catch`, tests/first_base_test.gd); open: tuning in the headset
 - [x] Wild throws let runners advance (AI throwing errors by arm and distance; your own wild throws already did)
 - [x] Fielding drills (Fielding > Drill: ten balls hit to your position, stars by catches and errors)
 - [x] Pitcher as a position (Fielding > Position P: you stand beside the rubber while the AI pitches, field comebackers and bunts, and cover first when the first baseman is pulled off the bag - on the bag by the time the batter arrives or he is safe; scorebook says 3-1 now; tests/pitcher_position_test.gd; the covering animation still shows a hidden figure receiving the flip)

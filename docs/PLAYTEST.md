@@ -254,3 +254,7 @@ Your controllers are now a cartoon hand (throwing hand; both hands when batting)
 - The crowd stands and bounces after a homer (`Stadium.pulse`); look at it from the mound: is it too subtle at that distance?
 - Chalk puffs on foul lines, grass kicks on outfield bounces, a flash where the bat meets the ball and at the mitt's pop (`DustPuffs`).
 - Play > Daily game: three innings with the day's visitors; play it twice to confirm the opposing lineup is the same (your pitches differ, so the game differs).
+
+## 24. First baseman
+
+Play > Fielding > Position: 1B. When an infielder fields a grounder and throws to first, "THROW TO FIRST!" flashes: get the glove to the bag (within 0.6 m of where the ball arrives, about 1.15 m up). A miss is an error on you (E3) and the batter is safe. Check the cue timing and whether the stretch distance feels fair.
