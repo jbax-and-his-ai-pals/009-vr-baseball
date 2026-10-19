@@ -23,6 +23,7 @@ var catcher: Doll
 var umpire: Doll
 var _track := {}                          # the pitch the catcher is tracking
 var _chase := {}                          # a wild pitch: he goes after it
+var _visit := {}                          # a mound visit: he walks out, talks, and walks back
 var _ump_queue: Array = []                # calls waiting for their moment
 var _ump_goal := Vector3(0.0, 0.0, UMP_HOME_Z)
 var _later: Array = []                    # {"t": seconds left, "fn": Callable}
@@ -70,6 +71,9 @@ func update(delta: float) -> void:
 
 func _update_catcher(delta: float) -> void:
 	if catcher == null:
+		return
+	if not _visit.is_empty():
+		_update_visit(delta)
 		return
 	if not _chase.is_empty():
 		_update_chase(delta)
@@ -139,6 +143,45 @@ func _update_chase(delta: float) -> void:
 	var face := (wall - CATCHER_HOME) if t < 1.9 else (CATCHER_HOME - wall)
 	catcher.position = pos
 	catcher.rotation.y = atan2(face.x, face.z) if t < 3.2 else 0.0
+
+
+## A visit to the mound: he walks out, they talk, he walks back (about five seconds).
+func visit_mound() -> void:
+	if catcher == null or not _visit.is_empty():
+		return
+	_visit = {"t": 0.0}
+	_track = {}
+	catcher.locomotion = true
+	catcher.release_glove()
+	catcher.set_squat(0.0, 0.2)
+
+
+func is_visiting() -> bool:
+	return not _visit.is_empty()
+
+
+func _update_visit(delta: float) -> void:
+	var v := _visit
+	v.t += delta
+	var t: float = v.t
+	var mound := Vector3(0.0, 0.0, 15.7)
+	var pos := CATCHER_HOME
+	var face := mound - CATCHER_HOME
+	if t < 1.7:
+		pos = CATCHER_HOME.lerp(mound, t / 1.7)
+	elif t < 3.2:
+		pos = mound
+	elif t < 4.9:
+		pos = mound.lerp(CATCHER_HOME, (t - 3.2) / 1.7)
+		face = CATCHER_HOME - mound
+	else:
+		_visit = {}
+		catcher.locomotion = false
+		catcher.set_squat(1.0, 0.4)
+		catcher.rotation.y = 0.0
+		return
+	catcher.position = pos
+	catcher.rotation.y = atan2(face.x, face.z) if (t < 1.7 or t >= 3.2) else atan2(0.0, -1.0)
 
 
 ## Up out of the squat and a quick throw down to the base, `seconds` from now (so the ball leaves

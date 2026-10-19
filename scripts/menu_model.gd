@@ -21,6 +21,8 @@ var new_name := Career.NAMES[0]           # the career being set up
 var new_build := "Balanced"
 var new_length := 10
 var new_innings := 3
+var can_mound_visit := false              # the pause screen offers these (the scene says when)
+var can_leave := false
 var stats_key := ""                       # the leaderboard the Stats screen is showing
 const VOLUME_ROWS := {"Master": "Master volume", "SFX": "Effects", "Crowd": "Crowd", "Music": "Music", "Voice": "Voices"}
 const VOLUME_STEPS := [0.0, 0.25, 0.5, 0.75, 1.0]
@@ -71,6 +73,8 @@ func title() -> String:
 			return "Standings"
 		"career_abandon":
 			return "Abandon career?"
+		"confirm_leave":
+			return "Leave the game?"
 		"stats":
 			return "Stats"
 		"pause":
@@ -163,6 +167,10 @@ func items() -> Array[Dictionary]:
 					var me := int(r.team) == League.USER
 					rows.append(_row("info", "%s%d. %s" % [">" if me else " ", int(r.rank), r.name], "%d-%d  (%+d)" % [int(r.w), int(r.l), int(r.rs) - int(r.ra)], false))
 			rows.append(_row("back", "Back"))
+		"confirm_leave":
+			rows.append(_row("info", "A reliever finishes the game; your line is closed.", "", false))
+			rows.append(_row("leave_game", "Yes, take me out"))
+			rows.append(_row("back", "No, stay in"))
 		"career_abandon":
 			rows.append(_row("info", "This deletes your pitcher and season.", "", false))
 			rows.append(_row("career_abandon_yes", "Yes, abandon it"))
@@ -195,6 +203,10 @@ func items() -> Array[Dictionary]:
 			rows.append(_row("resume", "Resume"))
 			if current_game != null and current_game.mode == "Pitching" and current_game.activity == "Game":
 				rows.append(_row("ibb", "Intentional walk", "", true, "walk the current batter"))
+			if can_mound_visit:
+				rows.append(_row("mound_visit", "Mound visit", "", true, "the catcher comes out: catch your breath (once a game)"))
+			if can_leave:
+				rows.append(_row("confirm_leave", "Take me out", "", true, "the bullpen takes over"))
 			rows.append(_row("restart", "Restart game"))
 			rows.append(_row("options", "Options"))
 			rows.append(_row("main_menu", "Main menu"))
@@ -311,6 +323,12 @@ func activate(index: int) -> Dictionary:
 			return {"type": id}
 		"ibb":
 			return {"type": "intentional_walk"}
+		"mound_visit":
+			return {"type": "mound_visit"}
+		"confirm_leave":
+			stack.append("confirm_leave")
+		"leave_game":
+			return {"type": "leave_game"}
 		"position":
 			config.position = 3 if config.position >= 9 else config.position + 1
 		"activity":

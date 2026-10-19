@@ -110,15 +110,15 @@ criteria for each phase are in section 5; this is the at-a-glance view. Updated 
 - [ ] Batting practice and home-run derby
 - [ ] Role switching in a game (pitch your half, hit in the bottom, or field)
 
-### Phase 7 - Rest of the rulebook and the manager (M7)
+### Phase 7 - Rest of the rulebook and the manager (M7) - MOSTLY DONE (open: rundowns, pickoff moves, pitcher covering first)
 - [x] Intentional walk (pause menu, pitching mode)
 - [ ] Rundowns
-- [ ] Squeeze, hit-and-run, infield in
-- [ ] Base umpires
-- [ ] Pitching changes you control (bullpen phone), mound visits, an intentional-walk gesture
+- [x] Squeeze play, hit-and-run (called per pitch by situation, the batter bunts / protects, the runner from third can score or be out) and infield in (late, close, runner on third; fielders walk to position)
+- [x] Base umpires (three dolls at first, second and third give the out/safe call with gesture and voice)
+- [~] Pause menu: Mound visit (once a game, rests the arm 15 pitches, the catcher walks out) and Take me out (a reliever finishes, your line is closed) are in; a bullpen-phone gesture and an intentional-walk gesture are open
 - [ ] Pickoff moves from the stretch; pitcher covering first and backing up bases
-- [ ] Platoon effects (left-handed batters now exist)
-- [ ] Pitching change PA call (`pa_pitching_change`, the one sound with no trigger) and `pa_number_digits`
+- [x] Platoon effects, and left-handed batters now hit the mirror image (pull to the other field)
+- [x] Pitching change PA call (`pa_pitching_change`); `pa_number_digits` stays unwired on purpose
 
 ### Phase 8 - Production (M8, mostly assets)
 - [ ] Commit to one art style (decision 3 below)

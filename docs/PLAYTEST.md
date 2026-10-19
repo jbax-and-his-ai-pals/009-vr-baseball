@@ -176,3 +176,13 @@ Options > Haptics: Off / Low / Normal / Strong.
 - [ ] Quit mid-season and relaunch: the career is still there (Continue also replays the next start).
 - [ ] Abandon career asks first, then clears it.
 - [ ] Do the rating gains feel meaningful over a season (command +0.5 to +1 per good start)? Is the opponent spread (46 to 59) noticeable in the games?
+
+## 14. Rules added late (new)
+
+- [ ] Left-handed hitters stand on the first-base side and pull the ball to right field; a pitch at their body hits them there. Opposite-handed pitchers are a little easier for them (platoon).
+- [ ] Late, close, a man on third, fewer than two outs: occasionally "SQUEEZE!" appears; the runner breaks on your delivery and the batter bunts. A good bunt scores the run; a missed or taken pitch usually catches the runner.
+- [ ] A contact hitter with a man alone on first sometimes gets "HIT AND RUN!": the runner breaks, the batter swings at nearly anything close. Does it read clearly?
+- [ ] Same situation, runner on third and fewer than two outs, close and late: "Infield in" shows and the four infielders walk in; more grounders get through, but the throw home is short.
+- [ ] Base umpires: first, second and third each signal out/safe on a play at their base, with a voice. They stand in foul ground at first and third and behind second. Do they get in anyone's way?
+- [ ] Pause > Mound visit (once a game): the catcher walks out, you cannot pitch for about five seconds, the arm feels fresher.
+- [ ] Pause > Take me out > Yes: a reliever takes over, the PA announces the change, the game finishes on its own; the end notice and Stats show your line as it was when you left.

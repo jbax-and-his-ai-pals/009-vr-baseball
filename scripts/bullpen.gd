@@ -131,6 +131,11 @@ var _dust: DustPuffs          # _props.dust
 var _profile := PlayerProfile.load_from()   # lifetime stats, leaderboards, challenge results
 var _career: Career = Career.load_from()    # the saved season, if any
 var _career_game := false                    # this game is the next start of the career
+var _visit_used := false                     # the one mound visit a game
+var _visit_timer := 0.0                      # seconds left of a visit (no pitching during it)
+var _fatigue_credit := 0                     # pitches your arm is rested by (a mound visit)
+var _user_left := false                      # you handed the ball to the bullpen
+var _left_line := {}                         # your line at that moment
 var _game_recorded := false
 var _bat_call := ""                         # a play called with this pitch: "squeeze" or "hit_and_run" ("" for none)
 var _scenario: Scenario            # the challenge being played (null in an ordinary game)
@@ -401,7 +406,7 @@ func _issue_intentional_walk() -> void:
 func _arm_fatigue() -> float:
 	if _game == null or _home == null:
 		return 0.0
-	var f: float = _home.player_at(1).fatigue(_game.pitch_count)
+	var f: float = _home.player_at(1).fatigue(maxi(_game.pitch_count - _fatigue_credit, 0))
 	if f > 0.35 and not _tired_notice:
 		_tired_notice = true
 		_show_notice("Your arm is getting tired")
@@ -425,6 +430,7 @@ func _maybe_change_pitcher() -> void:
 	_ai_pitcher = AIPitcher.new(rp)
 	_runs_at_pitcher_change = _game.runs
 	_show_notice("New pitcher: %s" % rp.name)
+	_sfx_later(1.0, "pa_pitching_change")
 	_refresh_scoreboard()
 
 
@@ -1102,6 +1108,8 @@ func _process(delta: float) -> void:
 			_sound.update_menu(delta, _menu.model.screen())
 		return       # the game waits while a menu is up
 	_game_time += delta
+	if _visit_timer > 0.0:
+		_visit_timer -= delta
 	_crew.update(delta)
 	_base_umps.update(delta)
 	_props.update(delta)
@@ -1291,6 +1299,9 @@ func _toggle_pause() -> void:
 		if _menu.model.screen() == "pause":
 			_close_menu()
 		return
+	var in_game := _mode.human_pitcher and lineup_mode == "Game" and _game != null and not _game.over and _scenario == null
+	_menu.model.can_mound_visit = in_game and not _visit_used
+	_menu.model.can_leave = in_game
 	_menu.open_pause(Session.current if Session.current != null else _config)
 	_sfx("ui_pause_open")
 	_hud.visible = false
@@ -1341,6 +1352,12 @@ func _on_menu_event(ev: Dictionary) -> void:
 		"intentional_walk":
 			_close_menu()
 			_issue_intentional_walk()
+		"mound_visit":
+			_close_menu()
+			_mound_visit()
+		"leave_game":
+			_close_menu()
+			_leave_game()
 		"quit":
 			get_tree().quit()
 
@@ -1354,6 +1371,11 @@ func _new_game() -> void:
 	if _sound != null:
 		_sound.new_game()
 	_game_recorded = false
+	_visit_used = false
+	_visit_timer = 0.0
+	_fatigue_credit = 0
+	_user_left = false
+	_left_line = {}
 	_stats.reset()
 	if _zone_markers:
 		_zone_markers.clear()
@@ -1454,7 +1476,7 @@ func _log_throw(pitch: LivePitch, from: Vector3, release_t: float, latency: floa
 ## Read the controller each frame: the ball in your hand follows it; grabs, the start of your delivery and
 ## releases come back as events.
 func _poll_hand(now: float) -> void:
-	for e in _human.poll(now, _hand, _batter_ready, release_mode == ReleaseMode.AUTO_PEAK):
+	for e in _human.poll(now, _hand, _batter_ready and _visit_timer <= 0.0, release_mode == ReleaseMode.AUTO_PEAK):
 		match String(e.type):
 			"grab":
 				_haptics.play("grab")
@@ -2315,6 +2337,41 @@ func _update_scenario(ev: Dictionary) -> void:
 		get_tree().reload_current_scene.call_deferred())
 
 
+## The catcher comes out to the mound: you catch your breath (the arm is rested by 15 pitches) and cannot
+## pitch for a few seconds. Once a game.
+func _mound_visit() -> void:
+	if not _mode.human_pitcher or _visit_used or _game == null or _game.over:
+		return
+	_visit_used = true
+	_fatigue_credit = 15
+	_visit_timer = 5.2
+	_crew.visit_mound()
+	_log("mound_visit", {"pitches": _game.pitch_count})
+	_show_notice("Mound visit: you catch your breath", true)
+
+
+## You hand the ball over: a reliever finishes the game (an AI pitcher, like Spectate), your line is closed
+## as it stands, and the team's result is yours at the end.
+func _leave_game() -> void:
+	if not _mode.human_pitcher or _game == null or _game.over:
+		return
+	_left_line = _game_line()
+	_user_left = true
+	_drop_held()
+	_relievers_used += 1
+	var rp := Team.relief_pitcher(52.0, 5000 + _relievers_used * 31)
+	_ai_pitcher = AIPitcher.new(rp)
+	_runs_at_pitcher_change = _game.runs
+	_mode = GameMode.spectate()
+	_sound.mode = _mode
+	_spectate_timer = 2.0
+	_log("leave_game", {"line": _left_line, "reliever": rp.name})
+	_show_notice("%s takes over" % rp.name)
+	_sfx_later(1.0, "pa_pitching_change")
+	_refresh_scoreboard()
+	_refresh_hud()
+
+
 ## The infield plays in when a run at the plate matters (see Defense.wants_infield_in).
 func _update_alignment() -> void:
 	if _game == null or _defense == null:
@@ -2350,6 +2407,14 @@ func _finish_career_start() -> void:
 
 ## What you did in this game, as one pitching line.
 func _game_line() -> Dictionary:
+	if not _left_line.is_empty():
+		# You left earlier: the line is closed, but win or loss is the team's result.
+		var l := _left_line.duplicate()
+		l["won"] = _game.home_score > _game.runs
+		l["lost"] = _game.home_score < _game.runs
+		l["score_for"] = _game.home_score
+		l["score_against"] = _game.runs
+		return l
 	var t := _stats.pitch_totals()
 	var n := maxi(int(t.n), 1)
 	return {"outs": _game.outs_recorded, "pitches": _game.pitch_count, "strikes": int(t.strikes), "k": _game.strikeouts,
@@ -2361,7 +2426,7 @@ func _game_line() -> Dictionary:
 
 ## A finished game goes in the book (only games you pitch that count for a leaderboard).
 func _record_finished_game() -> void:
-	if _game_recorded or not _mode.human_pitcher:
+	if _game_recorded or not (_mode.human_pitcher or _user_left):
 		return
 	_game_recorded = true
 	var cfg := _current_config()
