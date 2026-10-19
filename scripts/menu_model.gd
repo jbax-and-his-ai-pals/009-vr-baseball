@@ -129,6 +129,9 @@ func items() -> Array[Dictionary]:
 			rows.append(_row("quality", "Quality", settings.quality, true, "applies next game"))
 			rows.append(_row("locomotion", "Movement", settings.locomotion))
 			rows.append(_row("haptics", "Haptics", settings.haptics))
+			rows.append(_row("colorblind", "Zone colours", "colour-blind" if settings.colorblind else "standard", true, "blue and orange instead of green and red"))
+			rows.append(_row("call_text", "Umpire call text", "on" if settings.call_text else "off", true, "calls also shown as words"))
+			rows.append(_row("seated", "Seated play", "on" if settings.seated else "off", true, "lifts your height to a standing pitcher's"))
 			rows.append(_row("vignette", "Comfort vignette", "on" if settings.vignette else "off"))
 			rows.append(_row("snap_turn", "Snap turn", "on" if settings.snap_turn else "off"))
 			rows.append(_row("developer", "Developer options", "on" if settings.developer else "off"))
@@ -360,6 +363,15 @@ func activate(index: int) -> Dictionary:
 			return {"type": "settings"}
 		"haptics":
 			settings.haptics = _cycle(Settings.HAPTICS, settings.haptics)
+			return {"type": "settings"}
+		"colorblind":
+			settings.colorblind = not settings.colorblind
+			return {"type": "settings"}
+		"call_text":
+			settings.call_text = not settings.call_text
+			return {"type": "settings"}
+		"seated":
+			settings.seated = not settings.seated
 			return {"type": "settings"}
 		"vignette":
 			settings.vignette = not settings.vignette

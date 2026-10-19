@@ -17,6 +17,23 @@ const CORNER := 0.80
 const JUST_OFF := 0.15
 const WAY_OFF := 0.45
 
+## The colours: [standard, colour-blind]. The colour-blind set avoids red against green: strikes run
+## yellow (middle) through light blue to deep blue (corner); balls run orange to magenta to purple.
+const PALETTE := {
+	"corner": [Color(0.15, 0.95, 0.30), Color(0.0, 0.40, 0.95)],
+	"good": [Color(0.25, 0.85, 0.35), Color(0.30, 0.65, 1.0)],
+	"middle": [Color(1.0, 0.72, 0.15), Color(1.0, 0.90, 0.20)],
+	"zone": [Color(0.55, 0.9, 0.45), Color(0.65, 0.82, 1.0)],
+	"just_off": [Color(1.0, 0.5, 0.15), Color(0.95, 0.55, 0.0)],
+	"way_off": [Color(0.65, 0.1, 0.12), Color(0.45, 0.10, 0.55)],
+	"ball": [Color(0.95, 0.2, 0.2), Color(0.85, 0.40, 0.70)],
+}
+static var colorblind := false
+
+
+static func color_of(kind: String) -> Color:
+	return (PALETTE[kind] as Array)[1 if colorblind else 0]
+
 
 ## 0 at dead center, 1 on the edge of the strike zone; larger when outside it.
 static func edge_of(x: float, y: float) -> float:
@@ -48,21 +65,21 @@ static func classify(x: float, y: float) -> Dictionary:
 	if strike:
 		if edge >= CORNER:
 			return {"kind": "corner", "label": "CORNER", "strike": true, "edge": edge, "halo": true,
-				"color": Color(0.15, 0.95, 0.30)}
+				"color": color_of("corner")}
 		if edge >= GOOD:
 			return {"kind": "good", "label": "GOOD LOCATION", "strike": true, "edge": edge, "halo": false,
-				"color": Color(0.25, 0.85, 0.35)}
+				"color": color_of("good")}
 		if edge < MIDDLE:
 			return {"kind": "middle", "label": "MIDDLE", "strike": true, "edge": edge, "halo": false,
-				"color": Color(1.0, 0.72, 0.15)}
+				"color": color_of("middle")}
 		return {"kind": "zone", "label": "IN ZONE", "strike": true, "edge": edge, "halo": false,
-			"color": Color(0.55, 0.9, 0.45)}
+			"color": color_of("zone")}
 	var out := outside_by(x, y)
 	if out <= JUST_OFF:
 		return {"kind": "just_off", "label": "JUST OFF", "strike": false, "edge": edge, "halo": false,
-			"color": Color(1.0, 0.5, 0.15)}
+			"color": color_of("just_off")}
 	if out >= WAY_OFF:
 		return {"kind": "way_off", "label": "WAY OFF", "strike": false, "edge": edge, "halo": false,
-			"color": Color(0.65, 0.1, 0.12)}
+			"color": color_of("way_off")}
 	return {"kind": "ball", "label": "BALL", "strike": false, "edge": edge, "halo": false,
-		"color": Color(0.95, 0.2, 0.2)}
+		"color": color_of("ball")}

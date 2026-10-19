@@ -9,6 +9,9 @@ extends Node
 const MITT_Z := -0.85
 const BACKSTOP_Z := -6.6
 
+## The umpire said something: the sound id and how long from now (so the scene can show it as words).
+signal umpire_spoke(id: String, delay: float)
+
 var audio: AudioManager
 var mode: GameMode                       # who is human (set by the scene)
 var umpire: Node3D                       # where the umpire's voice comes from
@@ -62,10 +65,18 @@ func walk_step(at: Vector3) -> void:
 ## The umpire says something.
 func umpire_says(id: String) -> void:
 	sfx(id, _head(umpire, 1.5))
+	umpire_spoke.emit(id, 0.0)
+
+
+## He says it from where he is standing (a base umpire).
+func umpire_says_at(id: String, at: Vector3) -> void:
+	sfx(id, at)
+	umpire_spoke.emit(id, 0.0)
 
 
 func umpire_says_later(seconds: float, id: String, db: float = 0.0) -> void:
 	sfx_later(seconds, id, _head(umpire, 1.5), db)
+	umpire_spoke.emit(id, seconds)
 
 
 # ------------------------------------------------------------------ the pitch and the bat

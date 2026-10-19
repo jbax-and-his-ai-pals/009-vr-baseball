@@ -36,6 +36,9 @@ var assist := "Standard"
 var quality := "Auto"              # Auto: governor decides; Quest: tuned settings; High: no tuning
 var locomotion := "smooth"
 var haptics := "Normal"            # controller vibration strength
+var colorblind := false            # zone colours that avoid red against green
+var call_text := true              # the umpire's calls are also shown as words
+var seated := false                # playing seated: the height is lifted to a standing pitcher's
 var vignette := true               # darken the edges while moving (fielding)
 var snap_turn := false
 var developer := false             # reveals logging / debug options in the menu
@@ -54,7 +57,7 @@ func throwing_hand_name() -> StringName:
 
 func to_dict() -> Dictionary:
 	return {"version": VERSION, "hand": hand, "assist": assist, "quality": quality,
-		"locomotion": locomotion, "haptics": haptics, "vignette": vignette, "snap_turn": snap_turn,
+		"locomotion": locomotion, "haptics": haptics, "colorblind": colorblind, "call_text": call_text, "seated": seated, "vignette": vignette, "snap_turn": snap_turn,
 		"developer": developer, "volumes": volumes, "last_game": last_game}
 
 
@@ -67,6 +70,9 @@ static func from_dict(d: Dictionary) -> Settings:
 	s.quality = d.get("quality", s.quality) if d.get("quality", "") in QUALITY else s.quality
 	s.locomotion = d.get("locomotion", s.locomotion) if d.get("locomotion", "") in LOCOMOTION else s.locomotion
 	s.haptics = d.get("haptics", s.haptics) if d.get("haptics", "") in HAPTICS else s.haptics
+	s.colorblind = bool(d.get("colorblind", s.colorblind))
+	s.call_text = bool(d.get("call_text", s.call_text))
+	s.seated = bool(d.get("seated", s.seated))
 	s.vignette = bool(d.get("vignette", s.vignette))
 	s.snap_turn = bool(d.get("snap_turn", s.snap_turn))
 	s.developer = bool(d.get("developer", s.developer))

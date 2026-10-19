@@ -133,6 +133,11 @@ func throw(release_t: float, vel_latency: float, spin_latency: float, from: Vect
 		"hand_sign": hand_sign, "delivery": delivery, "flutter": float(shape.get("flutter", 0.0)), "knuckle": bool(shape.get("knuckle", false))}
 
 
+## A left-hander starts from the mirror image of the usual aim (until his own throws teach it otherwise).
+func mirror_aim() -> void:
+	aim_mu.x = -aim_mu.x
+
+
 ## You let go (or the ball was dropped): nothing is held any more.
 func drop() -> void:
 	held = false

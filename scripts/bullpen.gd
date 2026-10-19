@@ -137,6 +137,9 @@ var _fatigue_credit := 0                     # pitches your arm is rested by (a 
 var _user_left := false                      # you handed the ball to the bullpen
 var _left_line := {}                         # your line at that moment
 var _game_recorded := false
+var _call_label: Label3D                    # the umpire's call as words, above the plate
+var _call_label_until := 0.0
+var _seat_done := false
 var _bat_call := ""                         # a play called with this pitch: "squeeze" or "hit_and_run" ("" for none)
 var _scenario: Scenario            # the challenge being played (null in an ordinary game)
 var _scenario_id := ""
@@ -248,6 +251,8 @@ func _ready() -> void:
 	_demo = "--demo" in OS.get_cmdline_user_args()
 	_settings = Settings.new() if "--no-settings" in OS.get_cmdline_user_args() else Settings.load_from()
 	apply_settings(_settings)
+	if throwing_hand == &"left_hand":
+		_human.mirror_aim()          # a left-hander's usual aim starts on the other side
 	# Did the menu (before a reload) ask for a particular game, or for the menu itself?
 	var want_menu := false
 	var user_args := OS.get_cmdline_user_args()
@@ -295,6 +300,7 @@ func _ready() -> void:
 	_haptics.hand = _hand
 	_haptics.off_hand = _off_hand
 	_haptics.set_level(_settings.haptics)
+	PitchLocation.colorblind = _settings.colorblind
 	_build_menu(want_menu)
 	_sound = SoundDirector.new()
 	add_child(_sound)
@@ -319,7 +325,8 @@ func _ready() -> void:
 	_base_umps = BaseUmpires.new()
 	add_child(_base_umps)
 	_base_umps.setup(_base_ump_dolls[0], _base_ump_dolls[1], _base_ump_dolls[2])
-	_base_umps.umpire_voice.connect(func(id: String, at: Vector3): _sfx(id, at))
+	_base_umps.umpire_voice.connect(func(id: String, at: Vector3): _sound.umpire_says_at(id, at))
+	_sound.umpire_spoke.connect(_on_umpire_spoke)
 	_director.base_umps = _base_umps
 	_director.props = _props
 	_director.sound = _sound
@@ -623,7 +630,7 @@ func _do_pickoff(base: int, from: Vector3, vel: Vector3, err: float) -> void:
 func _call_balk(why: String) -> void:
 	_haptics.play("buzz")
 	_log("balk", {"why": why})
-	_sfx_later(0.2, "ump_balk", _umpire.global_position + Vector3(0.0, 1.5, 0.0))
+	_sound.umpire_says_later(0.2, "ump_balk")
 	var before := _game.bases.duplicate()
 	var ev := _game.balk()
 	if ev.get("result", "") == "":
@@ -894,6 +901,16 @@ func _build_world() -> void:
 	zone_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	zone_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	zone_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_call_label = Label3D.new()
+	_call_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	_call_label.fixed_size = true
+	_call_label.pixel_size = 0.0021
+	_call_label.font_size = 96
+	_call_label.outline_size = 22
+	_call_label.no_depth_test = true
+	_call_label.position = Vector3(0.0, 2.7, -1.6)
+	_call_label.visible = false
+	add_child(_call_label)
 	_zone_markers = ZoneMarkers.new()
 	add_child(_zone_markers)
 
@@ -1108,6 +1125,9 @@ func _process(delta: float) -> void:
 			_sound.update_menu(delta, _menu.model.screen())
 		return       # the game waits while a menu is up
 	_game_time += delta
+	if _call_label != null and _call_label.visible and _game_time > _call_label_until:
+		_call_label.visible = false
+	_seat_check()
 	if _visit_timer > 0.0:
 		_visit_timer -= delta
 	_crew.update(delta)
@@ -1335,6 +1355,7 @@ func _on_menu_event(ev: Dictionary) -> void:
 			_settings.save()
 			apply_assist(_settings)
 			_haptics.set_level(_settings.haptics)
+			PitchLocation.colorblind = _settings.colorblind
 			if _audio:
 				_audio.apply_volumes(_settings.volumes)
 		"start":
@@ -1632,7 +1653,7 @@ func _land(pitch: LivePitch) -> void:
 	var third := _game.strikes >= 2              # this strike is the third: the call is the strikeout's
 	match outcome:
 		"ball":
-			_sfx_later(0.4, "ump_ball", _umpire.global_position + Vector3(0.0, 1.5, 0.0), -8.0)
+			_sound.umpire_says_later(0.4, "ump_ball", -8.0)
 		"called_strike":
 			_crew.call_it("ump_strike", 0.3, 0.9, "" if third else "ump_strike")
 		"swinging_strike":
@@ -1791,7 +1812,7 @@ func _contact(pitch: LivePitch) -> void:
 		h.rolling = true
 		_audio.loop_on("roll", "ball_roll_dirt" if Vector2(rest.x, rest.z - 14.0).length() < 26.0 else "ball_roll_grass", -10.0, null, h.ball)
 	if h.play.get("infield_fly", false):
-		_sfx_later(0.9, "ump_infield_fly", _umpire.global_position + Vector3(0.0, 1.5, 0.0))
+		_sound.umpire_says_later(0.9, "ump_infield_fly")
 	h.trail_inst = MeshInstance3D.new()
 	h.trail_inst.mesh = h.trail_mesh
 	var hit_mat := StandardMaterial3D.new()
@@ -2273,7 +2294,7 @@ func _announce_play(h: LiveHit) -> void:
 	else:
 		ev = _game.in_play(play, h.plan)
 		if play.get("ground_rule", false):
-			_sfx_later(0.3, "ump_time", _umpire.global_position + Vector3(0.0, 1.5, 0.0))      # dead ball: two bases
+			_sound.umpire_says_later(0.3, "ump_time")      # dead ball: two bases
 	if _runner:
 		_runner.visible = false       # he is on a base now (or out): the base figures take over
 	_last_report_extra = ""
@@ -2370,6 +2391,38 @@ func _leave_game() -> void:
 	_sfx_later(1.0, "pa_pitching_change")
 	_refresh_scoreboard()
 	_refresh_hud()
+
+
+## The umpire's call as words, for anyone who cannot hear it well (Options > Umpire call text).
+const CALL_WORDS := {"ump_strike": "STRIKE", "ump_strike_three": "STRIKE THREE", "ump_ball": "BALL", "ump_out": "OUT", "ump_safe": "SAFE",
+	"ump_foul": "FOUL BALL", "ump_balk": "BALK", "ump_infield_fly": "INFIELD FLY", "ump_time": "TIME", "ump_play_ball": "PLAY BALL"}
+
+
+func _on_umpire_spoke(id: String, delay: float) -> void:
+	if not _settings.call_text or not CALL_WORDS.has(id):
+		return
+	_props.later(delay, func():
+		if _call_label == null:
+			return
+		var words: String = CALL_WORDS[id]
+		if id in ["ump_strike", "ump_ball"] and _game != null:
+			words += "  " + _game.count_text()
+		_call_label.text = words
+		_call_label.visible = true
+		_call_label_until = _game_time + 1.7)
+
+
+## Seated play: once the headset is tracking, lift the whole rig so a seated head is where a standing
+## pitcher's would be (see Comfort.seated_offset). Done once per game start.
+func _seat_check() -> void:
+	if _seat_done or not _settings.seated or not _xr_active or _origin == null or _camera == null:
+		return
+	if _camera.position.y < 0.3:
+		return                          # not tracking yet
+	_seat_done = true
+	var lift := Comfort.seated_offset(_camera.position.y)
+	_origin.position.y += lift
+	_log("seated", {"head_y": snappedf(_camera.position.y, 0.01), "lift": snappedf(lift, 0.01)})
 
 
 ## The infield plays in when a run at the plate matters (see Defense.wants_infield_in).
