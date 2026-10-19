@@ -182,6 +182,7 @@ var flight := PitchFlight.new()                 # pitches and batted balls: laun
 var flow := GameFlow.new()                 # the batter's turn, the play's end and what follows an event
 var menus := MenuHost.new()                 # opening, closing and answering the menus
 var bus := GameBus.new()                 # what happens in the game, announced for whoever cares (see GameBus)
+var replay := HighlightReplay.new()                 # a ghost replay of a big hit
 var reactions := Reactions.new()                 # what you see, hear and feel about it
 var _game_seed := 0
 var forced_seed := -1                       # tests and replays: use this seed (the --seed= flag does the same)
@@ -197,6 +198,7 @@ const SWING_RECOVERY := 0.75
 
 func _init() -> void:
 	reactions.host = self
+	replay.host = self
 	_wire_bus()
 	menus.host = self
 	flow.host = self
@@ -226,6 +228,7 @@ func _wire_bus() -> void:
 	bus.game_over.connect(slog.on_game_over)
 	bus.half_over.connect(slog.on_half_over)
 	bus.half_over.connect(hud.on_half_over)
+	bus.play_announced.connect(replay.on_play_announced)
 	bus.play_announced.connect(slog.on_play_announced)
 
 
@@ -474,6 +477,7 @@ func _process(delta: float) -> void:
 			_sound.update_menu(delta, _menu.model.screen())
 		return       # the game waits while a menu is up
 	_game_time += delta
+	replay.update(delta)
 	if _call_label != null and _call_label.visible and _game_time > _call_label_until:
 		_call_label.visible = false
 	manager.seat_check()

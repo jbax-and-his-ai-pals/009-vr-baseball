@@ -136,7 +136,7 @@ criteria for each phase are in section 5; this is the at-a-glance view. Updated 
 ### Later
 - [~] Async ghost multiplayer (same seed, same lineup): the daily game is in (Play > Daily game: the day's visitors and dice are the same for everyone, three innings, a board per day kept two weeks; tests/daily_test.gd); sharing scores and ghosts between players needs a server and is open
 - [x] Weather and altitude for batted balls (`Park.air` thin air at Summit Field, `Park.wind` steady wind; Canyon Park has a headwind; the daily game has the day's wind; notice at the start; pitches are deliberately not affected so the tuned pitching feel is unchanged; tests/park_test.gd). Rain and changing wind are open
-- [ ] Replay camera for big plays
+- [x] Replays for big plays, as a ghost in the world rather than a camera cut (no motion for the head to disagree with): `HighlightReplay` redraws a homer or a 95 m ball in half speed with its distance (tests/replay_ghost_test.gd)
 
 ### Decisions waiting for you
 - [ ] Standalone Quest or PC VR as the target (recommendation: measure in Phase 1 first)
