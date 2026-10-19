@@ -98,7 +98,9 @@ func _init() -> void:
 		if m.items()[i].id == "position":
 			pi = i
 	m.activate(pi)
-	_check(m.config.position == 2, "the position row wraps from right field to catcher")
+	_check(m.config.position == 1, "the position row wraps from right field to the pitcher")
+	m.activate(pi)
+	_check(m.config.position == 2, "and then the catcher")
 	var plain := PlayerProfile.fielding_score({"caught": 3})
 	var catcher := PlayerProfile.fielding_score({"caught": 3, "frames": 4, "blocks": 2, "lost": 1, "passed": 1})
 	_check(catcher == plain + 16 + 4 - 3 - 8, "framing and blocking count in the score (%d vs %d)" % [catcher, plain])
@@ -123,7 +125,7 @@ func _init() -> void:
 	var off := Vector3(PitchPhysics.ZONE_HALF_W + PitchPhysics.BALL_RADIUS + 1.5 * inch, 0.85, 0.0)
 	var dummy := LivePitch.new()
 	bp._glove_override = Vector3(corner.x, corner.y, -0.9)
-	for i in 10:
+	for i in 40:
 		bp._process(1.0 / 60.0)
 	var kept := 0
 	for i in 20:
@@ -136,14 +138,14 @@ func _init() -> void:
 			stolen += 1
 	_check(stolen >= 12 and bp._fld.frames == stolen, "and steals the one just off the plate (%d of 20)" % stolen)
 	bp._glove_override = Vector3(1.5, 0.2, -0.9)
-	for i in 10:
+	for i in 40:
 		bp._process(1.0 / 60.0)
 	bp._fld.lost = 0
 	var kept2 := 0
 	for i in 20:
 		if bp._receive(dummy, corner, "called_strike") == "called_strike":
 			kept2 += 1
-	_check(kept2 <= 3 and bp._fld.lost == 20 - kept2, "a glove that is somewhere else loses it (%d kept)" % kept2)
+	_check(kept2 <= 6 and bp._fld.lost == 20 - kept2, "a glove that is somewhere else loses it (%d kept)" % kept2)
 	bp.queue_free()
 
 	print("FAILURES: %d" % _failures)

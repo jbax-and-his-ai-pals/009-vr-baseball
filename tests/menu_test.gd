@@ -65,13 +65,13 @@ func _init() -> void:
 		m.activate(_find(m, "position"))
 	_check(m.config.position == 9, "position cycles 6 -> 9 (right field)")
 	m.activate(_find(m, "position"))
-	_check(m.config.position == 2, "and wraps to the catcher")
+	_check(m.config.position == 1, "and wraps to the pitcher")
 	m.activate(_find(m, "activity"))
 	m.activate(_find(m, "activity"))
 	m.activate(_find(m, "activity"))
 	_check(m.config.activity == "Game", "fielding sessions cycle Game, Practice, Drill and back (no Bullpen)")
 	ev = m.activate(_find(m, "start"))
-	_check(ev.config.mode == "Fielding" and ev.config.position == 2, "Start carries the position")
+	_check(ev.config.mode == "Fielding" and ev.config.position == 1, "Start carries the position")
 
 	# --- Spectate has innings and no session or batter.
 	m.open_main()

@@ -300,14 +300,17 @@ func _throw_play(f: Dictionary, p: Vector3, t_field: float, sim: Dictionary, run
 		err["text"] = err.short
 		return err
 	if margin > 0.0:
-		var label := "Groundout %s" % ("3U" if unassisted else "%d-3" % f.num)
+		var label := "Groundout %s" % ("3U" if unassisted else "%d-%d" % [f.num, 1 if f.num == 3 else 3])
 		var covering := fielder_by_num(3)
 		var cover_move := {"fielder": 3, "from": covering.home, "to": FIRST + Vector3(0.8, 0.0, -0.4),
 			"t0": 0.3, "t1": minf(arrive, 2.5), "dive": false}
 		var mv := movements.duplicate()
 		if f.num != 3:
 			mv.append(cover_move)
+		# A first baseman pulled away from the bag flips it to the pitcher, who has to get there.
+		var pitcher_covers: bool = f.num == 3 and not unassisted
 		return _play("out", label, f, p, t_field, {
+			"cover_pitcher": pitcher_covers, "cover_spot": FIRST + Vector3(0.8, 0.0, -0.4),
 			"movements": mv, "throw": {"from": p + Vector3(0.0, 1.3, 0.0), "to": FIRST + Vector3(0.0, 1.0, 0.0),
 				"t0": release, "t1": arrive, "base": 1},
 			"runner_out_at": 1, "run_times": run_times, "margin": margin})

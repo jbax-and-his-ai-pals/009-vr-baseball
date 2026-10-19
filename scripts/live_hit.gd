@@ -28,5 +28,7 @@ var fallback := {}        # the AI's play if the human does not get to it
 var chance_end := 0.0     # seconds after contact when his chance is over
 var catch_t := 0.0
 var catch_pos := Vector3.ZERO
+var cover_t := -1.0       # you are the pitcher: when the batter reaches first, you must be on the bag (-1: no duty)
+var cover_spot := Vector3.ZERO
 var play_end := 0.0       # seconds after contact when the play is over
 var result_shown := false

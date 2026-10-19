@@ -224,3 +224,11 @@ Play > Fielding > Position: C. You crouch behind the plate with a mitt on the gl
 - Pitches in the dirt: get the glove down on them ("Blocked!") or runners advance on the wild pitch/passed ball.
 - Tune: `Framing.MAX_BONUS` (2.5 in), `SOFT`, `NEUTRAL` quality; whether your head/eye height behind the plate is comfortable; whether the batter standing beside you is in the way.
 - Not done: your own throw to second on a steal (the steal is still resolved by the AI at a fixed pop time); popups and bunts use the general fielding code and are untested from this spot.
+
+## 19. Playing pitcher (fielding)
+
+Play > Fielding > Position: P. The AI throws every pitch; you stand beside the rubber with a glove.
+- Comebackers and bunts back at the mound are yours (glove, then grab and throw).
+- "COVER FIRST!" flashes when the first baseman is pulled away from the bag on a grounder: run (thumbstick) to the bag. Be within about 1.6 m of it when the batter arrives or he is safe.
+- Check: is the run to first reachable at your fielder's speed (about 19 m in 3 s)? Is COVER_RADIUS (1.6) fair? Does the ball visibly go to nobody when you cover (the animation still sends it to a hidden figure)?
+- Standing spot beside the rubber (1.4 m to the side): does the pitch release read as coming from "someone else"?

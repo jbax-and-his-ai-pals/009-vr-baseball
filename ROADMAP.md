@@ -101,10 +101,11 @@ criteria for each phase are in section 5; this is the at-a-glance view. Updated 
 - [~] League data: eight fictional teams with names, colours and a double round-robin schedule done; parks and per-team rosters beyond generated ones are open
 - [~] Exit: a season is playable with saved progress, standings and a stats screen (tested in the scene; not played in the headset)
 
-### Phase 6 - More roles (M6) - MOSTLY DONE (open: pitcher as a fielding position, a human catcher throw on steals)
-- [~] Human fielding: 1B to RF exist (`--field-pos`); open: pitcher and catcher, first base taking throws, tuning in the headset
+### Phase 6 - More roles (M6) - MOSTLY DONE (open: a human catcher throw on steals, backing up bases)
+- [~] Human fielding: 1B to RF exist (`--field-pos`); open: first base taking throws, tuning in the headset
 - [x] Wild throws let runners advance (AI throwing errors by arm and distance; your own wild throws already did)
 - [x] Fielding drills (Fielding > Drill: ten balls hit to your position, stars by catches and errors)
+- [x] Pitcher as a position (Fielding > Position P: you stand beside the rubber while the AI pitches, field comebackers and bunts, and cover first when the first baseman is pulled off the bag - on the bag by the time the batter arrives or he is safe; scorebook says 3-1 now; tests/pitcher_position_test.gd; the covering animation still shows a hidden figure receiving the flip)
 - [x] Catcher as a position (framing and blocking mini-game) (done: Fielding > Position C; `Framing`, tests/catcher_position_test.gd; steals are still AI-resolved, your own throw to second is open)
 - [x] Hitting: the controller is the bat (`SwingTracker`, `BatPhysics`: swept contact, two-body collision with a sweet spot, spin from where the ball meets the bat), you bat for your whole lineup against the AI pitcher, swing and miss / take / contact are judged from your bat, timing and contact words after a hit (on the barrel, jammed, out front, deep); not yet felt with a real controller
 - [x] Home run derby (ten outs of easy pitches, homers counted, stars saved); Practice in Hitting mode is the ordinary game loop

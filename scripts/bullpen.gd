@@ -27,7 +27,7 @@ enum SpinMode { RAW, WRIST_MODEL }
 @export var menu_on_start := true
 @export_enum("Pitching", "Spectate", "Fielding", "Hitting") var game_mode_name: String = "Pitching"
 ## The position you play in Fielding mode (3 first base ... 9 right field; 6 is shortstop).
-@export_range(2, 9, 1) var fielding_position := 6
+@export_range(1, 9, 1) var fielding_position := 6
 ## Game: a nine-inning game against a nine-man lineup, with the count, outs and runners.
 ## Practice: one batter you choose (Y / P cycles them), the count still counts but nobody new comes up.
 @export_enum("Game", "Practice") var lineup_mode: String = "Game"
@@ -296,7 +296,7 @@ func _ready() -> void:
 			game_mode_name = a.substr(7)
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--field-pos="):
-			fielding_position = clampi(int(a.substr(12)), 2, 9)
+			fielding_position = clampi(int(a.substr(12)), 1, 9)
 	_auto_field = "--auto-field" in OS.get_cmdline_user_args()
 	apply_config(_current_config())
 	_mode = GameMode.by_name(game_mode_name)
@@ -1146,6 +1146,8 @@ func _setup_xr() -> void:
 			var spot: Vector3 = _defense.fielder_by_num(int(_mode.human_fielders[0])).home
 			origin.position = Vector3(spot.x, 0.0, spot.z)
 			origin.rotation.y = atan2(spot.x, spot.z)       # face home plate
+			if int(_mode.human_fielders[0]) == 1:
+				origin.position = Vector3(1.4, 0.0, spot.z + 0.2)       # beside the rubber, out of the AI's delivery
 		if _mode.human_batter:
 			# You stand just outside your box, square to the pitcher.
 			var side := 1.0 if _settings.hand == "right" else -1.0
@@ -1213,6 +1215,8 @@ func _setup_xr() -> void:
 			cam.look_at(Vector3(0.9, 1.1, 0.0))
 		elif not _mode.human_fielders.is_empty():
 			var fspot: Vector3 = _defense.fielder_by_num(int(_mode.human_fielders[0])).home
+			if int(_mode.human_fielders[0]) == 1:
+				fspot = Vector3(1.4, 0.0, fspot.z + 0.2)
 			cam.position = Vector3(fspot.x, 1.7, fspot.z)
 			add_child(cam)
 			cam.look_at(Vector3(0.0, 1.0, 0.0))
@@ -1571,7 +1575,7 @@ func _new_game() -> void:
 	if _sound != null:
 		_sound.new_game()
 	_game_recorded = false
-	_fld = {"chances": 0, "caught": 0, "missed": 0, "errors": 0, "assists": 0, "frames": 0, "lost": 0, "blocks": 0, "passed": 0}
+	_fld = {"chances": 0, "caught": 0, "missed": 0, "errors": 0, "assists": 0, "frames": 0, "lost": 0, "blocks": 0, "passed": 0, "covers": 0, "uncovered": 0}
 	_derby_outs = 0
 	_derby_hr = 0
 	_derby_done = false
@@ -2041,6 +2045,12 @@ func _contact(pitch: LivePitch) -> void:
 		h.play_end = 1e9
 		_last_report_extra = "YOUR BALL - get your glove on it"
 	elif not h.play.is_empty() and h.play.get("result", "") not in ["foul", ""]:
+		if _mode.human_fielders.has(1) and h.play.get("cover_pitcher", false) and h.play.get("result", "") == "out":
+			# The first baseman is pulled off the bag: you are the pitcher, so first base is yours to cover.
+			h.cover_t = float((h.play.run_times as Array)[0]) - 0.12
+			h.cover_spot = h.play.cover_spot
+			_show_notice("COVER FIRST!", true)
+			_haptics.play("ui_error", 0.6)
 		# Everyone on base runs on the same physics as the fielders.
 		var head_start := {}
 		if not _steal.is_empty():
@@ -2152,6 +2162,8 @@ func _update_hit(h: LiveHit, delta: float) -> void:
 		h.linger -= delta
 		return
 	h.t += delta
+	if h.cover_t > 0.0 and h.t >= h.cover_t:
+		_check_cover(h)
 	var n := h.points.size()
 	var path_end := (n - 1) * h.dt
 	if h.human_state in ["waiting", "holding", "gripped"]:
@@ -2219,6 +2231,7 @@ func _human_num() -> int:
 
 ## ---------------------------------------------------------------- the catcher (Fielding at position 2)
 var _receive_cover := 0.0
+const COVER_RADIUS := 1.6        # m: close enough to the bag to take the flip
 
 
 func _is_catcher() -> bool:
@@ -2349,6 +2362,30 @@ func _human_miss(h: LiveHit) -> void:
 		h.plan = Baserunning.plan(h.play, _game.bases, _game.outs, _batter_player, _run_rng)
 		h.play_end = maxf(h.t + 0.5, float(h.plan.end_time))
 	_last_report_extra = "Got by you"
+
+
+## The batter is about to reach first: is the pitcher (you) standing on the bag to take the flip?
+func _check_cover(h: LiveHit) -> void:
+	h.cover_t = -1.0
+	var head := _camera.global_position
+	var d := Vector2(head.x - h.cover_spot.x, head.z - h.cover_spot.z).length()
+	if d <= COVER_RADIUS:
+		_fld.covers += 1
+		_show_notice("Covered first", true)
+		_haptics.play("catch", 0.6)
+		_log("cover_first", {"covered": true, "distance": snappedf(d, 0.01)})
+		return
+	_fld.uncovered += 1
+	_log("cover_first", {"covered": false, "distance": snappedf(d, 0.01)})
+	var spot: Vector3 = h.play.get("field_pos", h.ball.global_position)
+	h.play = {"result": "single", "text": "Safe - nobody covered first", "short": "Safe - nobody covered first", "bases": 1,
+		"fielder": int(h.play.get("fielder", 3)), "fielder_name": String(h.play.get("fielder_name", "1B")), "field_pos": spot,
+		"field_time": float(h.play.get("field_time", h.t)), "movements": [], "run_times": h.play.get("run_times", Defense.RUNNER_TIMES),
+		"caught_in_air": false, "error": false}
+	h.plan = Baserunning.plan(h.play, _game.bases, _game.outs, _batter_player, _run_rng)
+	h.play_end = maxf(h.t + 0.8, float(h.plan.end_time))
+	_last_report_extra = "Nobody covered first!"
+	_show_notice("Nobody covered first - he is safe", true)
 
 
 func _human_hold_too_long(h: LiveHit) -> void:

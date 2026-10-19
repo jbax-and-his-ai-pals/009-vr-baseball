@@ -8,7 +8,7 @@ extends RefCounted
 ##   activity  Game      a nine-man lineup, count, outs and innings
 ##             Practice  one batter you choose, the count still counts
 ##             Bullpen   free throws: no lineup, no score
-##   position  your fielding position (2..9, 2 is the catcher) in Fielding mode
+##   position  your fielding position (1..9; 1 is the pitcher, 2 the catcher) in Fielding mode
 ##   innings   1, 3 or 9 in a Game
 ##   batter    the practice batter's profile name
 ##   assist    Casual | Standard | Pro  (see Settings)
@@ -41,7 +41,7 @@ func normalized() -> GameConfig:
 	var c := GameConfig.new()
 	c.mode = mode if mode in MODES else "Pitching"
 	c.activity = activity if activity in ACTIVITIES else "Game"
-	c.position = clampi(position, 2, 9)
+	c.position = clampi(position, 1, 9)
 	c.innings = innings if innings in INNINGS else 9
 	c.batter = batter if batter in BATTERS else "Contact Hitter"
 	c.assist = assist if assist in Settings.ASSISTS else "Standard"
