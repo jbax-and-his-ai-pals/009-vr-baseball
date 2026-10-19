@@ -97,7 +97,7 @@ criteria for each phase are in section 5; this is the at-a-glance view. Updated 
 - [x] Create a pitcher (name from a list, build, hand from Options; no look options yet)
 - [x] A season of starts in a fictional league (6/10/14 starts); the other games are decided by a quick rating-based sim (`League.quick_game`), not the full engine
 - [x] Standings and your stat line (Career screen)
-- [~] Ratings that grow from use: command, stamina, movement, velocity grow after each start and set aim forgiveness and fatigue; new pitches from the pitch lab are still open
+- [x] Ratings that grow from use: command, stamina, movement, velocity grow after each start and set aim forgiveness and fatigue; new pitches are learned by throwing them often enough for strikes (`Career.learn_from`, tests/arsenal_test.gd)
 - [~] League data: eight fictional teams with names, colours and a double round-robin schedule done; parks and per-team rosters beyond generated ones are open
 - [~] Exit: a season is playable with saved progress, standings and a stats screen (tested in the scene; not played in the headset)
 

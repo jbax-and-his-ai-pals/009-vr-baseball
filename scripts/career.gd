@@ -32,6 +32,14 @@ var league: League
 var ratings := {}                 # velocity, command, movement, stamina
 var starts: Array = []            # your finished starts: {"md", "opp", "line", "won", "my_runs", "their_runs"}
 var save_path := PATH
+var repertoire: Array[String] = ["Fastball", "Curveball", "Slider", "Changeup"]     # the pitches you have learned
+var arsenal: Dictionary = {}      # pitch name -> {"n", "strikes"}: every pitch you have thrown in the career (the pitch lab's names)
+
+## A pitch you throw often enough, and for strikes often enough, becomes part of your arsenal.
+const LEARN_MIN_THROWN := 15
+const LEARN_MIN_STRIKE_PCT := 40.0
+const LEARNABLE := ["Cutter", "Sinker", "Two-seam", "Splitter", "Slurve", "Knuckleball"]
+const LEARN_BONUS := 1.0          # movement rating a new pitch is worth
 
 
 static func create(name: String, build_name: String, season_matchdays: int, innings: int, season_seed: int, right_handed := true) -> Career:
@@ -81,9 +89,39 @@ func pitcher_player() -> Player:
 	p.throws_right = throws_right
 	for k in ratings:
 		p.set(k, float(ratings[k]))
-	var rep: Array[String] = ["Fastball", "Curveball", "Slider", "Changeup"]
+	var rep: Array[String] = repertoire.duplicate()
 	p.repertoire = rep
 	return p
+
+
+## What the pitch lab called a pitch, as a name in the arsenal (a four-seam is a fastball).
+static func family(label: String) -> String:
+	return "Fastball" if label == "Four-seam" else label
+
+
+## A start's pitches go in the arsenal; any learnable one thrown enough, for strikes, is learned (and adds a little
+## movement). Returns the names learned this time.
+func learn_from(line: Dictionary) -> Array:
+	var types = line.get("types", {})
+	var learned: Array = []
+	if not (types is Dictionary):
+		return learned
+	for label in types:
+		var kind := family(String(label))
+		var x: Dictionary = types[label]
+		var a: Dictionary = arsenal.get(kind, {"n": 0, "strikes": 0})
+		a["n"] = int(a.n) + int(x.get("n", 0))
+		a["strikes"] = int(a.strikes) + int(x.get("strikes", 0))
+		arsenal[kind] = a
+	for kind in LEARNABLE:
+		if repertoire.has(kind) or not arsenal.has(kind):
+			continue
+		var a: Dictionary = arsenal[kind]
+		if int(a.n) >= LEARN_MIN_THROWN and 100.0 * float(a.strikes) / float(a.n) >= LEARN_MIN_STRIKE_PCT:
+			repertoire.append(kind)
+			ratings["movement"] = clampf(float(ratings.movement) + LEARN_BONUS, 15.0, RATING_CAP)
+			learned.append(kind)
+	return learned
 
 
 ## How forgiving your aim funnel is: 1.0 at command 50, tighter for a veteran, looser for a rookie.
@@ -116,11 +154,12 @@ func grow(line: Dictionary) -> Dictionary:
 func finish_start(line: Dictionary, my_runs: int, their_runs: int) -> Dictionary:
 	var opp := opponent_index()
 	var deltas := grow(line)
+	var learned := learn_from(line)
 	league.play_matchday(matchday, my_runs, their_runs)
 	var won := my_runs > their_runs
 	starts.append({"md": matchday, "opp": opp, "line": line, "won": won, "my_runs": my_runs, "their_runs": their_runs})
 	matchday += 1
-	return {"won": won, "deltas": deltas, "rank": league.rank_of(League.USER), "over": is_over(), "opponent": league.team_name(opp)}
+	return {"won": won, "deltas": deltas, "rank": league.rank_of(League.USER), "over": is_over(), "opponent": league.team_name(opp), "learned": learned}
 
 
 ## Your season line, summed over your starts.
@@ -138,7 +177,8 @@ func season_totals() -> Dictionary:
 
 func to_dict() -> Dictionary:
 	return {"version": VERSION, "name": pitcher_name, "build": build, "throws_right": throws_right,
-		"innings": innings_per_start, "matchday": matchday, "ratings": ratings, "starts": starts, "league": league.to_dict()}
+		"innings": innings_per_start, "matchday": matchday, "ratings": ratings, "starts": starts, "league": league.to_dict(),
+		"repertoire": repertoire, "arsenal": arsenal}
 
 
 static func from_dict(d: Dictionary) -> Career:
@@ -153,6 +193,16 @@ static func from_dict(d: Dictionary) -> Career:
 		for k in c.ratings:
 			if r.has(k) and (r[k] is float or r[k] is int):
 				c.ratings[k] = clampf(float(r[k]), 15.0, RATING_CAP)
+	var rp = d.get("repertoire", [])
+	if rp is Array:
+		for k in rp:
+			if String(k) in LEARNABLE and not c.repertoire.has(String(k)):
+				c.repertoire.append(String(k))
+	var ar = d.get("arsenal", {})
+	if ar is Dictionary:
+		for k in ar:
+			if ar[k] is Dictionary:
+				c.arsenal[String(k)] = {"n": int(ar[k].get("n", 0)), "strikes": int(ar[k].get("strikes", 0))}
 	var ss = d.get("starts", [])
 	if ss is Array:
 		for s in ss:

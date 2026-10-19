@@ -163,6 +163,7 @@ func items() -> Array[Dictionary]:
 			else:
 				var tot := career.season_totals()
 				rows.append(_row("info", "%s  (%s)" % [career.pitcher_name, career.build], "%d-%d, %s IP" % [tot.w, tot.l, PlayerProfile.ip_text(int(tot.outs))], false))
+				rows.append(_row("info", "Pitches", ", ".join(career.repertoire), false))
 				rows.append(_row("info", "Rank #%d of %d" % [career.league.rank_of(League.USER), League.TEAM_COUNT],
 					"CMD %d  STA %d  VEL %d" % [roundi(float(career.ratings.command)), roundi(float(career.ratings.stamina)), roundi(float(career.ratings.velocity))], false))
 				if career.is_over():

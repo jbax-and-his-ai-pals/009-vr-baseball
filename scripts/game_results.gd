@@ -29,7 +29,7 @@ func finish_career_start() -> void:
 	var d: Dictionary = res.deltas
 	host.slog.record("career_start", {"won": res.won, "rank": res.rank, "over": res.over, "deltas": d, "line": line})
 	host.hud.show_notice("%s %d-%d vs %s   CMD %+.1f  STA %+.1f   Rank #%d%s" % ["WIN" if res.won else "LOSS", host._game.home_score, host._game.runs,
-		res.opponent, float(d.command), float(d.stamina), int(res.rank), "   SEASON OVER" if res.over else ""], true)
+		res.opponent, float(d.command), float(d.stamina), int(res.rank), "   SEASON OVER" if res.over else ""] + ("   NEW PITCH: " + ", ".join(res.learned) if not res.learned.is_empty() else ""), true)
 	host._props.later(7.0, func():
 		Session.show_menu = true
 		host.get_tree().reload_current_scene.call_deferred())
