@@ -241,7 +241,7 @@ func _click(i: int) -> void:
 	var row_id: String = _rows[i].id
 	ui_haptic.emit(_pointer, "ui_select")
 	var ev := model.activate(i)
-	if row_id in ["vignette", "snap_turn", "developer", "call_text", "seated", "colorblind", "gestures"]:
+	if row_id in ["vignette", "snap_turn", "developer", "call_text", "seated", "colorblind", "gestures", "signs"]:
 		var now_on: bool = bool(model.settings.get(row_id))
 		ui_sound.emit("ui_toggle_on" if now_on else "ui_toggle_off")
 	else:

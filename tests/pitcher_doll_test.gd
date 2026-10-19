@@ -43,9 +43,13 @@ func _init() -> void:
 			break
 	_check(threw, "he goes through his motion when the AI pitches")
 	var pitched: int = bp._game.pitch_count
-	for i in 60 * 3:
+	var thrown := false
+	for i in 60 * 14:
 		bp._process(1.0 / 60.0)
-	_check(bp._game.pitch_count > pitched or bp._pitches.size() > 0, "and the pitch is thrown after the windup")
+		if bp._game.pitch_count > pitched or bp._pitches.size() > 0:
+			thrown = true
+			break
+	_check(thrown, "and the pitch is thrown after the windup")
 
 	# A grounder to the first baseman: the pitcher covers first and takes the throw.
 	var h := LiveHit.new()

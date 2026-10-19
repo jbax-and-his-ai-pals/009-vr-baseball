@@ -93,6 +93,8 @@ func _add_totals(line: Dictionary) -> void:
 		totals["wins"] = int(totals.get("wins", 0)) + 1
 	elif bool(line.get("lost", false)):
 		totals["losses"] = int(totals.get("losses", 0)) + 1
+	for k in ["signs", "sign_hits"]:
+		totals[k] = int(totals.get(k, 0)) + int(line.get(k, 0))
 	for k in ["outs", "pitches", "strikes", "k", "bb", "h", "r", "hr"]:
 		totals[k] = int(totals.get(k, 0)) + int(line.get(k, 0))
 	totals["max_mph"] = maxf(float(totals.get("max_mph", 0.0)), float(line.get("max_mph", 0.0)))
@@ -145,7 +147,7 @@ func lifetime_lines() -> Array:
 		"%s IP, %d K, %d BB" % [ip_text(int(totals.get("outs", 0))), int(totals.get("k", 0)), int(totals.get("bb", 0))],
 		"%d H, %d R, %d HR" % [int(totals.get("h", 0)), int(totals.get("r", 0)), int(totals.get("hr", 0))],
 		"%d pitches, %.0f%% strikes, top %.0f mph" % [pitches, strike_pct, float(totals.get("max_mph", 0.0))],
-	] + ([] if fg == 0 else ["Fielding: %d games, %d of %d caught, %d errors" % [fg, int(totals.get("f_caught", 0)), int(totals.get("f_chances", 0)), int(totals.get("f_errors", 0))]])
+	] + ([] if int(totals.get("signs", 0)) == 0 else ["Catcher signs: %d of %d hit" % [int(totals.get("sign_hits", 0)), int(totals.get("signs", 0))]]) + ([] if fg == 0 else ["Fielding: %d games, %d of %d caught, %d errors" % [fg, int(totals.get("f_caught", 0)), int(totals.get("f_chances", 0)), int(totals.get("f_errors", 0))]])
 
 
 ## Stars (0-3) and tries for a challenge, 0 / 0 if never tried.

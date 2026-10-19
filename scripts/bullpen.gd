@@ -138,6 +138,10 @@ var _user_left := false                      # you handed the ball to the bullpe
 var _left_line := {}                         # your line at that moment
 var _fld := {"chances": 0, "caught": 0, "missed": 0, "errors": 0, "assists": 0}   # your fielding this game
 var _game_recorded := false
+var _sign := {}                              # the catcher's call for the next pitch ({} when none)
+var _sign_tally := {"called": 0, "perfect": 0, "type": 0, "loc": 0, "shaken": 0}
+var _sign_label: Label3D
+var _sign_marker: MeshInstance3D
 var _call_label: Label3D                    # the umpire's call as words, above the plate
 var _call_label_until := 0.0
 var _seat_done := false
@@ -382,6 +386,7 @@ func _ready() -> void:
 	if "--doll-demo" in OS.get_cmdline_user_args():
 		_spawn_doll_demo()
 	_set_hud_idle()
+	_refresh_sign()
 
 
 ## First base open, a runner in scoring position, two outs or the late innings, and a hitter
@@ -989,6 +994,25 @@ func _build_world() -> void:
 	zone_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	zone_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	zone_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_sign_label = Label3D.new()
+	_sign_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	_sign_label.fixed_size = true
+	_sign_label.pixel_size = 0.0014
+	_sign_label.font_size = 64
+	_sign_label.outline_size = 14
+	_sign_label.modulate = Color(0.55, 0.95, 1.0)
+	_sign_label.no_depth_test = true
+	_sign_label.position = Vector3(0.75, 0.45, -1.25)
+	_sign_label.visible = false
+	add_child(_sign_label)
+	var marker_mesh := SphereMesh.new()
+	marker_mesh.radius = 0.045
+	marker_mesh.height = 0.09
+	_sign_marker = _add_mesh(marker_mesh, Color(0.4, 0.95, 1.0, 0.55), Vector3(0.0, 0.85, 0.02))
+	var marker_mat := _sign_marker.material_override as StandardMaterial3D
+	marker_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	marker_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_sign_marker.visible = false
 	_call_label = Label3D.new()
 	_call_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	_call_label.fixed_size = true
@@ -1490,6 +1514,8 @@ func _new_game() -> void:
 		_sound.new_game()
 	_game_recorded = false
 	_fld = {"chances": 0, "caught": 0, "missed": 0, "errors": 0, "assists": 0}
+	_sign_tally = {"called": 0, "perfect": 0, "type": 0, "loc": 0, "shaken": 0}
+	_sign = {}
 	_visit_used = false
 	_visit_timer = 0.0
 	_fatigue_credit = 0
@@ -1545,7 +1571,7 @@ func _player_named(n: String) -> Player:
 
 func _cycle_profile() -> void:
 	if lineup_mode == "Game":
-		_show_notice("Y cycles batters in Practice mode; in a Game the lineup comes up in order")
+		_shake_off()                    # in a game Y shakes off the catcher's sign
 		return
 	var names: Array = []
 	for b in BatterProfile.all():
@@ -1741,6 +1767,7 @@ func _land(pitch: LivePitch) -> void:
 	elif a.get("reached", false) and PitchLocation.hits_batter(plate.x, plate.y, _batter_is_lefty()):
 		outcome = "hit_by_pitch"
 	_mark_pitch(a, outcome)
+	_grade_sign(pitch, plate)
 	if _scenario != null and a.get("reached", false):
 		_scenario.on_pitch(String(PitchLocation.classify(plate.x, plate.y).kind), bool(a.get("strike", false)) and outcome != "hit_by_pitch")
 	if _sound != null:
@@ -1848,6 +1875,7 @@ func _contact(pitch: LivePitch) -> void:
 	if in_play:
 		_batter_ready = false
 	_mark_pitch(a, "in_play" if in_play else "foul")
+	_grade_sign(pitch, a.get("plate_pos", Vector3.ZERO))
 	_stats.record_pitch(pitch.label, a.speed_mph, "in_play" if in_play else "foul")
 	if in_play:
 		_in_play += 1
@@ -2367,6 +2395,7 @@ func _on_batter_hidden(plan: Dictionary) -> void:
 
 ## He is in the box: the pitcher may throw.
 func _on_batter_arrived() -> void:
+	_refresh_sign()
 	_sfx("batter_step_dirt", _batter_home.origin)
 	if randf() < 0.5:
 		_sfx_later(0.5, "bat_tap_plate", Vector3(0.0, 0.1, 0.0), -4.0)
@@ -2552,6 +2581,60 @@ func _seat_check() -> void:
 	_log("seated", {"head_y": snappedf(_camera.position.y, 0.01), "lift": snappedf(lift, 0.01)})
 
 
+## The catcher calls the next pitch (Options > Catcher signs): a pitch and a spot, shown by his knee and a
+## marker on the zone. Only when you pitch in a game.
+func _signs_enabled() -> bool:
+	return _settings.signs and _mode.human_pitcher and lineup_mode == "Game" and _scenario == null and _game != null and not _game.over
+
+
+func _refresh_sign() -> void:
+	if _sign_label == null:
+		return
+	if not _signs_enabled():
+		_sign = {}
+		_sign_label.visible = false
+		_sign_marker.visible = false
+		return
+	var side := -1.0 if _batter_is_lefty() else 1.0
+	_sign = CatcherSigns.call_pitch({"balls": _game.balls, "strikes": _game.strikes, "outs": _game.outs,
+		"bases": [_game.bases[0] != null, _game.bases[1] != null, _game.bases[2] != null], "batter_side": side}, [], _fx_rng)
+	_sign_label.text = "SIGN: %s" % _sign.words
+	_sign_label.visible = true
+	var tg: Vector2 = _sign.target
+	_sign_marker.position = Vector3(tg.x, tg.y, 0.02)
+	_sign_marker.visible = true
+
+
+## Y (or P): shake him off and he calls something else.
+func _shake_off() -> void:
+	if _sign.is_empty():
+		_show_notice("Y cycles batters in Practice mode", true)
+		return
+	_sign_tally.shaken += 1
+	var old := String(_sign.words)
+	_refresh_sign()
+	_show_notice("Shook off %s: now %s" % [old, _sign.words], true)
+
+
+## A pitch reached the plate: was it what he called?
+func _grade_sign(pitch: LivePitch, plate: Vector3) -> void:
+	if _sign.is_empty() or not pitch.analysis.get("reached", false):
+		return
+	var g := CatcherSigns.grade(_sign, pitch.label, plate.x, plate.y)
+	_sign_tally.called += 1
+	if g.perfect:
+		_sign_tally.perfect += 1
+	if g.type:
+		_sign_tally.type += 1
+	if g.loc:
+		_sign_tally.loc += 1
+	_log("sign", {"sign": _sign.words, "thrown": pitch.label, "type": g.type, "loc": g.loc, "perfect": g.perfect})
+	if g.perfect:
+		_show_notice("SIGN HIT!", true)
+		_sfx("corner_chime")
+		_haptics.play("ui_select")
+
+
 ## The infield plays in when a run at the plate matters (see Defense.wants_infield_in).
 func _update_alignment() -> void:
 	if _game == null or _defense == null:
@@ -2617,7 +2700,7 @@ func _game_line() -> Dictionary:
 		var x: Dictionary = _stats.by_type[kind]
 		types[kind] = {"n": int(x.n), "strikes": int(x.strikes), "whiffs": int(x.whiffs), "swings": int(x.swings),
 			"mph_sum": float(x.mph_sum), "mph_max": float(x.mph_max)}
-	return {"opp": _away.name, "innings": _game.innings, "types": types, "outs": _game.outs_recorded, "pitches": _game.pitch_count, "strikes": int(t.strikes), "k": _game.strikeouts,
+	return {"signs": int(_sign_tally.called), "sign_hits": int(_sign_tally.perfect), "opp": _away.name, "innings": _game.innings, "types": types, "outs": _game.outs_recorded, "pitches": _game.pitch_count, "strikes": int(t.strikes), "k": _game.strikeouts,
 		"bb": _game.walks, "h": _game.hits, "r": _game.runs, "hr": _game.home_runs,
 		"max_mph": float(t.mph_max), "avg_mph": float(t.mph_sum) / n,
 		"won": _game.home_score > _game.runs, "lost": _game.home_score < _game.runs,
@@ -2671,6 +2754,7 @@ func _after_event(ev: Dictionary, extra: Dictionary = {}) -> void:
 		_batter_ready = true          # a foul (or any pitch that did not end the at-bat): he is still up
 	_update_scenario(ev)
 	_update_alignment()
+	_refresh_sign()
 	if ev.get("game_over", false):
 		_record_finished_game()
 		_game_over_timer = -1.0 if (_scenario != null or _career_game) else 8.0

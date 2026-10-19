@@ -186,3 +186,14 @@ Options > Haptics: Off / Low / Normal / Strong.
 - [ ] Base umpires: first, second and third each signal out/safe on a play at their base, with a voice. They stand in foul ground at first and third and behind second. Do they get in anyone's way?
 - [ ] Pause > Mound visit (once a game): the catcher walks out, you cannot pitch for about five seconds, the arm feels fresher.
 - [ ] Pause > Take me out > Yes: a reliever takes over, the PA announces the change, the game finishes on its own; the end notice and Stats show your line as it was when you left.
+
+## 15. Accessibility, signs, signals, rundowns, the pitcher figure (new)
+
+- [ ] Options > Zone colours > colour-blind: the dots on the zone and the LAST PITCH chart use blue for strikes (corner deepest) and orange/purple for balls. Can you tell corner / good / middle / ball apart quickly?
+- [ ] Options > Umpire call text: a call (STRIKE 0-1, BALL, OUT, SAFE, FOUL BALL) appears above the plate for about 1.7 s. Readable from the mound? Too big or too small?
+- [ ] Options > Seated play: sitting, the world is at a standing pitcher's height after a moment. Does the mound feel right? (Tell me your head height if not.)
+- [ ] Catcher signs (Games): "SIGN: <pitch>, <spot>" by the catcher's knee and a cyan dot on the zone. Y shakes him off. "SIGN HIT!" when the right type lands near the spot. Is the spot marker clear against the zone dots? Is the call sensible for the count?
+- [ ] Hand signals (Options > Hand signals): hold your glove hand high over your head for about a second with the ball hand empty: an intentional walk. Hold it at your ear: the "Leave the game?" question opens. Do they ever fire by accident?
+- [ ] Rundowns: throw over with a big lead (do not throw over for several pitches first). Sometimes the runner is caught between the bases; two fielders throw it back and forth; he is out, gets back, or beats it to the next base. Is the animation readable?
+- [ ] In Spectate or Fielding mode there is a pitcher on the mound: he winds up before each pitch and covers first on a ground ball to the first baseman.
+- [ ] Left-handed throwing: Options > Throwing hand = left; do pitches land where you aim from the start, and do the breaking pitches break the right way?

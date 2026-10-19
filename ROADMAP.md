@@ -72,18 +72,18 @@ criteria for each phase are in section 5; this is the at-a-glance view. Updated 
 - [~] Test: a seed replays the game (only the bottom half is covered so far)
 - [~] Each presenter has a test (`PlateCrew`, `FieldProps`, `BatterPresenter` do; `SoundDirector` and `PlayDirector` are covered only through the full-game tests)
 
-### Phase 4 - Core VR feel (M4) - STARTED
+### Phase 4 - Core VR feel (M4) - HALF DONE (open: hands and glove models, pitch lab, tutorial, comebackers)
 - [x] Controller haptics (event table, Options > Haptics, menu pulses in the pointing hand)
 - [ ] Hand model holding the ball; grip shape that teaches the recognised pitch at easier assists
 - [ ] Glove model on the off hand
 - [ ] Pitch lab (Bullpen mode rebuilt): recognised pitch, spin axis, break, speed, location, "what made it a slider"
 - [ ] First-run tutorial: calibrate your normal throw, then one gesture per pitch type
-- [ ] Catcher signs (pitch and location called, shake-offs, a bonus for hitting the sign)
+- [x] Catcher signs: a pitch and a spot called from the count, runners and batter side, shown by the catcher's knee and a marker on the zone; Y shakes him off; sign hits are graded, notified, and counted in your line and lifetime totals (a gameplay bonus for hitting the sign is not added)
 - [ ] Comebackers: catch a ball hit at you with the glove hand
-- [ ] Seated mode with height calibration
-- [ ] Verify left-handed throwing end to end
-- [ ] Colour-blind palette for the zone colours
-- [ ] Text for umpire calls
+- [x] Seated mode (Options > Seated play: lifts the rig so a seated head is at standing height once tracking starts; a manual recalibrate is open)
+- [~] Left-handed throwing: the aim starts from the mirror image and the wrist model mirrors; tested by symmetry, not yet on a left-handed thrower in the headset
+- [x] Colour-blind palette for the zone colours (Options > Zone colours)
+- [x] Text for umpire calls (a label above the plate; Options > Umpire call text)
 - [ ] Exit: a new player can calibrate, learn three pitches and play a game with no one explaining
 
 ### Phase 5 - A game you come back to (M5) - MOSTLY DONE
@@ -92,8 +92,8 @@ criteria for each phase are in section 5; this is the at-a-glance view. Updated 
 - [x] Local leaderboards per mode, length and assist level, ranked by Game Score
 - [x] Challenge scenarios: six, with 0-3 stars, a Challenges menu, results saved
 - [x] Tests never touch the player's profile
-- [ ] Per-pitch-type metrics over time in the profile; box scores per game
-- [ ] Leaderboards for Fielding mode
+- [x] Per-pitch-type metrics over time and recent box scores (Stats > Pitch types / Recent games)
+- [x] Leaderboards for Fielding mode (per position, by Fielding Score; you only record catches, misses, errors and assists)
 - [x] Create a pitcher (name from a list, build, hand from Options; no look options yet)
 - [x] A season of starts in a fictional league (6/10/14 starts); the other games are decided by a quick rating-based sim (`League.quick_game`), not the full engine
 - [x] Standings and your stat line (Career screen)
@@ -110,13 +110,13 @@ criteria for each phase are in section 5; this is the at-a-glance view. Updated 
 - [ ] Batting practice and home-run derby
 - [ ] Role switching in a game (pitch your half, hit in the bottom, or field)
 
-### Phase 7 - Rest of the rulebook and the manager (M7) - MOSTLY DONE (open: rundowns, pickoff moves, pitcher covering first)
+### Phase 7 - Rest of the rulebook and the manager (M7) - MOSTLY DONE (open: pickoff moves from the stretch, backing up bases)
 - [x] Intentional walk (pause menu, pitching mode)
-- [ ] Rundowns
+- [x] Rundowns (a throw over can catch a runner between the bases: run down, back safe, or on to the next; fielders and ball play it out)
 - [x] Squeeze play, hit-and-run (called per pitch by situation, the batter bunts / protects, the runner from third can score or be out) and infield in (late, close, runner on third; fielders walk to position)
 - [x] Base umpires (three dolls at first, second and third give the out/safe call with gesture and voice)
-- [~] Pause menu: Mound visit (once a game, rests the arm 15 pitches, the catcher walks out) and Take me out (a reliever finishes, your line is closed) are in; a bullpen-phone gesture and an intentional-walk gesture are open
-- [ ] Pickoff moves from the stretch; pitcher covering first and backing up bases
+- [x] Pause menu: Mound visit (once a game, rests the arm 15 pitches, the catcher walks out) and Take me out (a reliever finishes, your line is closed) are in; hand signals are in too: a hand overhead for the intentional walk, a hand at the ear calls the bullpen (Options > Hand signals)
+- [~] Pitcher covering first is in (a pitcher figure stands on the mound when you are not him, throws each pitch, covers first); backing up bases and pickoff moves from the stretch are open
 - [x] Platoon effects, and left-handed batters now hit the mirror image (pull to the other field)
 - [x] Pitching change PA call (`pa_pitching_change`); `pa_number_digits` stays unwired on purpose
 

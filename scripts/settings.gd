@@ -38,6 +38,7 @@ var locomotion := "smooth"
 var haptics := "Normal"            # controller vibration strength
 var colorblind := false            # zone colours that avoid red against green
 var call_text := true              # the umpire's calls are also shown as words
+var signs := true                  # the catcher calls the pitch before you throw (Games only)
 var gestures := true               # hand signals: a hand overhead is an intentional walk, a hand at the ear calls the bullpen
 var seated := false                # playing seated: the height is lifted to a standing pitcher's
 var vignette := true               # darken the edges while moving (fielding)
@@ -58,7 +59,7 @@ func throwing_hand_name() -> StringName:
 
 func to_dict() -> Dictionary:
 	return {"version": VERSION, "hand": hand, "assist": assist, "quality": quality,
-		"locomotion": locomotion, "haptics": haptics, "colorblind": colorblind, "call_text": call_text, "seated": seated, "gestures": gestures, "vignette": vignette, "snap_turn": snap_turn,
+		"locomotion": locomotion, "haptics": haptics, "colorblind": colorblind, "call_text": call_text, "seated": seated, "gestures": gestures, "signs": signs, "vignette": vignette, "snap_turn": snap_turn,
 		"developer": developer, "volumes": volumes, "last_game": last_game}
 
 
@@ -75,6 +76,7 @@ static func from_dict(d: Dictionary) -> Settings:
 	s.call_text = bool(d.get("call_text", s.call_text))
 	s.seated = bool(d.get("seated", s.seated))
 	s.gestures = bool(d.get("gestures", s.gestures))
+	s.signs = bool(d.get("signs", s.signs))
 	s.vignette = bool(d.get("vignette", s.vignette))
 	s.snap_turn = bool(d.get("snap_turn", s.snap_turn))
 	s.developer = bool(d.get("developer", s.developer))
