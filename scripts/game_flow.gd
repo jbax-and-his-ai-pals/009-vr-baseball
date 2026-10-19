@@ -38,18 +38,17 @@ func begin_pa_exit(ev: Dictionary, bases_before: Array) -> void:
 		return
 	batter_ready = false
 	host.slog.record("pa_exit", {"result": ev.get("result", ""), "text": ev.get("text", "")})
-	var plan: Dictionary
+	var plan: PlayPlan
 	if String(ev.get("result", "")) in ["walk", "hit_by_pitch"] or ev.get("batter_reached", false):
 		plan = Baserunning.plan_hold(bases_before, host._batter_player, true)
-		plan["hide_batter_at"] = 0.3
+		plan.hide_batter_at = 0.3
 		if String(ev.get("result", "")) == "hit_by_pitch":
-			(plan["events"] as Array).append({"t": 0.1, "base": 0, "text": "HIT BY PITCH", "kind": "out",
-				"at": Vector3(0.9, 0.0, 0.0)})
+			plan.add_event(0.1, 0, "HIT BY PITCH", "out", Vector3(0.9, 0.0, 0.0))
 	else:
 		plan = Baserunning.plan_leave(host._batter_player)
-	plan["walk_on_when_hidden"] = true
+	plan.walk_on_when_hidden = true
 	if String(ev.get("result", "")) == "strikeout":
-		plan["keep_bat"] = true            # he carries it back to the dugout
+		plan.keep_bat = true            # he carries it back to the dugout
 	aux_play = {"plan": plan, "t": 0.0}
 	for lab in host._play_labels:
 		lab.visible = false
@@ -83,7 +82,7 @@ func begin_walk_on() -> void:
 ## True while a ball in play (one with runners moving) has not been announced yet.
 func play_in_progress() -> bool:
 	for h in host.flight.hits:
-		if not h.result_shown and not h.plan.is_empty():
+		if not h.result_shown and h.plan != null:
 			return true
 	return false
 
@@ -120,7 +119,7 @@ func update_batter_lifecycle(delta: float) -> void:
 			unready_for = 0.0
 	if not aux_play.is_empty():
 		aux_play.t += delta
-		var plan: Dictionary = aux_play.plan
+		var plan: PlayPlan = aux_play.plan
 		host._director.animate_plan(plan, float(aux_play.t))
 		if float(aux_play.t) >= host._director.plan_anim_end(plan):
 			aux_play = {}
@@ -134,11 +133,11 @@ func update_batter_lifecycle(delta: float) -> void:
 
 ## The batter-runner has left the box: his bat drops (unless he carries it off), and if the plan says
 ## so the next batter starts walking on.
-func on_batter_hidden(plan: Dictionary) -> void:
-	if not plan.get("keep_bat", false):
+func on_batter_hidden(plan: PlayPlan) -> void:
+	if not plan.keep_bat:
 		host.flight.drop_bat()
 	host._batter.visible = false
-	if plan.get("walk_on_when_hidden", false):
+	if plan.walk_on_when_hidden:
 		begin_walk_on()
 
 

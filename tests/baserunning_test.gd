@@ -25,8 +25,7 @@ func _runner(p: Player = null) -> Player:
 func _grounder(fielder: int, at: Vector3, t: float) -> Dictionary:
 	return {"result": "out", "text": "Groundout", "caught_in_air": false, "fielder": fielder,
 		"field_pos": at, "field_time": t, "arm": 33.0, "release_time": t + 0.5, "bases": 0,
-		"throw": {"from": at + Vector3(0.0, 1.3, 0.0), "to": Defense.FIRST + Vector3(0.0, 1.0, 0.0),
-			"t0": t + 0.5, "t1": t + 0.5 + at.distance_to(Defense.FIRST) / 33.0 + 0.15, "base": 1}}
+		"throw": ThrowPlan.make(at + Vector3(0.0, 1.3, 0.0), Defense.FIRST + Vector3(0.0, 1.0, 0.0), t + 0.5, t + 0.5 + at.distance_to(Defense.FIRST) / 33.0 + 0.15, 1)}
 
 
 func _init() -> void:
@@ -89,7 +88,7 @@ func _init() -> void:
 		var play := {"result": kind, "text": kind, "bases": 1 + kinds.find(kind) if kind != "out" else 0,
 			"caught_in_air": in_air and kind == "out", "fielder": 6, "field_pos": Vector3(rng.randf_range(-30, 30), 0.0, rng.randf_range(20, 90)),
 			"field_time": rng.randf_range(1.5, 4.5), "arm": 33.0, "release_time": 4.0}
-		play["throw"] = {"from": play.field_pos, "to": Defense.FIRST, "t0": 3.0, "t1": 3.5, "base": 1}
+		play["throw"] = ThrowPlan.make(play.field_pos, Defense.FIRST, 3.0, 3.5, 1)
 		var pl := Baserunning.plan(play, bases, 0, batter, rng)
 		var on_after := 0
 		for b in pl.final_bases:
@@ -150,7 +149,7 @@ func _init() -> void:
 	for r in pc.runners:
 		if r.from == 2:
 			r2 = r
-	_check(r2 != null and r2.has("keys"), "a runner on second leaves his base on a medium fly (hedges)")
+	_check(r2 != null and not r2.keys.is_empty(), "a runner on second leaves his base on a medium fly (hedges)")
 	var last_key: Array = r2.keys[r2.keys.size() - 1]
 	_check((last_key[1] as Vector3).distance_to(Defense.SECOND) < 0.1 and r2.to == 2, "and goes back to touch second after the catch")
 	var mid: Array = r2.keys[1]
@@ -171,7 +170,7 @@ func _init() -> void:
 	for r in pl_liner.runners:
 		if r.from == 1:
 			rr1 = r
-	_check(not rr1.has("hedge") and float(rr1.arrivals[2]) < 4.0, "a ball through on the ground sends him at once")
+	_check(rr1.hedge == null and float(rr1.arrivals[2]) < 4.0, "a ball through on the ground sends him at once")
 
 	# --- Order is kept: nobody passes the man ahead, and nobody shares a base.
 	var order_ok := true
@@ -184,7 +183,7 @@ func _init() -> void:
 			"caught_in_air": kind3 == "out" and rng3.randf() < 0.6, "fielder": 6,
 			"field_pos": Vector3(rng3.randf_range(-40, 40), 0.0, rng3.randf_range(15, 100)),
 			"field_time": land + 0.1, "landing_time": land, "arm": 33.0, "release_time": land + 0.6}
-		play3["throw"] = {"from": play3.field_pos, "to": Defense.FIRST, "t0": land, "t1": land + 1.0, "base": 1}
+		play3["throw"] = ThrowPlan.make(play3.field_pos, Defense.FIRST, land, land + 1.0, 1)
 		var pl3 := Baserunning.plan(play3, b3, 0, batter, rng3)
 		var taken := {}
 		for r in pl3.runners:
@@ -199,8 +198,8 @@ func _init() -> void:
 				by_from.append(r)
 		by_from.sort_custom(func(a, c): return a.from > c.from)
 		for j in range(1, by_from.size()):
-			var ahead: Dictionary = by_from[j - 1]
-			var behind: Dictionary = by_from[j]
+			var ahead: RunnerPlan = by_from[j - 1]
+			var behind: RunnerPlan = by_from[j]
 			if int(behind.to) >= int(ahead.to) and int(ahead.to) < 4:
 				order_ok = false
 	_check(order_ok, "runners never share a base or pass the man ahead")
@@ -213,20 +212,20 @@ func _init() -> void:
 	for r in p_two.runners:
 		if r.from == 1:
 			r_two = r
-	_check(not r_two.has("hedge") and float(r_two.arrivals[2]) < 4.5, "with two outs a runner goes right away on a ball in the air")
+	_check(r_two.hedge == null and float(r_two.arrivals[2]) < 4.5, "with two outs a runner goes right away on a ball in the air")
 	var p_one := Baserunning.plan(air2, [on, null, null], 1, batter, _rng(4))
 	var r_one = null
 	for r in p_one.runners:
 		if r.from == 1:
 			r_one = r
-	_check(r_one.has("hedge") and float(r_one.arrivals[2]) > 3.4, "with fewer than two he leads off and waits for it to land")
+	_check(r_one.hedge != null and float(r_one.arrivals[2]) > 3.4, "with fewer than two he leads off and waits for it to land")
 
 	# --- Where the throw goes on a ground ball.
 	var near_home := {"result": "out", "text": "Groundout", "caught_in_air": false, "fielder": 1, "field_pos": Vector3(0.5, 0.0, 6.0),
 		"field_time": 1.1, "arm": 33.0, "release_time": 1.5, "clean_ground": true,
-		"throw": {"from": Vector3(0.5, 1.3, 6.0), "to": Defense.FIRST, "t0": 1.5, "t1": 3.2, "base": 1}}
+		"throw": ThrowPlan.make(Vector3(0.5, 1.3, 6.0), Defense.FIRST, 1.5, 3.2, 1)}
 	var loaded := [on, on, on]
-	var rl: Array[Dictionary] = []
+	var rl: Array[RunnerPlan] = []
 	for i in [3, 2, 1]:
 		rl.append(Baserunning._runner_entry(i, i, on, 1.0))
 	rl.append(Baserunning._runner_entry(0, 0, batter, 1.0))
@@ -236,8 +235,8 @@ func _init() -> void:
 
 	var ss_play := {"result": "out", "text": "Groundout", "caught_in_air": false, "fielder": 6, "field_pos": Vector3(8.0, 0.0, 33.0),
 		"field_time": 1.3, "arm": 33.0, "release_time": 1.75, "clean_ground": true,
-		"throw": {"from": Vector3(8.0, 1.3, 33.0), "to": Defense.FIRST, "t0": 1.75, "t1": 3.7, "base": 1}}
-	var r1_only: Array[Dictionary] = [Baserunning._runner_entry(1, 1, on, 1.0), Baserunning._runner_entry(0, 0, batter, 1.0)]
+		"throw": ThrowPlan.make(Vector3(8.0, 1.3, 33.0), Defense.FIRST, 1.75, 3.7, 1)}
+	var r1_only: Array[RunnerPlan] = [Baserunning._runner_entry(1, 1, on, 1.0), Baserunning._runner_entry(0, 0, batter, 1.0)]
 	var pick_dp := Baserunning.choose_ground_throw(Baserunning.ground_options(ss_play, r1_only, [on, null, null], 0, true), true)
 	_check(pick_dp.kind == "dp2", "runner on first, grounder to short: go for two (%s)" % pick_dp.kind)
 	var pick_two_outs := Baserunning.choose_ground_throw(Baserunning.ground_options(ss_play, r1_only, [on, null, null], 2, true), true)
@@ -247,7 +246,7 @@ func _init() -> void:
 	late_ball["release_time"] = 4.1
 	var pick_late_ball := Baserunning.choose_ground_throw(Baserunning.ground_options(late_ball, r1_only, [on, null, null], 0, true), true)
 	_check(pick_late_ball.kind == "first", "a ball fielded too late to get the runner is taken at first (%s)" % pick_late_ball.kind)
-	var r3_only: Array[Dictionary] = [Baserunning._runner_entry(3, 3, on, 1.0), Baserunning._runner_entry(0, 0, batter, 1.0)]
+	var r3_only: Array[RunnerPlan] = [Baserunning._runner_entry(3, 3, on, 1.0), Baserunning._runner_entry(0, 0, batter, 1.0)]
 	var pick_no_force := Baserunning.choose_ground_throw(Baserunning.ground_options(ss_play, r3_only, [null, null, on], 0, true), true)
 	_check(pick_no_force.kind == "first", "a runner who is not forced is not a force play (%s)" % pick_no_force.kind)
 
@@ -262,9 +261,9 @@ func _init() -> void:
 	for i in 100:
 		var fcplay := {"result": "single", "bases": 1, "text": "Single", "caught_in_air": false, "fielder": 6,
 			"field_pos": Vector3(8.0, 0.0, 33.0), "field_time": 2.0, "arm": 33.0, "release_time": 2.45, "clean_ground": true,
-			"throw": {"from": Vector3(8.0, 1.3, 33.0), "to": Defense.FIRST, "t0": 2.45, "t1": 3.6, "base": 1}}
+			"throw": ThrowPlan.make(Vector3(8.0, 1.3, 33.0), Defense.FIRST, 2.45, 3.6, 1)}
 		var fcp := Baserunning.plan(fcplay, [slow_runner, null, null], 0, fast_batter, _rng(i))
-		if fcp.get("result", "") == "fielders_choice":
+		if fcp.result == "fielders_choice":
 			fc_count += 1
 			var outs_n := 0
 			var from_out := -1
@@ -336,7 +335,7 @@ func _init() -> void:
 			bat_out = true
 		if r.from > 0 and r.to != r.from:
 			moved = true
-	_check(bat_out and pif.outs_added == 1 and pif.get("text", "") == "Infield fly rule, batter is out",
+	_check(bat_out and pif.outs_added == 1 and pif.text == "Infield fly rule, batter is out",
 		"a dropped infield fly with runners on first and second is still an out")
 	_check(not moved, "and nobody is forced to run on it")
 	var pif2 := Baserunning.plan(pop, [on, null, null], 0, batter, _rng(3))
@@ -346,7 +345,7 @@ func _init() -> void:
 	for r in pif3.runners:
 		if r.from == 0 and r.out:
 			bat3_out = true
-	_check(not bat3_out and pif3.get("text", "") != "Infield fly rule, batter is out", "nor with two outs")
+	_check(not bat3_out and pif3.text != "Infield fly rule, batter is out", "nor with two outs")
 	# Everyone advances on a wild pitch.
 	var adv := Baserunning.plan_advance([on, on, on])
 	_check(adv.runs == 1 and adv.runners.size() == 3, "plan_advance moves the three runners and scores one")
@@ -354,7 +353,7 @@ func _init() -> void:
 	# --- A triple play: runners on first and second, nobody out, a hard grounder to third.
 	var tp_play := {"result": "out", "text": "Groundout", "caught_in_air": false, "fielder": 5, "field_pos": Vector3(17.6, 0.0, 22.0),
 		"field_time": 0.7, "arm": 38.0, "release_time": 1.0, "clean_ground": true,
-		"throw": {"from": Vector3(17.6, 1.3, 22.0), "to": Defense.FIRST, "t0": 1.0, "t1": 2.9, "base": 1}}
+		"throw": ThrowPlan.make(Vector3(17.6, 1.3, 22.0), Defense.FIRST, 1.0, 2.9, 1)}
 	var tp_count := 0
 	var dp_count2 := 0
 	var rng_tp := _rng(808)

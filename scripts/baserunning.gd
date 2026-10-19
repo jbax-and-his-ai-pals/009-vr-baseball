@@ -52,22 +52,22 @@ static func _pos_of(base: int) -> Vector3:
 
 ## Keyframes for a runner who hedged off his base: out a third of the way, wait, then either on
 ## to the next base or back to the bag. [[time, position], ...]; the animator follows them.
-static func _finish_keys(r: Dictionary) -> void:
-	if not r.has("hedge"):
+static func _finish_keys(r: RunnerPlan) -> void:
+	if r.hedge == null:
 		return
-	var h: Dictionary = r.hedge
+	var h: RunnerPlan.Hedge = r.hedge
 	var from: int = r.from
 	var base_p: Vector3 = BASE_POS[from]
 	var hp: Vector3 = base_p.lerp(_pos_of(from + 1), HEDGE)
-	var keys: Array = [[float(r.t_start), STAND_POS[from]], [float(h.t_reach), hp], [float(h.t_leave), hp]]
-	if h.has("return_at"):
-		keys.append([float(h.return_at), base_p])
+	var keys: Array = [[r.t_start, STAND_POS[from]], [h.t_reach, hp], [h.t_leave, hp]]
+	if h.has_return():
+		keys.append([h.return_at, base_p])
 	else:
 		var ks: Array = r.arrivals.keys()
 		ks.sort()
 		for k in ks:
 			keys.append([float(r.arrivals[k]), _pos_of(int(k))])
-	r["keys"] = keys
+	r.keys = keys
 
 
 ## When a ball fielded at `at` at time t_field gets to a base (after the transfer and throw).
@@ -77,9 +77,8 @@ static func ball_arrive(at: Vector3, t_release: float, arm: float, base: int) ->
 	return t_release + d / maxf(arm, 10.0) + 0.2 + relay
 
 
-static func _runner_entry(id: int, from: int, who, rf: float) -> Dictionary:
-	return {"from": from, "to": from, "who": who, "run_factor": rf, "out": false, "out_base": 0,
-		"t_out": 0.0, "t_start": 0.0, "arrivals": {}, "scored": false}
+static func _runner_entry(_id: int, from: int, who, rf: float) -> RunnerPlan:
+	return RunnerPlan.make(from, who, rf)
 
 
 static func _factor_of(who) -> float:
@@ -92,16 +91,16 @@ static func _factor_of(who) -> float:
 ## caught_in_air, fielder). bases: [on 1st, on 2nd, on 3rd] (Player / true / null).
 ## batter: the Player at the plate. Returns the plan (see the bottom of this function).
 static func plan(play: Dictionary, bases: Array, outs_before: int, batter, rng: RandomNumberGenerator,
-		head: Dictionary = {}) -> Dictionary:
+		head: Dictionary = {}) -> PlayPlan:
 	_head = head
 	var planned := _plan(play, bases, outs_before, batter, rng)
 	_head = {}
 	return planned
 
 
-static func _plan(play: Dictionary, bases: Array, outs_before: int, batter, rng: RandomNumberGenerator) -> Dictionary:
+static func _plan(play: Dictionary, bases: Array, outs_before: int, batter, rng: RandomNumberGenerator) -> PlayPlan:
 	var result: String = play.get("result", "out")
-	var runners: Array[Dictionary] = []
+	var runners: Array[RunnerPlan] = []
 	# Lead runner first so the ones behind cannot pass him.
 	for i in [3, 2, 1]:
 		var who = bases[i - 1]
@@ -111,7 +110,7 @@ static func _plan(play: Dictionary, bases: Array, outs_before: int, batter, rng:
 	var bat := _runner_entry(0, 0, batter, _factor_of(batter))
 	runners.append(bat)
 
-	var out_result := {"runs": 0, "outs_added": 0, "throws": [], "events": [], "suffix": "", "batter_safe": false}
+	var out_result := PlayPlan.new()
 	# The infield fly rule: runners on first and second (or loaded), fewer than two outs, a high
 	# fair pop-up an infielder can catch. The batter is out whether it is caught or dropped, and
 	# nobody is forced, so a dropped ball does not open a force play.
@@ -123,8 +122,8 @@ static func _plan(play: Dictionary, bases: Array, outs_before: int, batter, rng:
 		out_result.outs_added = 1
 		out_result.events.append({"t": bat.t_out, "base": 0, "text": "INFIELD FLY", "kind": "out",
 			"at": play.get("field_pos", Vector3.ZERO)})
-		out_result["text"] = "Infield fly rule, batter is out"
-		out_result["result"] = "out"
+		out_result.text = "Infield fly rule, batter is out"
+		out_result.result = "out"
 		result = "infield_fly"
 	match result:
 		"home_run":
@@ -171,8 +170,8 @@ static func _plan(play: Dictionary, bases: Array, outs_before: int, batter, rng:
 		out_list.sort_custom(func(a, b): return float(a.t_out) < float(b.t_out))
 		var third_i := 3 - outs_before - 1
 		if third_i >= 0 and third_i < out_list.size():
-			var third: Dictionary = out_list[third_i]
-			if not (bool(third.get("forced_out", false)) or int(third.from) == 0):
+			var third: RunnerPlan = out_list[third_i]
+			if not (third.forced_out or third.from == 0):
 				cutoff = float(third.t_out)          # a tag: runs before this moment count
 		var kept := 0
 		for r in runners:
@@ -185,38 +184,38 @@ static func _plan(play: Dictionary, bases: Array, outs_before: int, batter, rng:
 					r.arrivals.clear()
 		runs = kept
 		voided = kept == 0
-		out_result.events = out_result.events.filter(func(e): return e.kind != "run" or (e.get("who") != null and not e.who.scored == false))
+		out_result.events.assign(out_result.events.filter(func(e): return e.kind != "run" or (e.who != null and e.who.scored)))
 		if kept > 0:
-			out_result["time_play"] = true
+			out_result.time_play = true
 	# Label the batter's own result and find when everything has finished.
 	if not bat.out and bat.to >= 1 and bat.arrivals.has(bat.to):
 		var txt := "SAFE"
 		if bat.to == 4:
 			txt = "HOME RUN" if result == "home_run" else "RUN"
-		out_result.events.append({"t": bat.arrivals[bat.to], "base": bat.to, "text": txt, "kind": "safe"})
+		out_result.events.append(PlanEvent.make(bat.arrivals[bat.to], bat.to, txt, "safe"))
 	var end := float(play.get("field_time", 0.0)) + 0.5
 	for r in runners:
 		for k in r.arrivals:
 			end = maxf(end, float(r.arrivals[k]) + 0.5)
-		if r.has("keys"):
-			end = maxf(end, float((r.keys as Array)[(r.keys as Array).size() - 1][0]) + 0.5)
+		if not r.keys.is_empty():
+			end = maxf(end, float(r.keys[r.keys.size() - 1][0]) + 0.5)
 		if r.out:
 			end = maxf(end, float(r.t_out) + 0.5)
 	for th in out_result.throws:
 		end = maxf(end, float(th.t1) + 0.5)
-	out_result["end_time"] = end
-	out_result["runners"] = runners
-	out_result["runs"] = runs
-	out_result["final_bases"] = new_bases
-	out_result["runs_voided"] = voided
+	out_result.end_time = end
+	out_result.runners = runners
+	out_result.runs = runs
+	out_result.final_bases = new_bases
+	out_result.runs_voided = voided
 	return out_result
 
 
 # ----------------------------------------------------------------- a human fielder's play
 ## Before the ball is thrown: the batter runs to first and, on a ground ball, forced runners go.
 ## runners_go is false for balls in the air (nobody commits before it is caught).
-static func plan_hold(bases: Array, batter, runners_go: bool) -> Dictionary:
-	var runners: Array[Dictionary] = []
+static func plan_hold(bases: Array, batter, runners_go: bool) -> PlayPlan:
+	var runners: Array[RunnerPlan] = []
 	var forced := {1: bases[0] != null, 2: bases[0] != null and bases[1] != null,
 		3: bases[0] != null and bases[1] != null and bases[2] != null}
 	for i in [3, 2, 1]:
@@ -234,27 +233,32 @@ static func plan_hold(bases: Array, batter, runners_go: bool) -> Dictionary:
 	bat.to = 1
 	bat.arrivals[1] = arrive(0, 1, 0.0, bat.run_factor)
 	runners.append(bat)
-	var res := {"runners": runners, "events": [], "throws": [], "runs": 0, "outs_added": 0,
-		"suffix": "", "hold": true, "batter_safe": true}
+	var res := PlayPlan.new()
+	res.runners = runners
+	res.hold = true
+	res.batter_safe = true
 	_tally(res, 0)
 	return res
 
 
 ## A batter who is out without the ball being put in play (a strikeout): he walks off.
-static func plan_leave(batter) -> Dictionary:
+static func plan_leave(batter) -> PlayPlan:
 	var r := _runner_entry(0, 0, batter, _factor_of(batter))
 	r.out = true
 	r.out_base = 0
 	r.t_out = 0.0
-	var runners: Array[Dictionary] = [r]
-	return {"runners": runners, "events": [{"t": 0.15, "base": 0, "text": "STRIKEOUT", "kind": "out", "at": Vector3(0.0, 0.0, 0.0)}],
-		"throws": [], "runs": 0, "outs_added": 1, "suffix": "", "hold": false, "end_time": 0.8,
-		"final_bases": [null, null, null], "hide_batter_at": 0.7}
+	var res := PlayPlan.new()
+	res.runners = [r] as Array[RunnerPlan]
+	res.add_event(0.15, 0, "STRIKEOUT", "out", Vector3(0.0, 0.0, 0.0))
+	res.outs_added = 1
+	res.end_time = 0.8
+	res.hide_batter_at = 0.7
+	return res
 
 
 ## Everyone on base moves up one (a wild pitch or a passed ball). No batter.
-static func plan_advance(bases: Array) -> Dictionary:
-	var runners: Array[Dictionary] = []
+static func plan_advance(bases: Array) -> PlayPlan:
+	var runners: Array[RunnerPlan] = []
 	for i in [3, 2, 1]:
 		var who = bases[i - 1]
 		if who == null:
@@ -264,42 +268,44 @@ static func plan_advance(bases: Array) -> Dictionary:
 		r.to = i + 1
 		r.arrivals[i + 1] = arrive(i, i + 1, 0.25, r.run_factor)
 		runners.append(r)
-	var res := {"runners": runners, "events": [], "throws": [], "runs": 0, "outs_added": 0,
-		"suffix": "", "hold": false, "hide_batter_at": 9999.0}
+	var res := PlayPlan.new()
+	res.runners = runners
+	res.hide_batter_at = 9999.0
 	_tally(res, 0)
 	return res
 
 
 ## A steal: one runner going to the next base, with the planned time he takes. The caller
 ## patches the plan with the outcome once the throw is known.
-static func plan_steal(from_base: int, runner, run_seconds: float) -> Dictionary:
+static func plan_steal(from_base: int, runner, run_seconds: float) -> PlayPlan:
 	var r := _runner_entry(from_base, from_base, runner, _factor_of(runner))
 	r.t_start = 0.0
 	r.to = from_base + 1
 	r.arrivals[from_base + 1] = run_seconds
-	var runners: Array[Dictionary] = [r]
-	var res := {"runners": runners, "events": [], "throws": [], "runs": 0, "outs_added": 0,
-		"suffix": "", "hold": false, "hide_batter_at": 9999.0, "steal": true}
+	var res := PlayPlan.new()
+	res.runners = [r] as Array[RunnerPlan]
+	res.hide_batter_at = 9999.0
+	res.steal = true
 	_tally(res, 0)
 	return res
 
 
 ## A runner who dives back to his base after a throw over. out: he was too late.
-static func plan_dive_back(base: int, runner, from_pos: Vector3, to_pos: Vector3, seconds: float, out: bool) -> Dictionary:
+static func plan_dive_back(base: int, runner, from_pos: Vector3, to_pos: Vector3, seconds: float, out: bool) -> PlayPlan:
 	var r := _runner_entry(base, base, runner, _factor_of(runner))
-	r["dive"] = true                       # he goes back head first
-	r["keys"] = [[0.0, from_pos], [seconds, to_pos]]
-	var runners: Array[Dictionary] = [r]
-	var events: Array = []
+	r.dive = true                          # he goes back head first
+	r.keys = [[0.0, from_pos], [seconds, to_pos]]
+	var res := PlayPlan.new()
+	res.runners = [r] as Array[RunnerPlan]
 	if out:
 		r.out = true
 		r.out_base = base
 		r.t_out = seconds
-		events.append({"t": seconds, "base": base, "text": "OUT", "kind": "out"})
+		res.add_event(seconds, base, "OUT", "out")
 	else:
-		events.append({"t": seconds, "base": base, "text": "SAFE", "kind": "safe"})
-	var res := {"runners": runners, "events": events, "throws": [], "runs": 0, "outs_added": 1 if out else 0,
-		"suffix": "", "hold": false, "hide_batter_at": 9999.0}
+		res.add_event(seconds, base, "SAFE", "safe")
+	res.outs_added = 1 if out else 0
+	res.hide_batter_at = 9999.0
 	_tally(res, 0)
 	return res
 
@@ -308,7 +314,7 @@ static func plan_dive_back(base: int, runner, from_pos: Vector3, to_pos: Vector3
 ## StealModel.pickoff_outcome's rundown results. Returns a plan whose runner follows `keys` back and forth
 ## between his base and the next, plus `turns`: the times he reverses (each is a throw), `fielders_at`
 ## (the two bags the fielders stand at: [behind, ahead]), and the end ("OUT" or "SAFE") with its base.
-static func plan_rundown(base: int, runner, outcome: String, lead_fraction: float = 0.14) -> Dictionary:
+static func plan_rundown(base: int, runner, outcome: String, lead_fraction: float = 0.14) -> PlayPlan:
 	var bb: Vector3 = BASE_POS[base] if base < 4 else Defense.HOME
 	var ab: Vector3 = Defense.HOME if base >= 3 else (BASE_POS[base + 1] as Vector3)
 	var legs: Array = []
@@ -329,60 +335,61 @@ static func plan_rundown(base: int, runner, outcome: String, lead_fraction: floa
 		keys.append([t, bb.lerp(ab, float(legs[i][0]))])
 		if i < legs.size() - 1:
 			turns.append(t)
-	r["keys"] = keys
+	r.keys = keys
 	var end_base := base
 	var is_out := outcome == "rundown_out"
 	if outcome == "rundown_safe_ahead":
 		end_base = base + 1
-	var events: Array = []
+	var res := PlayPlan.new()
+	res.runners = [r] as Array[RunnerPlan]
 	if is_out:
 		r.out = true
 		r.out_base = base
 		r.t_out = t
-		events.append({"t": t, "base": base, "text": "OUT", "kind": "out"})
+		res.add_event(t, base, "OUT", "out")
 	else:
-		events.append({"t": t, "base": mini(end_base, 4), "text": "SAFE", "kind": "safe"})
-	var res := {"runners": [r] as Array[Dictionary], "events": events, "throws": [], "runs": 0, "outs_added": 1 if is_out else 0,
-		"suffix": "", "hold": false, "hide_batter_at": 9999.0, "rundown": true, "turns": turns, "end_time": t,
-		"fielders_at": [base, base + 1], "end_safe_base": end_base}
+		res.add_event(t, mini(end_base, 4), "SAFE", "safe")
+	res.outs_added = 1 if is_out else 0
+	res.hide_batter_at = 9999.0
+	res.rundown = true
+	res.turns = turns
+	res.fielders_at = [base, base + 1]
+	res.end_safe_base = end_base
 	_tally(res, 0)
-	res["end_time"] = t + 0.4                     # the picture ends a beat after the last call
+	res.end_time = t + 0.4                     # the picture ends a beat after the last call
 	return res
 
 
 ## Mark the runner in a steal plan out at the base he was going to, at time t_out.
-static func steal_out(plan: Dictionary, t_out: float) -> void:
-	var r: Dictionary = plan.runners[0]
-	var base: int = int(r.from) + 1
+static func steal_out(plan: PlayPlan, t_out: float) -> void:
+	var r: RunnerPlan = plan.runners[0]
+	var base: int = r.from + 1
 	r.out = true
 	r.out_base = base
 	r.t_out = t_out
 	var full: float = r.arrivals.get(base, t_out)
 	r.arrivals[base] = minf(full, t_out)
 	plan.outs_added = 1
-	plan.events.append({"t": t_out, "base": base, "text": "OUT", "kind": "out"})
+	plan.events.append(PlanEvent.make(t_out, base, "OUT", "out"))
 	_tally(plan, 0)
 
 
 ## The runner of a steal plan is safe: a SAFE callout when he gets there.
-static func steal_safe(plan: Dictionary) -> void:
-	var r: Dictionary = plan.runners[0]
-	var base: int = int(r.from) + 1
-	plan.events.append({"t": float(r.arrivals.get(base, 3.0)), "base": base, "text": "SAFE", "kind": "safe"})
+static func steal_safe(plan: PlayPlan) -> void:
+	var r: RunnerPlan = plan.runners[0]
+	var base: int = r.from + 1
+	plan.events.append(PlanEvent.make(float(r.arrivals.get(base, 3.0)), base, "SAFE", "safe"))
 	_tally(plan, 0)
 
 
 ## The runner who is going to `base`, if any.
-static func runner_to(plan: Dictionary, base: int):
-	for r in plan.runners:
-		if not r.out and int(r.to) == base and r.arrivals.has(base):
-			return r
-	return null
+static func runner_to(plan: PlayPlan, base: int) -> RunnerPlan:
+	return plan.runner_to(base)
 
 
 ## A human throws to `base`; the ball gets there at t_arrive. Marks who is out and tallies.
 ## from_pos is where the throw started (for the pivot man's relay on a force at second).
-static func apply_throw(plan: Dictionary, base: int, t_arrive: float, outs_before: int, from_pos: Vector3,
+static func apply_throw(plan: PlayPlan, base: int, t_arrive: float, outs_before: int, from_pos: Vector3,
 		rng: RandomNumberGenerator) -> void:
 	var r = runner_to(plan, base)
 	if r != null:
@@ -392,7 +399,7 @@ static func apply_throw(plan: Dictionary, base: int, t_arrive: float, outs_befor
 			r.out_base = base
 			r.t_out = t_arrive
 			plan.outs_added += 1
-			plan.events.append({"t": t_arrive, "base": base, "text": "OUT", "kind": "out"})
+			plan.events.append(PlanEvent.make(t_arrive, base, "OUT", "out"))
 			# A force at second: the pivot man turns it for the batter.
 			if base == 2 and outs_before + 1 < 3:
 				var bat = runner_to(plan, 1)
@@ -405,15 +412,14 @@ static func apply_throw(plan: Dictionary, base: int, t_arrive: float, outs_befor
 						bat.t_out = t1
 						plan.outs_added += 1
 						plan.suffix = " (double play)"
-						plan.events.append({"t": t1, "base": 1, "text": "OUT", "kind": "out"})
-						plan.throws.append({"from": SECOND_BAG + Vector3(0.0, 1.0, 0.0), "to": Defense.FIRST + Vector3(0.0, 1.0, 0.0),
-							"t0": t_rel, "t1": t1, "base": 1})
+						plan.events.append(PlanEvent.make(t1, 1, "OUT", "out"))
+						plan.throws.append(ThrowPlan.make(SECOND_BAG + Vector3(0.0, 1.0, 0.0), Defense.FIRST + Vector3(0.0, 1.0, 0.0), t_rel, t1, 1))
 	plan.hold = false
 	_tally(plan, outs_before)
 
 
 ## Runs, bases after the play, and when it is all over.
-static func _tally(plan: Dictionary, outs_before: int) -> void:
+static func _tally(plan: PlayPlan, outs_before: int) -> void:
 	var new_bases: Array = [null, null, null]
 	var runs := 0
 	var end := 0.5
@@ -431,24 +437,24 @@ static func _tally(plan: Dictionary, outs_before: int) -> void:
 		end = maxf(end, float(th.t1) + 0.5)
 	if outs_before + int(plan.outs_added) >= 3:
 		runs = 0
-	plan["runs"] = runs
-	plan["final_bases"] = new_bases
-	plan["end_time"] = end
+	plan.runs = runs
+	plan.final_bases = new_bases
+	plan.end_time = end
 
 
 # ----------------------------------------------------------------- home runs
-static func _home_run(runners: Array, res: Dictionary) -> void:
+static func _home_run(runners: Array, res: PlayPlan) -> void:
 	for r in runners:
 		r.to = 4
 		r.t_start = 0.12 if r.from == 0 else START_DELAY
 		for k in range(r.from + 1, 5):
 			r.arrivals[k] = arrive(r.from, k, r.t_start, r.run_factor) * 0.8
 		if r.from > 0:
-			res.events.append({"t": r.arrivals[4], "base": 4, "text": "RUN", "kind": "run"})
+			res.events.append(PlanEvent.make(r.arrivals[4], 4, "RUN", "run"))
 
 
 # ----------------------------------------------------------------- hits and errors
-static func _hit(play: Dictionary, runners: Array, res: Dictionary, outs_before: int, rng: RandomNumberGenerator) -> void:
+static func _hit(play: Dictionary, runners: Array, res: PlayPlan, outs_before: int, rng: RandomNumberGenerator) -> void:
 	var n: int = 1 if play.result == "error" else int(play.get("bases", 1))
 	var at: Vector3 = play.get("field_pos", Vector3.ZERO)
 	var arm: float = play.get("arm", 33.0)
@@ -468,7 +474,10 @@ static func _hit(play: Dictionary, runners: Array, res: Dictionary, outs_before:
 		if airborne and from >= 1:
 			var t_reach: float = r.t_start + HEDGE * run_time(from, from + 1, r.run_factor)
 			delay = maxf(0.0, air_t - t_reach)
-			r["hedge"] = {"to": from + 1, "t_reach": t_reach, "t_leave": t_reach + delay}
+			r.hedge = RunnerPlan.Hedge.new()
+			r.hedge.to = from + 1
+			r.hedge.t_reach = t_reach
+			r.hedge.t_leave = t_reach + delay
 		var to := mini(4, from + n)
 		if from == 0:
 			to = mini(4, n)
@@ -496,7 +505,7 @@ static func _hit(play: Dictionary, runners: Array, res: Dictionary, outs_before:
 			r.arrivals[k] = arrive(from, k, r.t_start, r.run_factor) + delay
 		lead_to = to
 		if to == 4 and from > 0:
-			res.events.append({"t": r.arrivals[4], "base": 4, "text": "RUN", "kind": "run", "who": r})
+			res.events.append(PlanEvent.make(r.arrivals[4], 4, "RUN", "run", Vector3.INF, r))
 
 	# --- The throw.
 	var target := -1
@@ -513,10 +522,9 @@ static func _hit(play: Dictionary, runners: Array, res: Dictionary, outs_before:
 				target = i
 	if target != -1:
 		var a: Dictionary = attempts[target]
-		var tr: Dictionary = a.r
+		var tr: RunnerPlan = a.r
 		var base: int = a.base
-		res.throws.append({"from": at + Vector3(0.0, 1.3, 0.0), "to": _pos_of(base) + Vector3(0.0, 1.0, 0.0),
-			"t0": release, "t1": a.ball_t, "base": base})
+		res.throws.append(ThrowPlan.make(at + Vector3(0.0, 1.3, 0.0), _pos_of(base) + Vector3(0.0, 1.0, 0.0), release, a.ball_t, base))
 		var safe := (float(a.run_t) - float(a.ball_t)) + rng.randfn(0.0, 0.28) > 0.0
 		if not safe:
 			tr.out = true
@@ -526,11 +534,11 @@ static func _hit(play: Dictionary, runners: Array, res: Dictionary, outs_before:
 			for k in range(int(tr.from) + 1, base + 1):
 				tr.arrivals[k] = minf(arrive(tr.from, k, tr.t_start, tr.run_factor) + float(a.delay), tr.t_out)
 			res.outs_added += 1
-			res.events = res.events.filter(func(e): return not (e.kind == "run" and e.get("who") == tr))
-			res.events.append({"t": a.ball_t, "base": base, "text": "OUT", "kind": "out"})
+			res.events.assign(res.events.filter(func(e): return not (e.kind == "run" and e.who == tr)))
+			res.events.append(PlanEvent.make(a.ball_t, base, "OUT", "out"))
 		# The ball went one way, so the batter takes the base he can on the throw.
 		if base == 4:
-			var bat: Dictionary = runners[runners.size() - 1]
+			var bat: RunnerPlan = runners[runners.size() - 1]
 			var second_free := true
 			for r in runners:
 				if r != bat and not r.out and int(r.to) == 2:
@@ -541,18 +549,18 @@ static func _hit(play: Dictionary, runners: Array, res: Dictionary, outs_before:
 
 
 # ----------------------------------------------------------------- caught in the air
-static func _caught(play: Dictionary, runners: Array, res: Dictionary, outs_before: int, rng: RandomNumberGenerator) -> void:
+static func _caught(play: Dictionary, runners: Array, res: PlayPlan, outs_before: int, rng: RandomNumberGenerator) -> void:
 	var t_catch: float = play.get("field_time", 3.0)
 	var at: Vector3 = play.get("field_pos", Vector3.ZERO)
 	var arm: float = play.get("arm", 33.0)
 	var transfer: float = play.get("release_time", t_catch + 0.5) - t_catch
 	var depth := Vector2(at.x, at.z).length()
 	res.outs_added = 1                      # the batter
-	var batter_r: Dictionary = runners[runners.size() - 1]
+	var batter_r: RunnerPlan = runners[runners.size() - 1]
 	batter_r.out = true
 	batter_r.out_base = 0
 	batter_r.t_out = t_catch
-	res.events.append({"t": t_catch, "base": 0, "text": "OUT", "kind": "out", "at": at})
+	res.events.append(PlanEvent.make(t_catch, 0, "OUT", "out", at))
 	var lead_to := 5
 	for r in runners:
 		if r.from == 0:
@@ -571,18 +579,17 @@ static func _caught(play: Dictionary, runners: Array, res: Dictionary, outs_befo
 			var base_p: Vector3 = BASE_POS[from]
 			var away: Vector3 = base_p.lerp(_pos_of(from + 1), went)
 			r.t_start = START_DELAY
-			r["keys"] = [[START_DELAY, STAND_POS[from]], [t_catch, away], [back_t, base_p]]
+			r.keys = [[START_DELAY, STAND_POS[from]], [t_catch, away], [back_t, base_p]]
 			var ball_back := ball_arrive(at, t_catch + transfer, arm, from)
 			if ball_back + rng.randfn(0.0, 0.10) < back_t:
 				r.out = true
 				r.out_base = from
 				r.t_out = ball_back
 				res.outs_added += 1
-				res.events.append({"t": ball_back, "base": from, "text": "OUT", "kind": "out"})
-				res.throws.append({"from": at + Vector3(0.0, 1.3, 0.0), "to": BASE_POS[from] + Vector3(0.0, 1.0, 0.0),
-					"t0": t_catch + transfer, "t1": ball_back, "base": from})
+				res.events.append(PlanEvent.make(ball_back, from, "OUT", "out"))
+				res.throws.append(ThrowPlan.make(at + Vector3(0.0, 1.3, 0.0), BASE_POS[from] + Vector3(0.0, 1.0, 0.0), t_catch + transfer, ball_back, from))
 				res.suffix = " (runner doubled off)"
-				res["text"] = "Lineout, double play (doubled off at %s)" % ["", "first", "second", "third"][from]
+				res.text = "Lineout, double play (doubled off at %s)" % ["", "first", "second", "third"][from]
 			r.to = from
 			lead_to = from
 			continue
@@ -593,8 +600,11 @@ static func _caught(play: Dictionary, runners: Array, res: Dictionary, outs_befo
 			var t_reach := START_DELAY + HEDGE * seg_t
 			if t_catch > t_reach + 0.1:
 				r.t_start = START_DELAY
-				r["hedge"] = {"to": from + 1, "t_reach": t_reach, "t_leave": t_catch,
-					"return_at": t_catch + HEDGE * seg_t * 0.85}
+				r.hedge = RunnerPlan.Hedge.new()
+				r.hedge.to = from + 1
+				r.hedge.t_reach = t_reach
+				r.hedge.t_leave = t_catch
+				r.hedge.return_at = t_catch + HEDGE * seg_t * 0.85
 		if worth and outs_before + 1 < 3 and (from == 3 or lead_to > from + 1):
 			var t0 := t_catch + 0.15
 			var ball_t := ball_arrive(at, t_catch + transfer, arm, from + 1)
@@ -611,14 +621,13 @@ static func _caught(play: Dictionary, runners: Array, res: Dictionary, outs_befo
 					r.t_out = ball_t
 					r.t_start = t0
 					res.outs_added += 1
-					res.events.append({"t": ball_t, "base": from + 1, "text": "OUT", "kind": "out"})
-					res.throws.append({"from": at + Vector3(0.0, 1.3, 0.0), "to": BASE_POS[from + 1] + Vector3(0.0, 1.0, 0.0),
-						"t0": t_catch + transfer, "t1": ball_t, "base": from + 1})
+					res.events.append(PlanEvent.make(ball_t, from + 1, "OUT", "out"))
+					res.throws.append(ThrowPlan.make(at + Vector3(0.0, 1.3, 0.0), BASE_POS[from + 1] + Vector3(0.0, 1.0, 0.0), t_catch + transfer, ball_t, from + 1))
 		if not r.out:
 			r.to = dest
 			lead_to = dest
 			if dest == 4:
-				res.events.append({"t": r.arrivals[4], "base": 4, "text": "RUN", "kind": "run"})
+				res.events.append(PlanEvent.make(r.arrivals[4], 4, "RUN", "run"))
 	if res.runs == 0 and res.outs_added == 1:
 		for r in runners:
 			if r.from == 3 and r.to == 4:
@@ -662,7 +671,7 @@ static func ground_options(play: Dictionary, runners: Array, bases: Array, outs_
 	for r in runners:
 		if r.from > 0:
 			by_from[int(r.from)] = r
-	var batter_r: Dictionary = runners[runners.size() - 1]
+	var batter_r: RunnerPlan = runners[runners.size() - 1]
 	var bat_rt := arrive(0, 1, 0.0, batter_r.run_factor)
 	var t_first := _t_to_base(at, t_field, release, arm, 1)
 	var opts: Array = []
@@ -674,7 +683,7 @@ static func ground_options(play: Dictionary, runners: Array, bases: Array, outs_
 	for f in [3, 2, 1]:
 		if not forced[f] or not by_from.has(f):
 			continue
-		var r: Dictionary = by_from[f]
+		var r: RunnerPlan = by_from[f]
 		var base: int = f + 1
 		var t := _t_to_base(at, t_field, release, arm, base)
 		var a := arrive(f, base, START_DELAY, r.run_factor)
@@ -684,7 +693,7 @@ static func ground_options(play: Dictionary, runners: Array, bases: Array, outs_
 			# Runners on first and second, nobody out, the ball at third: a triple play is on the table.
 			var tp_t2 := t + TP_PIVOT + _pos_of(3).distance_to(_pos_of(2)) / 31.0 + 0.10
 			var tp_t1 := tp_t2 + TP_PIVOT + _pos_of(2).distance_to(Defense.FIRST) / 31.0 + 0.10
-			var r1: Dictionary = by_from[1]
+			var r1: RunnerPlan = by_from[1]
 			var a_second := arrive(1, 2, START_DELAY, r1.run_factor)
 			var p_second := _p_beat(a_second, tp_t2)
 			var p_first := _p_beat(bat_rt, tp_t1)
@@ -732,20 +741,20 @@ static func choose_ground_throw(opts: Array, first_available: bool) -> Dictionar
 	return first_opt
 
 
-static func _ground_out(play: Dictionary, runners: Array, bases: Array, outs_before: int, res: Dictionary, rng: RandomNumberGenerator) -> void:
+static func _ground_out(play: Dictionary, runners: Array, bases: Array, outs_before: int, res: PlayPlan, rng: RandomNumberGenerator) -> void:
 	var opts := ground_options(play, runners, bases, outs_before, true)
 	var pick := choose_ground_throw(opts, true)
 	_execute_ground(play, runners, bases, outs_before, res, rng, pick, true)
 
 
 ## Carry out the chosen throw: who is out, who is safe, where everyone ends up.
-static func _execute_ground(play: Dictionary, runners: Array, bases: Array, outs_before: int, res: Dictionary,
+static func _execute_ground(play: Dictionary, runners: Array, bases: Array, outs_before: int, res: PlayPlan,
 		rng: RandomNumberGenerator, pick: Dictionary, first_available: bool) -> void:
 	var at: Vector3 = play.get("field_pos", Vector3.ZERO)
 	var t_field: float = play.get("field_time", 2.0)
 	var fielder := int(play.get("fielder", 6))
 	var release: float = play.get("release_time", t_field + 0.45)
-	var batter_r: Dictionary = runners[runners.size() - 1]
+	var batter_r: RunnerPlan = runners[runners.size() - 1]
 	var bat_rt := arrive(0, 1, 0.0, batter_r.run_factor)
 	var by_from := {}
 	for r in runners:
@@ -771,34 +780,34 @@ static func _execute_ground(play: Dictionary, runners: Array, bases: Array, outs
 
 	if kind == "tp":
 		# Third base, then second, then first.
-		var rs: Dictionary = by_from.get(2, {})
-		var r1: Dictionary = by_from.get(1, {})
+		var rs: RunnerPlan = by_from.get(2)
+		var r1: RunnerPlan = by_from.get(1)
 		var t3: float = pick.t
-		res.throws.append({"from": from_hand, "to": _pos_of(3) + Vector3(0.0, 1.0, 0.0), "t0": release, "t1": t3, "base": 3})
+		res.throws.append(ThrowPlan.make(from_hand, _pos_of(3) + Vector3(0.0, 1.0, 0.0), release, t3, 3))
 		var got3 := (float(pick.arrival) - t3) + rng.randfn(0.0, 0.12) > 0.0
-		if not rs.is_empty():
+		if rs != null:
 			rs.arrivals[3] = pick.arrival
-		if got3 and not rs.is_empty():
+		if got3 and rs != null:
 			rs.out = true
 			rs.out_base = 3
 			rs.t_out = t3
-			rs["forced_out"] = true
+			rs.forced_out = true
 			res.outs_added += 1
-			res.events.append({"t": t3, "base": 3, "text": "OUT", "kind": "out"})
+			res.events.append(PlanEvent.make(t3, 3, "OUT", "out"))
 			var t2: float = pick.t_second
-			res.throws.append({"from": _pos_of(3) + Vector3(0.0, 1.0, 0.0), "to": _pos_of(2) + Vector3(0.0, 1.0, 0.0), "t0": t3 + TP_PIVOT, "t1": t2, "base": 2})
+			res.throws.append(ThrowPlan.make(_pos_of(3) + Vector3(0.0, 1.0, 0.0), _pos_of(2) + Vector3(0.0, 1.0, 0.0), t3 + TP_PIVOT, t2, 2))
 			var got2 := (float(pick.arrival_second) - t2) + rng.randfn(0.0, 0.12) > 0.0 and rng.randf() < TP_CLEAN
-			if not r1.is_empty():
+			if r1 != null:
 				r1.arrivals[2] = pick.arrival_second
-			if got2 and not r1.is_empty():
+			if got2 and r1 != null:
 				r1.out = true
 				r1.out_base = 2
 				r1.t_out = t2
-				r1["forced_out"] = true
+				r1.forced_out = true
 				res.outs_added += 1
-				res.events.append({"t": t2, "base": 2, "text": "OUT", "kind": "out"})
+				res.events.append(PlanEvent.make(t2, 2, "OUT", "out"))
 				var t1: float = pick.t_first
-				res.throws.append({"from": _pos_of(2) + Vector3(0.0, 1.0, 0.0), "to": Defense.FIRST + Vector3(0.0, 1.0, 0.0), "t0": t2 + TP_PIVOT, "t1": t1, "base": 1})
+				res.throws.append(ThrowPlan.make(_pos_of(2) + Vector3(0.0, 1.0, 0.0), Defense.FIRST + Vector3(0.0, 1.0, 0.0), t2 + TP_PIVOT, t1, 1))
 				var got1 := (bat_rt - t1) + rng.randfn(0.0, 0.10) > 0.0 and rng.randf() < TP_CLEAN
 				if got1:
 					batter_r.out = true
@@ -806,40 +815,43 @@ static func _execute_ground(play: Dictionary, runners: Array, bases: Array, outs
 					batter_r.t_out = t1
 					batter_r.arrivals[1] = bat_rt
 					res.outs_added += 1
-					res.events.append({"t": t1, "base": 1, "text": "OUT", "kind": "out"})
-					res["text"] = "Triple play %d-4-3" % fielder
+					res.events.append(PlanEvent.make(t1, 1, "OUT", "out"))
+					res.text = "Triple play %d-4-3" % fielder
 					res.suffix = " (triple play)"
 				else:
-					res["text"] = "Double play %d-4" % fielder
+					res.text = "Double play %d-4" % fielder
 					res.suffix = " (double play)"
 			else:
-				res["text"] = "Force out at third, %d-4" % fielder
-			res["result"] = "fielders_choice"
+				res.text = "Force out at third, %d-4" % fielder
+			res.result = "fielders_choice"
 	elif kind == "force" or kind == "dp2" or kind == "dphome":
 		var src := base_out - 1                         # the runner forced to this base came from here
-		var r: Dictionary = by_from.get(src, {})
+		var r: RunnerPlan = by_from.get(src)
 		var t: float = pick.t
-		res.throws.append({"from": from_hand, "to": _pos_of(base_out) + Vector3(0.0, 1.0, 0.0), "t0": release, "t1": t, "base": base_out})
+		res.throws.append(ThrowPlan.make(from_hand, _pos_of(base_out) + Vector3(0.0, 1.0, 0.0), release, t, base_out))
 		if base_out == 2:
-			res["cover"] = {"fielder": int(cover_for.call(2)), "to": Defense.SECOND + Vector3(0.6, 0.0, -0.5), "t": t}
+			res.cover = PlayPlan.Cover.new()
+			res.cover.fielder = int(cover_for.call(2))
+			res.cover.to = Defense.SECOND + Vector3(0.6, 0.0, -0.5)
+			res.cover.t = t
 		var a: float = pick.arrival
 		var got := (a - t) + rng.randfn(0.0, 0.12) > 0.0
-		if not r.is_empty():
+		if r != null:
 			r.arrivals[base_out] = a
-		if got and not r.is_empty():
+		if got and r != null:
 			r.out = true
-			r["forced_out"] = true
+			r.forced_out = true
 			r.out_base = base_out
 			r.t_out = t
 			res.outs_added += 1
-			res.events.append({"t": t, "base": base_out, "text": "OUT", "kind": "out"})
+			res.events.append(PlanEvent.make(t, base_out, "OUT", "out"))
 			runner_out_at = base_out
 			var rcv := int(cover_for.call(base_out))
 			if kind == "dp2" or kind == "dphome":
 				var t_rel: float = pick.t_relay
 				var t_hold: float = t + (PIVOT if kind == "dp2" else 0.40)
 				var src_pos := _pos_of(base_out) + Vector3(0.0, 1.0, 0.0)
-				res.throws.append({"from": src_pos, "to": Defense.FIRST + Vector3(0.0, 1.0, 0.0), "t0": t_hold, "t1": t_rel, "base": 1})
+				res.throws.append(ThrowPlan.make(src_pos, Defense.FIRST + Vector3(0.0, 1.0, 0.0), t_hold, t_rel, 1))
 				var wins := (bat_rt - t_rel) + rng.randfn(0.0, 0.10) > 0.0 and outs_before + 2 <= 3
 				if wins:
 					batter_r.out = true
@@ -847,30 +859,30 @@ static func _execute_ground(play: Dictionary, runners: Array, bases: Array, outs
 					batter_r.t_out = t_rel
 					batter_r.arrivals[1] = bat_rt
 					res.outs_added += 1
-					res.events.append({"t": t_rel, "base": 1, "text": "OUT", "kind": "out"})
-					res["text"] = "Double play %d-%d-3" % [fielder, rcv]
+					res.events.append(PlanEvent.make(t_rel, 1, "OUT", "out"))
+					res.text = "Double play %d-%d-3" % [fielder, rcv]
 					res.suffix = " (double play)"
 				else:
-					res["text"] = "Force out at %s, %d-%d" % [["", "first", "second", "third", "home"][base_out], fielder, rcv]
+					res.text = "Force out at %s, %d-%d" % [["", "first", "second", "third", "home"][base_out], fielder, rcv]
 					res.suffix = " (force at %s)" % ["", "first", "second", "third", "home"][base_out]
 			else:
-				res["text"] = "Force out at %s, %d-%d" % [["", "first", "second", "third", "home"][base_out], fielder, rcv]
+				res.text = "Force out at %s, %d-%d" % [["", "first", "second", "third", "home"][base_out], fielder, rcv]
 				res.suffix = " (force at %s)" % ["", "first", "second", "third", "home"][base_out]
-			res["result"] = "fielders_choice"
+			res.result = "fielders_choice"
 		else:
 			# Beat the throw: nobody is out and the batter is on.
 			res.suffix = " (safe at %s)" % ["", "first", "second", "third", "home"][base_out]
 	if not batter_r.out:
 		if kind == "first" and first_available and play.get("result", "out") == "out":
-			var th: Dictionary = play.get("throw", {})
+			var th: ThrowPlan = play.get("throw")
 			batter_r.out = true
 			batter_r.out_base = 1
-			batter_r.t_out = float(th.get("t1", t_field + 1.2))
+			batter_r.t_out = th.t1 if th != null else t_field + 1.2
 			batter_r.arrivals[1] = bat_rt
 			res.outs_added += 1
-			if not th.is_empty():
+			if th != null:
 				res.throws.append(th)
-			res.events.append({"t": batter_r.t_out, "base": 1, "text": "OUT", "kind": "out"})
+			res.events.append(PlanEvent.make(batter_r.t_out, 1, "OUT", "out"))
 		else:
 			batter_r.to = 1
 			batter_r.arrivals[1] = bat_rt
@@ -899,13 +911,13 @@ static func _execute_ground(play: Dictionary, runners: Array, bases: Array, outs
 		r.to = dest
 		lead_to = dest
 		if dest == 4:
-			res.events.append({"t": r.arrivals[4], "base": 4, "text": "RUN", "kind": "run"})
+			res.events.append(PlanEvent.make(r.arrivals[4], 4, "RUN", "run"))
 
 
 ## A clean ground ball that the batter would beat to first: a runner who is forced can still be
 ## had. Returns true when the defense goes for it (and sets who is out); false for a plain hit.
 static func try_fielders_choice(play: Dictionary, runners: Array, bases: Array, outs_before: int,
-		res: Dictionary, rng: RandomNumberGenerator) -> bool:
+		res: PlayPlan, rng: RandomNumberGenerator) -> bool:
 	if bases[0] == null:
 		return false
 	var opts := ground_options(play, runners, bases, outs_before, false)
@@ -914,7 +926,7 @@ static func try_fielders_choice(play: Dictionary, runners: Array, bases: Array, 
 		return false
 	_execute_ground(play, runners, bases, outs_before, res, rng, pick, false)
 	if res.outs_added == 0:
-		res["result"] = "single"           # he beat it: a base hit, the throw was just a play
+		res.result = "single"           # he beat it: a base hit, the throw was just a play
 	return true
 
 

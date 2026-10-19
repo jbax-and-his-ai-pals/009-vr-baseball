@@ -339,12 +339,12 @@ func _strikeout(ev: Dictionary) -> Dictionary:
 
 
 ## A fair ball put in play (or a foul caught for an out). `play` is Defense.resolve()'s result.
-func in_play(play: Dictionary, plan: Dictionary = {}) -> Dictionary:
+func in_play(play: Dictionary, plan: PlayPlan = null) -> Dictionary:
 	var ev := _event()
 	if over:
 		return ev
 	pitch_count += 1
-	if not plan.is_empty():
+	if plan != null:
 		return _apply_plan(play, plan, ev)
 	var result: String = play.get("result", "out")
 	var batter := current_batter()
@@ -383,9 +383,9 @@ func in_play(play: Dictionary, plan: Dictionary = {}) -> Dictionary:
 
 
 ## Record a play whose runners were already decided by Baserunning.plan().
-func _apply_plan(play: Dictionary, plan: Dictionary, ev: Dictionary) -> Dictionary:
-	var result: String = plan.get("result", play.get("result", "out"))
-	if plan.get("text", "") == "Infield fly rule, batter is out":
+func _apply_plan(play: Dictionary, plan: PlayPlan, ev: Dictionary) -> Dictionary:
+	var result: String = plan.result if plan.result != "" else String(play.get("result", "out"))
+	if plan.text == "Infield fly rule, batter is out":
 		result = "out"
 	var scored: int = plan.runs
 	var added: int = plan.outs_added
@@ -410,11 +410,11 @@ func _apply_plan(play: Dictionary, plan: Dictionary, ev: Dictionary) -> Dictiona
 			if added > 0:
 				text += ", runner thrown out" if added == 1 else ", %d runners thrown out" % added
 		"fielders_choice":
-			text = String(plan.get("text", "Fielder's choice"))
+			text = plan.text if plan.text != "" else "Fielder's choice"
 			if scored > 0:
 				text += ", %d run%s score" % [scored, "" if scored == 1 else "s"]
 		_:
-			text = String(plan.get("text", play.get("text", "Out")))
+			text = plan.text if plan.text != "" else String(play.get("text", "Out"))
 			# A bunt that gives himself up to move a runner: a sacrifice, not an at-bat.
 			if play.get("bunt", false) and added == 1:
 				var moved := false
@@ -426,10 +426,10 @@ func _apply_plan(play: Dictionary, plan: Dictionary, ev: Dictionary) -> Dictiona
 						bat_out = true
 				if moved and bat_out:
 					sacrifices += 1
-					text = "Sacrifice bunt" + (" (%s)" % String(plan.get("text", "")) if plan.has("text") and String(plan.get("text", "")) != "" and not String(plan.get("text", "")).begins_with("Groundout") else "")
+					text = "Sacrifice bunt" + (" (%s)" % plan.text if plan.text != "" and not plan.text.begins_with("Groundout") else "")
 					result = "sacrifice"
-			if not plan.has("text"):
-				text += String(plan.get("suffix", ""))
+			if plan.text == "":
+				text += plan.suffix
 			if scored > 0:
 				text += ", %d run%s score" % [scored, "" if scored == 1 else "s"]
 	bases = (plan.final_bases as Array).duplicate()

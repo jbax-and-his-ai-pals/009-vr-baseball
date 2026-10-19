@@ -54,7 +54,8 @@ func _init() -> void:
 	# A grounder to the first baseman: the pitcher covers first and takes the throw.
 	var h := LiveHit.new()
 	h.play = {"fielder": 3, "movements": [{"fielder": 3, "from": Vector3(-17.5, 0, 22.5), "to": Vector3(-14.0, 0, 20.0), "t0": 0.0, "t1": 1.0, "dive": false}]}
-	h.plan = {"throws": [{"from": Vector3(-14.0, 0, 20.0), "to": Vector3(-19.4, 1, 19.4), "t0": 1.4, "t1": 1.9, "base": 1}]}
+	h.plan = PlayPlan.new()
+	h.plan.add_throw(Vector3(-14.0, 0, 20.0), Vector3(-19.4, 1, 19.4), 1.4, 1.9, 1)
 	var chain: Array = bp._director.build_throws(h)
 	_check(chain.size() == 1 and int(chain[0].rec) == 1, "the pitcher is the one who takes the throw at first (%s)" % str(chain.map(func(c): return c.rec)))
 	var covers := false

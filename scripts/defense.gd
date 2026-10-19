@@ -311,8 +311,7 @@ func _throw_play(f: Dictionary, p: Vector3, t_field: float, sim: Dictionary, run
 		var pitcher_covers: bool = f.num == 3 and not unassisted
 		return _play("out", label, f, p, t_field, {
 			"cover_pitcher": pitcher_covers, "cover_spot": FIRST + Vector3(0.8, 0.0, -0.4),
-			"movements": mv, "throw": {"from": p + Vector3(0.0, 1.3, 0.0), "to": FIRST + Vector3(0.0, 1.0, 0.0),
-				"t0": release, "t1": arrive, "base": 1},
+			"movements": mv, "throw": ThrowPlan.make(p + Vector3(0.0, 1.3, 0.0), FIRST + Vector3(0.0, 1.0, 0.0), release, arrive, 1),
 			"runner_out_at": 1, "run_times": run_times, "margin": margin})
 	var late := _hit_after(f, p, t_field, sim, run_times, "", movements, false, true)
 	late["clean_ground"] = true       # he had it cleanly; the batter just beat the throw
@@ -346,8 +345,8 @@ func _hit_after(f: Dictionary, p: Vector3, t_field: float, sim: Dictionary, run_
 	var tb: Vector3 = bases_pos[mini(throw_base - 1, 3)]
 	return _play(kind, text, f, p, t_field, {
 		"bases": bases, "movements": movements, "run_times": run_times, "note": note,
-		"throw": {"from": p + Vector3(0.0, 1.3, 0.0), "to": tb + Vector3(0.0, 1.0, 0.0),
-			"t0": release, "t1": release + Vector2(p.x - tb.x, p.z - tb.z).length() / f.arm + 0.2, "base": throw_base}})
+		"throw": ThrowPlan.make(p + Vector3(0.0, 1.3, 0.0), tb + Vector3(0.0, 1.0, 0.0),
+			release, release + Vector2(p.x - tb.x, p.z - tb.z).length() / f.arm + 0.2, throw_base)})
 
 
 ## Nobody could reach it on any sample: it rolls on to a stop, or hits the wall. The nearest

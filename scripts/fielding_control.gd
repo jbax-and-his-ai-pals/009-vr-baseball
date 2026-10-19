@@ -190,7 +190,7 @@ func human_catch(h: LiveHit, ball: Vector3) -> void:
 		return
 	if not fair:
 		h.play = fielder_play(h, "foul", "Foul ball", {})
-		h.plan = {}
+		h.plan = null
 		h.play_end = h.t + 0.5
 		h.human_state = "done"
 		return
@@ -209,7 +209,7 @@ func human_miss(h: LiveHit) -> void:
 	h.play = h.fallback if not h.fallback.is_empty() else {"result": "single", "text": "Single", "bases": 1,
 		"field_pos": h.ball.global_position, "field_time": h.t, "movements": [], "fielder": 0}
 	if h.play.get("result", "") in ["foul", ""]:
-		h.plan = {}
+		h.plan = null
 		h.play_end = maxf(h.t + 0.5, float(h.play.get("field_time", 0.0)))
 	else:
 		h.plan = Baserunning.plan(h.play, host._game.bases, host._game.outs, host._batter_player, host._run_rng)
@@ -274,8 +274,7 @@ func human_throw(h: LiveHit, vel: Vector3) -> void:
 	var t_arrive = h.t + HumanFielding.arrival_delay(from, base, speed, float(choice.err))
 	var target = HumanFielding.base_position(base)
 	Baserunning.apply_throw(h.plan, base, t_arrive, host._game.outs, from, host._run_rng)
-	(h.plan.throws as Array).insert(0, {"from": from, "to": target + Vector3(0.0, 1.0, 0.0),
-		"t0": h.t, "t1": t_arrive, "base": base})
+	h.plan.throws.insert(0, ThrowPlan.make(from, target + Vector3(0.0, 1.0, 0.0), h.t, t_arrive, base))
 	var to_pos = HumanFielding.receiver(base, hn)
 	var outs: int = h.plan.outs_added
 	var text = ""
@@ -294,7 +293,7 @@ func human_throw(h: LiveHit, vel: Vector3) -> void:
 		text = "Infield single"
 	h.play = fielder_play(h, result, text, {"bases": 1 if result == "single" else 0,
 		"throw": h.plan.throws[0]})
-	h.plan["text"] = text
+	h.plan.text = text
 	h.play_end = maxf(t_arrive + 0.6, float(h.plan.end_time))
 	host.hud.last_report_extra = ("Throw to %s: %s" % [["", "first", "second", "third", "home"][base], "OUT" if outs > 0 else "safe"])
 	if outs > 0:

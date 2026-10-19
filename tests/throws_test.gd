@@ -25,7 +25,7 @@ func _init() -> void:
 	var fielder: int = int(h.play.get("fielder", 0))
 	print("  grounder fielded by ", fielder, " result ", h.play.get("result", ""), " throws ", h.throws.size())
 	if h.play.get("result", "") == "out" and not h.throws.is_empty():
-		var last: Dictionary = h.throws[h.throws.size() - 1]
+		var last: ThrowPlan = h.throws[h.throws.size() - 1]
 		var glove: Vector3 = Baserunning.RECEIVE_SPOT[1] + Vector3(0.0, 1.15, 0.0)
 		_check((last.to as Vector3).distance_to(glove) < 0.01, "the throw goes to the first baseman's glove, not the bag")
 		_check(is_equal_approx((last.from as Vector3).y, 1.75), "and leaves the throwing hand at shoulder height")

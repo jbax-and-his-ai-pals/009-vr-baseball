@@ -56,7 +56,7 @@ criteria for each phase are in section 5; this is the at-a-glance view. Updated 
 - [ ] Challenges: are the six fair and fun (parameters at the top of `scripts/scenario.gd`)
 - [ ] Exit: two full 3-inning games with no blocking marks; confusion matrix in `DESIGN.md`; tuned mix
 
-### Phase 3 - Split `bullpen.gd` (M3) - DONE except the event bus and typed plans (`bullpen.gd` is 748 lines, down from 3,700)
+### Phase 3 - Split `bullpen.gd` (M3) - DONE (`bullpen.gd` is about 750 lines, down from 3,700)
 - [x] `SoundDirector` (what is heard and why)
 - [x] `PlateCrew` (catcher and umpire, signals, own test)
 - [x] `FieldProps` (dust, dropped bats, game-time delay queue, own test)
@@ -66,8 +66,8 @@ criteria for each phase are in section 5; this is the at-a-glance view. Updated 
 - [x] `PitchFlight` (`scripts/pitch_flight.gd`: launch, flight, landing, contact, the play, your swing, the held ball)
 - [x] `HumanPitcher` (controller reading, release into a pitch description, learned aim funnel, throw log entry; own test). The scene keeps launching the pitch, the pickoff flow and the held-ball visual
 - [x] The rest of the scene, split by what it does (each class holds a `host` reference to the scene and the scene reaches it by name): `GameFlow` (batter's turn, plays, events), `FieldingControl` (human fielding, catching, the catcher's throw), `RunnerPlays` (steals, throws over, rundowns, balks), `RoleSwitch` (two-way), `Activities` (derby, drills, challenges, lesson), `Manager` (signs, gestures, visits, changes), `HudText` (boards, notices, report text), `SessionRecorder` (logs), `GameResults` (lines, the book, the career), `WorldBuilder` (park, people, XR rig), `MenuHost` (menus). `bullpen.gd` is the composition root: exports, settings, `_ready`, `_process`, new game, config
-- [ ] Event bus: typed events (`pitch_arrived`, `contact`, `play_event`, `pa_over`, `half_over`, `game_over`) replacing the remaining direct calls
-- [ ] Typed plans (`PlayPlan`, `RunnerPlan`, `ThrowPlan`) instead of dictionaries
+- [x] Event bus: `GameBus` (typed signals: `pitch_arrived`, `contact_made`, `pitch_resolved`, `ball_landed`, `event_happened`, `event_settled`, `pa_over`, `half_over`, `game_over`, `play_announced`); `Reactions` (sound, haptics, dust, crowd, dugouts) and `Activities`, `Manager`, `GameResults`, `SessionRecorder` listen; the game plays the same with the reactions disconnected (tests/bus_test.gd). Some direct calls between classes remain where one has to finish before the next starts (steal resolution, the walk-on)
+- [x] Typed plans: `PlayPlan`, `RunnerPlan` (with `Hedge`), `ThrowPlan`, `PlanEvent` replace the plan dictionaries in Baserunning, Defense (its throw), PlayDirector, GameState and the scene; the play from the defense (`Defense.resolve`) is still a dictionary (tests/plan_types_test.gd)
 - [x] One RNG per concern: gameplay, cosmetic, bottom-half and every AI class (`AIPitcher`, `BatterAI`, `Defense`, `GameState`) draw from streams seeded by the game seed (`_seed_rules`); cosmetic choices (walk-up music, doll styles) use the cosmetic stream
 - [x] Test: a seed replays the game (tests/replay_test.gd: same seed, same final score and line; different seed, different game)
 - [x] Each presenter has a test (`PlateCrew`, `FieldProps`, `BatterPresenter`, and `SoundDirector` / `PlayDirector` in tests/directors_test.gd)

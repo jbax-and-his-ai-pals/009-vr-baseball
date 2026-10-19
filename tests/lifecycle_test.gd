@@ -52,7 +52,7 @@ func _init() -> void:
 				var info := "ready=%s walk_on=%s aux=%s over=%s inning=%d outs=%d" % [bp.flow.batter_ready, not bp._walk_on.is_empty(),
 					not bp.flow.aux_play.is_empty(), bp._game.over, bp._game.inning, bp._game.outs]
 				for hh in bp.flight.hits:
-					info += " | hit result=%s shown=%s hidden=%s t=%.1f" % [hh.play.get("result", "?"), hh.result_shown, hh.plan.get("batter_hidden", "-"), hh.t]
+					info += " | hit result=%s shown=%s hidden=%s t=%.1f" % [hh.play.get("result", "?"), hh.result_shown, (hh.plan.batter_hidden_done if hh.plan != null else "-"), hh.t]
 				print("  INVISIBLE: ", info)
 		if bp.flow.batter_ready and bp._batter.transform.origin.distance_to(bp._batter_home.origin) > 0.1:
 			ready_away_frames += 1
@@ -98,9 +98,9 @@ func _init() -> void:
 	# A double play 4-6-3: each throw is made by the man who took the last one.
 	var dp = LiveHit.new()
 	dp.play = {"fielder": 4, "movements": [{"fielder": 4, "from": Vector3(8, 0, 30), "to": Vector3(8, 0, 30), "t0": 0.0, "t1": 1.0, "dive": false}]}
-	dp.plan = {"throws": [
-		{"from": Vector3(8, 0, 30), "to": Vector3(0, 1, 38.8), "t0": 1.0, "t1": 1.6, "base": 2},
-		{"from": Vector3(0, 0, 38.8), "to": Vector3(-19.4, 1, 19.4), "t0": 1.9, "t1": 2.6, "base": 1}]}
+	dp.plan = PlayPlan.new()
+	dp.plan.add_throw(Vector3(8, 0, 30), Vector3(0, 1, 38.8), 1.0, 1.6, 2)
+	dp.plan.add_throw(Vector3(0, 0, 38.8), Vector3(-19.4, 1, 19.4), 1.9, 2.6, 1)
 	var chain: Array = bp._director.build_throws(dp)
 	_check(chain.size() == 2 and int(chain[0].by) == 4 and int(chain[0].rec) == 6, "double play: the second baseman throws to the shortstop at second")
 	_check(chain.size() == 2 and int(chain[1].by) == 6 and int(chain[1].rec) == 3, "double play: the shortstop, not the second baseman, throws on to first")
@@ -109,8 +109,19 @@ func _init() -> void:
 	_check(bp._director.catch_clip({"field_pos": Vector3(0, 3.0, 60)}, 8) == "jump", "a ball over his head is a jump catch")
 	_check(bp._director.catch_clip({"field_pos": Vector3(0, 1.4, 60)}, 8) == "catch", "a ball at chest height is a plain catch")
 	_check(bp._director.catch_clip({"field_pos": Vector3(13.3, 0.2, 31.2)}, 6) == "backhand", "a ball far to the side is a backhand")
-	_check(bp._director.is_tag_play({"runners": [{"out": true, "out_base": 4, "forced_out": false}]}, 4), "an out at the plate with no force is a tag")
-	_check(not bp._director.is_tag_play({"runners": [{"out": true, "out_base": 2, "forced_out": true}]}, 2), "a force out is not a tag")
+	var at_plate := PlayPlan.new()
+	var r_plate := RunnerPlan.make(3, null, 1.0)
+	r_plate.out = true
+	r_plate.out_base = 4
+	at_plate.runners.append(r_plate)
+	var at_second := PlayPlan.new()
+	var r_force := RunnerPlan.make(1, null, 1.0)
+	r_force.out = true
+	r_force.out_base = 2
+	r_force.forced_out = true
+	at_second.runners.append(r_force)
+	_check(bp._director.is_tag_play(at_plate, 4), "an out at the plate with no force is a tag")
+	_check(not bp._director.is_tag_play(at_second, 2), "a force out is not a tag")
 	var felt := {}
 	for pulse in bp._haptics.history:
 		felt[pulse.event] = true

@@ -290,7 +290,7 @@ func land(pitch: LivePitch) -> void:
 		host.plays.since_throw[i] = int(host.plays.since_throw[i]) + 1
 	# A pitch the catcher cannot handle: every runner moves up a base.
 	var wild_ev = {}
-	var wild_plan = {}
+	var wild_plan: PlayPlan = null
 	if outcome != "hit_by_pitch" and not host._game.bases.is_empty() and host._game.bases != [null, null, null]:
 		var off = PitchLocation.outside_by(plate.x, plate.y) if a.get("reached", false) else 0.9
 		var p_wild = 0.0
@@ -310,9 +310,8 @@ func land(pitch: LivePitch) -> void:
 			wild_ev = host._game.wild_pitch(off <= 0.25)
 			if wild_ev.get("result", "") != "":
 				wild_plan = Baserunning.plan_advance(before)
-				wild_plan["events"].append({"t": 0.15, "base": 0, "text": "WILD PITCH" if off > 0.25 else "PASSED BALL",
-					"kind": "safe", "at": Vector3(0.0, 0.0, 0.0)})
-				wild_plan["_before"] = before
+				wild_plan.add_event(0.15, 0, "WILD PITCH" if off > 0.25 else "PASSED BALL", "safe", Vector3(0.0, 0.0, 0.0))
+				wild_plan.shown_from = before
 	var bases_before = host._game.bases.duplicate()
 	var ev: Dictionary
 	# Strike three that gets away from the catcher: with first base open (or two outs) he can run.
@@ -321,9 +320,9 @@ func land(pitch: LivePitch) -> void:
 		ev = host._game.dropped_third_strike(host._run_rng.randf() < 0.55)
 	else:
 		ev = host._game.pitch(outcome)
-	if not wild_plan.is_empty() and not ev.get("pa_over", false) and host.flow.aux_play.is_empty():
+	if wild_plan != null and not ev.get("pa_over", false) and host.flow.aux_play.is_empty():
 		# Show them go: the batter stays put, the men on base run.
-		var shown_from: Array = wild_plan["_before"]
+		var shown_from: Array = wild_plan.shown_from
 		host.flow.aux_play = {"plan": wild_plan, "t": 0.0}
 		host.flow.refresh_base_runners(shown_from)
 	host.flow.begin_pa_exit(ev, bases_before)
@@ -417,8 +416,8 @@ func contact(pitch: LivePitch) -> void:
 		h.plan = Baserunning.plan(h.play, host._game.bases, host._game.outs, host._batter_player, host._run_rng, head_start)
 		h.play_end = maxf(h.play_end, float(h.plan.end_time))
 		# A double play (or a throw to a runner) changes where the ball goes and who covers.
-		if h.plan.has("cover"):
-			var cv: Dictionary = h.plan.cover
+		if h.plan.cover != null:
+			var cv: PlayPlan.Cover = h.plan.cover
 			var cf = host._defense.fielder_by_num(int(cv.fielder))
 			if not cf.is_empty():
 				h.play.movements = (h.play.movements as Array).duplicate()
@@ -462,11 +461,12 @@ func contact(pitch: LivePitch) -> void:
 	host.hud.refresh_hud()
 	print(host.hud.last_report.replace("\n", " | "))
 	var pl: Dictionary = h.play
-	var pn: Dictionary = h.plan
+	var pn: PlayPlan = h.plan
 	var runner_moves = []
-	for r in pn.get("runners", []):
-		runner_moves.append({"who": r.who.name if r.who is Player else "?", "from": r.from, "to": r.to, "out": r.out,
-			"out_base": r.out_base, "hedge": r.has("hedge")})
+	if pn != null:
+		for r in pn.runners:
+			runner_moves.append({"who": r.who.name if r.who is Player else "?", "from": r.from, "to": r.to, "out": r.out,
+				"out_base": r.out_base, "hedge": r.hedge != null})
 	host.slog.record("contact", {"contact_kind": b.kind, "bunt": b.get("bunt", false), "ev": b.ev, "la": b.la, "spray": b.get("spray", 0.0),
 		"hit_kind": sim.get("kind", ""), "distance": sim.get("distance", 0.0), "apex": sim.get("apex", 0.0),
 		"hang": sim.get("hang_time", 0.0), "fair": sim.get("fair", false), "wall": sim.get("wall", false),
@@ -475,9 +475,9 @@ func contact(pitch: LivePitch) -> void:
 		"field_time": pl.get("field_time", 0.0), "field_pos": pl.get("field_pos", Vector3.ZERO),
 		"caught_in_air": pl.get("caught_in_air", false), "clean_ground": pl.get("clean_ground", false),
 		"infield_fly": pl.get("infield_fly", false), "human_chance": h.human_chance,
-		"runners": runner_moves, "plan_outs": pn.get("outs_added", 0), "plan_runs": pn.get("runs", 0),
-		"plan_text": pn.get("text", ""), "plan_result": pn.get("result", ""),
-		"throws": (h.throws as Array).map(func(t): return {"base": t.get("base", 0), "by": t.get("by", 0), "rec": t.get("rec", 0)})})
+		"runners": runner_moves, "plan_outs": pn.outs_added if pn != null else 0, "plan_runs": pn.runs if pn != null else 0,
+		"plan_text": pn.text if pn != null else "", "plan_result": pn.result if pn != null else "",
+		"throws": h.throws.map(func(t): return {"base": t.base, "by": t.by, "rec": t.rec})})
 
 
 func update_hit(h: LiveHit, delta: float) -> void:

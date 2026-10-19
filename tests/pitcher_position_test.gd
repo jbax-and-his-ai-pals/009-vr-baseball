@@ -64,7 +64,7 @@ func _init() -> void:
 	bp._camera.global_position = Vector3(0.0, 1.7, 17.4)
 	bp.fielding.check_cover(h2)
 	_check(bp.fielding.fld.uncovered == 1 and h2.play.result == "single" and h2.play.text.contains("nobody covered"), "still on the mound: he is safe")
-	_check(h2.plan.has("runners") and not h2.plan.runners.is_empty(), "and the runners are replanned")
+	_check(h2.plan != null and not h2.plan.runners.is_empty(), "and the runners are replanned")
 	_check(h2.cover_t < 0.0, "the duty is settled once")
 	var line: Dictionary = bp.results.fielding_line()
 	_check(line.covers == 1 and line.uncovered == 1, "both are in your line")

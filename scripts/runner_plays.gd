@@ -83,7 +83,7 @@ func resolve_steal(a: Dictionary) -> void:
 
 ## Put a steal's result in the picture and in the book (_finish_steal does the book when the picture gets there).
 func apply_steal(safe: bool, t_ball_raw: float, flight: float, info: Dictionary) -> void:
-	var plan: Dictionary = steal.plan
+	var plan: PlayPlan = steal.plan
 	var t_now = float(host.flow.aux_play.get("t", 0.0)) if not host.flow.aux_play.is_empty() else 0.0
 	var base = int(steal.from)
 	var t_ball: float = maxf(t_ball_raw, t_now + 0.3)
@@ -228,7 +228,7 @@ func call_balk(why: String) -> void:
 		return
 	if host.flow.aux_play.is_empty():
 		var plan = Baserunning.plan_advance(before)
-		(plan["events"] as Array).append({"t": 0.1, "base": 0, "text": "BALK", "kind": "out", "at": Vector3(0.0, 0.0, 0.0)})
+		plan.add_event(0.1, 0, "BALK", "out", Vector3(0.0, 0.0, 0.0))
 		host.flow.aux_play = {"plan": plan, "t": 0.0}
 		host.flow.refresh_base_runners(before)
 	host.hud.last_report = "BALK - %s\n" % why + host.hud.event_text(ev)

@@ -34,6 +34,17 @@ func _sound() -> Array:
 	return [sd, spy]
 
 
+## A plan with one runner put out at `base` (on a force or not).
+func _out_plan(base: int, forced: bool) -> PlayPlan:
+	var plan := PlayPlan.new()
+	var r := RunnerPlan.make(1, null, 1.0)
+	r.out = true
+	r.out_base = base
+	r.forced_out = forced
+	plan.runners.append(r)
+	return plan
+
+
 func _init() -> void:
 	var pair := _sound()
 	var sd: SoundDirector = pair[0]
@@ -118,7 +129,7 @@ func _init() -> void:
 	_check(is_equal_approx(pd.play_end_time(single, 1.0), 4.7), "a single lasts until he is on first")
 	var hr := {"result": "home_run", "fielder": 0, "bases": 4, "run_times": [4.2, 8.0, 11.5, 15.0]}
 	_check(is_equal_approx(pd.play_end_time(hr, 5.0), 12.0), "a homer lasts while he trots (0.8 of the circuit)")
-	var thrown := {"result": "out", "fielder": 6, "field_time": 2.0, "bases": 0, "runner_out_at": 1, "run_times": [4.2, 8.0, 11.5, 15.0], "throw": {"t1": 4.0}}
+	var thrown := {"result": "out", "fielder": 6, "field_time": 2.0, "bases": 0, "runner_out_at": 1, "run_times": [4.2, 8.0, 11.5, 15.0], "throw": ThrowPlan.make(Vector3.ZERO, Vector3.ZERO, 0.0, 4.0, 1)}
 	_check(is_equal_approx(pd.play_end_time(thrown, 1.0), 4.7), "a throw to first ends when the runner would have arrived")
 	_check(pd.receiver_candidates(1, 6, Vector3.ZERO) == [3, 1, 4], "first base: the first baseman, then the pitcher, then the second baseman")
 	_check(pd.receiver_for(2, 6, Vector3.ZERO) == 4 and pd.receiver_for(2, 4, Vector3.ZERO) == 6, "the middle infielders take each other's throws at second")
@@ -128,10 +139,10 @@ func _init() -> void:
 	_check(pd.catch_clip({"field_pos": Vector3(8.5, 0.3, 32.5)}, 6) == "scoop", "a grounder at his feet is a scoop")
 	_check(pd.catch_clip({"field_pos": Vector3(14.0, 0.3, 32.5)}, 6) == "backhand", "one well off to the side is a backhand")
 	_check(pd.catch_clip({"field_pos": Vector3(8.5, 1.4, 32.5)}, 6) == "catch", "a chest-high one is a catch")
-	var forced_out := {"runners": [{"out": true, "out_base": 2, "forced_out": true}]}
-	var tag_out := {"runners": [{"out": true, "out_base": 2, "forced_out": false}]}
+	var forced_out := _out_plan(2, true)
+	var tag_out := _out_plan(2, false)
 	_check(not pd.is_tag_play(forced_out, 2) and pd.is_tag_play(tag_out, 2) and not pd.is_tag_play(tag_out, 1), "a tag is an out at a base that was not a force (and never first)")
-	_check(pd.plan_anim_end({}) == 0.0, "an empty plan has no animation")
+	_check(pd.plan_anim_end(null) == 0.0 and pd.plan_anim_end(PlayPlan.new()) == 0.0, "an empty plan has no animation")
 
 	print("FAILURES: %d" % _failures)
 	quit(1 if _failures > 0 else 0)

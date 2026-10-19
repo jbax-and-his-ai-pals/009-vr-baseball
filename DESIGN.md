@@ -450,7 +450,7 @@ Options > Sound screen.
 | `world` | `WorldBuilder` | the park, the people, the camera and controllers |
 | `menus` | `MenuHost` | opening, closing and answering the menus |
 
-Older pieces with their own signals and tests: `SoundDirector`, `PlateCrew`, `FieldProps`, `BatterPresenter`, `PlayDirector`, `BaseUmpires`, `HumanPitcher`, `Dugouts`. Not done: a typed event bus (the classes still call each other through the host) and typed plans instead of dictionaries.
+Older pieces with their own signals and tests: `SoundDirector`, `PlateCrew`, `FieldProps`, `BatterPresenter`, `PlayDirector`, `BaseUmpires`, `HumanPitcher`, `Dugouts`. The classes talk through a typed `GameBus` (signals for a pitch arriving, contact, a ball landing, an event of the game, the end of a half or game) so the code that makes something happen does not know who reacts; `Reactions` is the presentation listener. What happens on the bases is a typed `PlayPlan` (`RunnerPlan`, `ThrowPlan`, `PlanEvent`) made by `Baserunning`, played by `PlayDirector` and read by `GameState`. The defense's play (`Defense.resolve`) is still a dictionary.
 
 ## Career (built, first version)
 

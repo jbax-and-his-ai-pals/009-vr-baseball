@@ -18,8 +18,8 @@ var linger := 5.0
 var marker: MeshInstance3D
 var label: Label3D
 var play := {}            # Defense.resolve() result for this ball in play
-var plan := {}            # Baserunning.plan(): every runner's timeline, throws, events
-var throws: Array = []    # the ball's journey between fielders (relays included), in order
+var plan: PlayPlan = null   # Baserunning.plan(): every runner's timeline, throws, events (null until there is one)
+var throws: Array[ThrowPlan] = []    # the ball's journey between fielders (relays included), in order
 var anim_done := {}       # which throws and catches have had their animation started
 var bunt := false         # he squared around to bunt
 var human_chance := false # the human fielder is the one who would make this play

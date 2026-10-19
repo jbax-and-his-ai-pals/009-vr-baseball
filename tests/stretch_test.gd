@@ -62,7 +62,8 @@ func _init() -> void:
 	await process_frame
 	var h := LiveHit.new()
 	h.play = {"fielder": 4, "movements": [{"fielder": 4, "from": Vector3(-8.5, 0.0, 32.5), "to": Vector3(-10.0, 0.0, 24.0), "t0": 0.3, "t1": 1.4, "dive": false}]}
-	h.plan = {"throws": [{"from": Vector3(-10.0, 1.3, 24.0), "to": Defense.FIRST + Vector3(0.0, 1.0, 0.0), "t0": 1.9, "t1": 2.8, "base": 1}]}
+	h.plan = PlayPlan.new()
+	h.plan.add_throw(Vector3(-10.0, 1.3, 24.0), Defense.FIRST + Vector3(0.0, 1.0, 0.0), 1.9, 2.8, 1)
 	bp._director.build_throws(h)
 	var backed := false
 	var spot := Vector3.ZERO
@@ -74,7 +75,8 @@ func _init() -> void:
 	_check(backed and Vector2(spot.x + 40.0, spot.z - 80.0).length() > 5.0, "partway there (he cannot cover 60 m in 2 s)")
 	var h2 := LiveHit.new()
 	h2.play = {"fielder": 3, "movements": []}
-	h2.plan = {"throws": [{"from": Vector3(-17.0, 1.3, 21.0), "to": Defense.FIRST, "t0": 1.0, "t1": 1.2, "base": 1}]}
+	h2.plan = PlayPlan.new()
+	h2.plan.add_throw(Vector3(-17.0, 1.3, 21.0), Defense.FIRST, 1.0, 1.2, 1)
 	bp._director.build_throws(h2)
 	var any9 := false
 	for m in h2.play.movements:

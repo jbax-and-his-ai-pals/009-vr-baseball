@@ -8,7 +8,7 @@ extends RefCounted
 ##   batter_hidden(plan)   the batter-runner has left the box (the scene drops his bat and, if the
 ##                         plan says so, starts the next batter walking on)
 
-signal batter_hidden(plan: Dictionary)
+signal batter_hidden(plan: PlayPlan)
 
 const BASE_STANDS := [Vector3(-18.5, 0.0, 19.0), Vector3(0.0, 0.0, 37.9), Vector3(18.5, 0.0, 19.0)]
 
@@ -55,8 +55,8 @@ func ball_with_fielder(h: LiveHit) -> Vector3:
 	var field_t: float = float(play.get("field_time", 0.0))
 	# The throws in order (a double play or a relay is several); otherwise the one the defense planned.
 	var throws: Array = h.throws
-	if throws.is_empty():
-		throws = h.plan.get("throws", [])
+	if throws.is_empty() and h.plan != null:
+		throws = h.plan.throws
 	if throws.is_empty() and play.has("throw"):
 		throws = [play.throw]
 	var release_t := field_t + 0.4
@@ -81,10 +81,10 @@ func ball_with_fielder(h: LiveHit) -> Vector3:
 		var arc := clampf(0.07 * d, 0.2, 5.0) * 4.0 * u * (1.0 - u)
 		pos = from.lerp(to, u) + Vector3(0.0, arc, 0.0)
 		# It leaves the thrower's hand and ends in the receiver's glove, where it stays.
-		var by = field_nodes.get(int(th.get("by", 0)))
+		var by = field_nodes.get(th.by)
 		if by is Doll:
 			pos = pos.lerp((by as Doll).hand_world(), 1.0 - smoothstep(0.0, 0.12, u))
-		var rec = field_nodes.get(int(th.get("rec", 0)))
+		var rec = field_nodes.get(th.rec)
 		if rec is Doll:
 			pos = pos.lerp((rec as Doll).glove_world(), smoothstep(0.75, 0.97, u))
 	return pos
@@ -115,20 +115,20 @@ func receiver_for(base: int, thrower: int, from: Vector3) -> int:
 ## Turn the planned throws (to a base position) into throws between players: each goes to the
 ## glove of the man covering that base, long ones through a cutoff man, with that man moving
 ## into place. Adds the receivers' and cutoff men's movements to the play.
-func build_throws(h: LiveHit) -> Array:
-	var raw: Array = h.plan.get("throws", [])
+func build_throws(h: LiveHit) -> Array[ThrowPlan]:
+	var raw: Array = h.plan.throws if h.plan != null else []
 	if raw.is_empty() and h.play.has("throw"):
 		raw = [h.play.throw]
+	var out: Array[ThrowPlan] = []
 	if raw.is_empty():
-		return []
-	var out: Array = []
+		return out
 	var moves: Array = (h.play.get("movements", []) as Array).duplicate()
 	var has_move := {}
 	for m in moves:
 		has_move[int(m.fielder)] = true
 	var thrower := int(h.play.get("fielder", 0))
 	for th in raw:
-		var base := int(th.get("base", 1))
+		var base: int = th.base if th.base > 0 else 1
 		var spot: Vector3 = Baserunning.RECEIVE_SPOT[clampi(base, 1, 4)]
 		var glove := spot + Vector3(0.0, 1.15, 0.0)
 		var from_p: Vector3 = th.from
@@ -153,16 +153,14 @@ func build_throws(h: LiveHit) -> Array:
 			if relay == receiver:
 				relay = 4 if relay == 6 else 6
 			var tm := t0 + (t1 - t0) * 0.62
-			out.append({"from": from, "to": rp + Vector3(0.0, 1.15, 0.0), "t0": t0, "t1": tm, "base": base,
-				"by": thrower, "rec": relay})
-			out.append({"from": rp + Vector3(0.0, 1.75, 0.0), "to": glove, "t0": tm + 0.22, "t1": maxf(t1, tm + 0.7),
-				"base": base, "by": relay, "rec": receiver})
+			out.append(_throw(from, rp + Vector3(0.0, 1.15, 0.0), t0, tm, base, thrower, relay))
+			out.append(_throw(rp + Vector3(0.0, 1.75, 0.0), glove, tm + 0.22, maxf(t1, tm + 0.7), base, relay, receiver))
 			if not has_move.has(relay):
 				var rf := defense.fielder_by_num(relay)
 				moves.append({"fielder": relay, "from": rf.home, "to": rp, "t0": 0.2, "t1": maxf(tm - 0.25, 1.0), "dive": false})
 				has_move[relay] = true
 		else:
-			out.append({"from": from, "to": glove, "t0": t0, "t1": t1, "base": base, "by": thrower, "rec": receiver})
+			out.append(_throw(from, glove, t0, t1, base, thrower, receiver))
 		if receiver != thrower and not has_move.has(receiver):
 			var rv := defense.fielder_by_num(receiver)
 			if not rv.is_empty():
@@ -184,6 +182,14 @@ func build_throws(h: LiveHit) -> Array:
 				has_move[bnum] = true
 	h.play.movements = moves
 	return out
+
+
+## A throw between two fielders (the planned throw to a base, with who throws and who catches).
+func _throw(from: Vector3, to: Vector3, t0: float, t1: float, base: int, by: int, rec: int) -> ThrowPlan:
+	var t := ThrowPlan.make(from, to, t0, t1, base)
+	t.by = by
+	t.rec = rec
+	return t
 
 
 func start_play(h: LiveHit) -> void:
@@ -300,11 +306,11 @@ func stand_for(base: int) -> Vector3:
 
 
 ## Where a runner is at time t, and which way he faces, from his planned arrivals.
-func runner_at(r: Dictionary, t: float) -> Array:
-	var spot: Vector3 = stand_spot(int(r.from))
+func runner_at(r: RunnerPlan, t: float) -> Array:
+	var spot: Vector3 = stand_spot(r.from)
 	# A runner with keyframes (he hedged off the bag and came back, or waited for the ball to
 	# land) follows them: [[time, position], ...].
-	var kf: Array = r.get("keys", [])
+	var kf: Array = r.keys
 	if not kf.is_empty():
 		var first_p: Vector3 = spot
 		var q_t: float = 0.0
@@ -363,11 +369,11 @@ func play_throw_animations(h: LiveHit) -> void:
 				var at_glove: Vector3 = (fn as Node3D).global_position + Vector3(0.0, 0.8, 0.0)
 				sound.sfx_later(0.3, "glove_catch_fly" if how in ["catch", "jump"] else "glove_scoop_ground", at_glove)
 	for i in h.throws.size():
-		var th: Dictionary = h.throws[i]
+		var th: ThrowPlan = h.throws[i]
 		var key := "t%d" % i
-		if not h.anim_done.has(key) and t >= float(th.t0) - 0.42:
+		if not h.anim_done.has(key) and t >= th.t0 - 0.42:
 			h.anim_done[key] = true
-			var by = field_nodes.get(int(th.get("by", 0)))
+			var by = field_nodes.get(th.by)
 			if by is Doll:
 				var from: Vector3 = th.from
 				var to: Vector3 = th.to
@@ -378,11 +384,11 @@ func play_throw_animations(h: LiveHit) -> void:
 				var kind := "overhand" if d > 30.0 else ("sidearm" if d > 12.0 else "underhand")
 				(by as Doll).throw_to(to, kind, 0.75)
 		var rkey := "r%d" % i
-		if not h.anim_done.has(rkey) and t >= float(th.t1) - 0.3:
+		if not h.anim_done.has(rkey) and t >= th.t1 - 0.3:
 			h.anim_done[rkey] = true
-			var rec = field_nodes.get(int(th.get("rec", 0)))
+			var rec = field_nodes.get(th.rec)
 			if rec is Doll:
-				var is_tag := is_tag_play(h.plan, int(th.get("base", 0)))
+				var is_tag := is_tag_play(h.plan, th.base)
 				(rec as Doll).play("tag" if is_tag else "catch", 0.6)
 				sound.sfx_later(0.3, "tag_slap" if is_tag else "glove_catch_throw", (rec as Node3D).global_position + Vector3(0.0, 1.0, 0.0))
 
@@ -407,20 +413,20 @@ func catch_clip(play: Dictionary, fielder: int) -> String:
 
 
 ## Is the out at this base a tag (not a force, not the batter beaten to first)?
-func is_tag_play(plan: Dictionary, base: int) -> bool:
-	if base == 1:
+func is_tag_play(plan: PlayPlan, base: int) -> bool:
+	if base == 1 or plan == null:
 		return false
-	for r in plan.get("runners", []):
-		if bool(r.out) and int(r.out_base) == base and not bool(r.get("forced_out", false)):
+	for r in plan.runners:
+		if r.out and r.out_base == base and not r.forced_out:
 			return true
 	return false
 
 
 ## When the last runner who is out has walked back to the dugout.
-func plan_anim_end(plan: Dictionary) -> float:
-	if plan.is_empty():
+func plan_anim_end(plan: PlayPlan) -> float:
+	if plan == null:
 		return 0.0
-	var end := float(plan.get("end_time", 0.0))
+	var end := plan.end_time
 	for r in plan.runners:
 		if bool(r.out):
 			var p: Vector3 = runner_at(r, float(r.t_out))[0]
@@ -432,14 +438,14 @@ func plan_anim_end(plan: Dictionary) -> float:
 
 ## Run every runner on the plan at time t: the batter, the men already on base, and anyone
 ## who is out walking back to the dugout.
-func animate_plan(plan: Dictionary, t: float) -> void:
-	if plan.is_empty():
+func animate_plan(plan: PlayPlan, t: float) -> void:
+	if plan == null:
 		return
-	var hide_at: float = plan.get("hide_batter_at", 0.25)
-	if t >= hide_at and not plan.get("batter_hidden", false):
+	var hide_at: float = plan.hide_batter_at
+	if t >= hide_at and not plan.batter_hidden_done:
 		# Once per plan: an older play still walking its runners off must never hide the next
 		# batter who has since come up.
-		plan["batter_hidden"] = true
+		plan.batter_hidden_done = true
 		batter_hidden.emit(plan)
 	var out_i := 0
 	for r in plan.runners:
@@ -474,28 +480,27 @@ func animate_plan(plan: Dictionary, t: float) -> void:
 		if t > done_at:
 			fig.visible = false
 			continue
-		if fig is Doll and not r.get("slid", false) and (bool(r.out) or plan.get("steal", false)):
+		if fig is Doll and not r.slid and (r.out or plan.steal):
 			var slide_base := int(r.out_base) if bool(r.out) else int(r.to)
 			if slide_base in [2, 3, 4]:
 				var t_there: float = float(r.t_out) if bool(r.out) else float(r.arrivals.get(slide_base, 1e9))
 				if t >= t_there - 0.5:
-					r["slid"] = true
+					r.slid = true
 					(fig as Doll).play("slide", 0.9)
 					props.puff_at(fig, 0.2, 0.6, 3)
 					props.puff_at(fig, 0.45, 0.8, 4)
 					sound.sfx_later(0.15, "slide_dirt", (fig as Node3D).global_position)
 		if fig is Doll:
-			if r.get("dive", false) and not r.get("dived", false) and t >= 0.05:
-				r["dived"] = true              # back to the bag head first
+			if r.dive and not r.dived and t >= 0.05:
+				r.dived = true              # back to the bag head first
 				(fig as Doll).play("dive", 0.85)
 				props.puff_at(fig, 0.4, 0.7, 4)
-			if not r.get("cheered", false) and not bool(r.out) and int(r.to) == 4 and r.arrivals.has(4) \
+			if not r.cheered and not r.out and r.to == 4 and r.arrivals.has(4) \
 					and t >= float(r.arrivals[4]) - 0.05:
-				r["cheered"] = true            # he scores: arms up
+				r.cheered = true            # he scores: arms up
 				(fig as Doll).play("celebrate", 0.9)
 				sound.sfx("cloth_rustle", (fig as Node3D).global_position, -6.0)
-			var hedge: Dictionary = r.get("hedge", {})
-			(fig as Doll).watching = not hedge.is_empty() and t >= float(hedge.t_reach) and t < float(hedge.t_leave)
+			(fig as Doll).watching = r.hedge != null and t >= r.hedge.t_reach and t < r.hedge.t_leave
 		fig.visible = true
 		var at: Array = runner_at(r, t)
 		var pos: Vector3 = at[0]
@@ -505,44 +510,44 @@ func animate_plan(plan: Dictionary, t: float) -> void:
 			fig.rotation.y = float(at[1])
 	# A base is reached or a tag made: the thump of the bag, the scoreboard when a run scores.
 	for ei in plan.events.size():
-		var se: Dictionary = plan.events[ei]
+		var se: PlanEvent = plan.events[ei]
 		var skey := "snd%d" % ei
-		if t >= float(se.t) and not plan.get(skey, false):
-			plan[skey] = true
+		if t >= se.t and not plan.fired.get(skey, false):
+			plan.fired[skey] = true
 			var sb := int(se.base)
 			if sb >= 1 and sb <= 4 and se.kind != "run":
 				sound.sfx("base_bag_thump", (Defense.HOME if sb == 4 else Baserunning.BASE_POS[sb]) as Vector3, -3.0)
 	# The plate umpire rules on a play at home.
 	for e in plan.events:
-		if int(e.base) == 4 and t >= float(e.t) and not plan.get("ump_%s" % e.text, false):
+		if e.base == 4 and t >= e.t and not plan.fired.get("ump_%s" % e.text, false):
 			if e.text == "OUT":
-				plan["ump_OUT"] = true
+				plan.fired["ump_OUT"] = true
 				crew.call_it("ump_out", 0.1, 1.0)
 			elif e.text == "RUN" or e.text == "SAFE":
-				plan["ump_%s" % e.text] = true
-				if not plan.get("ump_safe_called", false):
-					plan["ump_safe_called"] = true
+				plan.fired["ump_%s" % e.text] = true
+				if not plan.fired.get("ump_safe_called", false):
+					plan.fired["ump_safe_called"] = true
 					crew.call_it("ump_safe", 0.1, 1.0)
 	# The base umpires rule on a play at their base.
 	if base_umps != null:
 		for ei in plan.events.size():
-			var be: Dictionary = plan.events[ei]
-			var eb := int(be.base)
-			if eb >= 1 and eb <= 3 and (be.text == "OUT" or be.text == "SAFE") and t >= float(be.t):
+			var be: PlanEvent = plan.events[ei]
+			var eb := be.base
+			if eb >= 1 and eb <= 3 and (be.text == "OUT" or be.text == "SAFE") and t >= be.t:
 				var bkey := "bu%d" % ei
-				if not plan.get(bkey, false):
-					plan[bkey] = true
+				if not plan.fired.get(bkey, false):
+					plan.fired[bkey] = true
 					base_umps.call_it(eb, "ump_out" if be.text == "OUT" else "ump_safe")
 	# Callouts: each event shows once its time has come.
 	var shown := {}
 	var slot := 0
 	for e in plan.events:
-		if t < float(e.t) or slot >= play_labels.size():
+		if t < e.t or slot >= play_labels.size():
 			continue
-		var base := int(e.base)
+		var base := e.base
 		var where: Vector3 = Defense.HOME if base == 4 else (Baserunning.BASE_POS[base] as Vector3)
 		if base == 0:
-			where = (e.get("at", Defense.FIRST) as Vector3)
+			where = e.at if e.has_at() else Defense.FIRST
 		var stack: int = shown.get(base, 0)
 		shown[base] = stack + 1
 		var color := Color(1.0, 0.35, 0.3)
