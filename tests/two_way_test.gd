@@ -113,7 +113,7 @@ func _init() -> void:
 		if bp._batter_ready:
 			break
 	var board: Dictionary = {}
-	bp._refresh_scoreboard()
+	bp.hud.refresh_scoreboard()
 	_check(bp.roles.top_game.pitch_count == 0 or bp.roles.top_game.pitch_count >= 0, "your pitching line is kept")
 	# Score two runs and the game is won at once.
 	bp._game.runs = 2

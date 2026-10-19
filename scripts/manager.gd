@@ -48,9 +48,9 @@ func issue_intentional_walk() -> void:
 	var before = host._game.bases.duplicate()
 	var ev = host._game.intentional_walk()
 	host._begin_pa_exit(ev, before)
-	host._last_report = "INTENTIONAL WALK\n" + host._event_text(ev)
+	host.hud.last_report = "INTENTIONAL WALK\n" + host.hud.event_text(ev)
 	host._after_event(ev)
-	host._refresh_hud()
+	host.hud.refresh_hud()
 
 
 ## How worn out the human pitcher's arm is (0 fresh .. 1 spent), from his pitch count and the
@@ -61,7 +61,7 @@ func arm_fatigue() -> float:
 	var f: float = host._home.player_at(1).fatigue(maxi(host._game.pitch_count - fatigue_credit, 0))
 	if f > 0.35 and not tired_notice:
 		tired_notice = true
-		host._show_notice("Your arm is getting tired")
+		host.hud.show_notice("Your arm is getting tired")
 	return f
 
 
@@ -82,9 +82,9 @@ func maybe_change_pitcher() -> void:
 	host._ai_pitcher = AIPitcher.new(rp)
 	host._ai_pitcher.rng.seed = host._run_rng.randi()
 	runs_at_pitcher_change = host._game.runs
-	host._show_notice("New pitcher: %s" % rp.name)
+	host.hud.show_notice("New pitcher: %s" % rp.name)
 	host._sfx_later(1.0, "pa_pitching_change")
-	host._refresh_scoreboard()
+	host.hud.refresh_scoreboard()
 
 
 ## The catcher comes out to the mound: you catch your breath (the arm is rested by 15 pitches) and cannot
@@ -97,7 +97,7 @@ func mound_visit() -> void:
 	visit_timer = 5.2
 	host._crew.visit_mound()
 	host._log("mound_visit", {"pitches": host._game.pitch_count})
-	host._show_notice("Mound visit: you catch your breath", true)
+	host.hud.show_notice("Mound visit: you catch your breath", true)
 
 
 ## You hand the ball over: a reliever finishes the game (an AI pitcher, like Spectate), your line is closed
@@ -119,10 +119,10 @@ func leave_game() -> void:
 	host._ensure_pitcher_doll()
 	host._spectate_timer = 2.0
 	host._log("leave_game", {"line": left_line, "reliever": rp.name})
-	host._show_notice("%s takes over" % rp.name)
+	host.hud.show_notice("%s takes over" % rp.name)
 	host._sfx_later(1.0, "pa_pitching_change")
-	host._refresh_scoreboard()
-	host._refresh_hud()
+	host.hud.refresh_scoreboard()
+	host.hud.refresh_hud()
 
 
 func on_umpire_spoke(id: String, delay: float) -> void:
@@ -199,12 +199,12 @@ func refresh_sign() -> void:
 ## Y (or P): shake him off and he calls something else.
 func shake_off() -> void:
 	if sign.is_empty():
-		host._show_notice("Y cycles batters in Practice mode", true)
+		host.hud.show_notice("Y cycles batters in Practice mode", true)
 		return
 	sign_tally.shaken += 1
 	var old = String(sign.words)
 	refresh_sign()
-	host._show_notice("Shook off %s: now %s" % [old, sign.words], true)
+	host.hud.show_notice("Shook off %s: now %s" % [old, sign.words], true)
 
 
 ## A pitch reached the plate: was it what he called?
@@ -221,7 +221,7 @@ func grade_sign(pitch: LivePitch, plate: Vector3) -> void:
 		sign_tally.loc += 1
 	host._log("sign", {"sign": sign.words, "thrown": pitch.label, "type": g.type, "loc": g.loc, "perfect": g.perfect})
 	if g.perfect:
-		host._show_notice("SIGN HIT!", true)
+		host.hud.show_notice("SIGN HIT!", true)
 		host._sfx("corner_chime")
 		host._haptics.play("ui_select")
 
@@ -235,7 +235,7 @@ func update_alignment() -> void:
 		host._defense.set_infield_in(want)
 		host._log("alignment", {"infield_in": want})
 		if want:
-			host._show_notice("Infield in", true)
+			host.hud.show_notice("Infield in", true)
 
 
 ## A career pitcher's command narrows or widens the aim funnel (1.0 for everyone else).

@@ -76,9 +76,9 @@ func catcher_release(vel: Vector3) -> void:
 	host.plays.apply_steal(safe, t_ball, float(w.get("a_time", 0.0)), {"t_ball": t_ball, "t_run": host.plays.steal.run_t, "human": true, "why": why, "speed": speed, "err": err})
 	if not safe:
 		fld.assists += 1
-		host._show_notice("Caught him!", true)
+		host.hud.show_notice("Caught him!", true)
 	else:
-		host._show_notice("Wild throw - safe!" if why == "wild" else ("Too slow - safe" if why == "on the bag" else "No throw - he is safe"), true)
+		host.hud.show_notice("Wild throw - safe!" if why == "wild" else ("Too slow - safe" if why == "on the bag" else "No throw - he is safe"), true)
 
 
 func human_num() -> int:
@@ -106,11 +106,11 @@ func receive(pitch: LivePitch, plate: Vector3, outcome: String) -> String:
 	var result = "called_strike" if c.strike else "ball"
 	if c.framed:
 		fld.frames += 1
-		host._show_notice("Framed it!", true)
+		host.hud.show_notice("Framed it!", true)
 		host._haptics.play("catch", 0.8)
 	elif c.lost:
 		fld.lost += 1
-		host._show_notice("Lost the call - too much glove movement" if float(q.speed) > Framing.STILL_SPEED else "Lost the call - get the glove on it", false)
+		host.hud.show_notice("Lost the call - too much glove movement" if float(q.speed) > Framing.STILL_SPEED else "Lost the call - get the glove on it", false)
 	host._log("receive", {"miss": snappedf(float(q.miss), 0.001), "speed": snappedf(float(q.speed), 0.01), "quality": snappedf(float(q.quality), 0.01),
 		"p": snappedf(float(c.p), 0.01), "call": result, "was": outcome})
 	return result
@@ -186,7 +186,7 @@ func human_catch(h: LiveHit, ball: Vector3) -> void:
 		h.plan = Baserunning.plan(h.play, host._game.bases, host._game.outs, host._batter_player, host._run_rng)
 		h.play_end = maxf(h.t + 0.6, float(h.plan.end_time))
 		h.human_state = "done"
-		host._last_report_extra = "CAUGHT!"
+		host.hud.last_report_extra = "CAUGHT!"
 		return
 	if not fair:
 		h.play = fielder_play(h, "foul", "Foul ball", {})
@@ -196,7 +196,7 @@ func human_catch(h: LiveHit, ball: Vector3) -> void:
 		return
 	h.play = fielder_play(h, "out", "", {})
 	h.human_state = "holding"
-	host._last_report_extra = "GOT IT - throw to a base!"
+	host.hud.last_report_extra = "GOT IT - throw to a base!"
 	h.play_end = 1e9
 
 
@@ -214,7 +214,7 @@ func human_miss(h: LiveHit) -> void:
 	else:
 		h.plan = Baserunning.plan(h.play, host._game.bases, host._game.outs, host._batter_player, host._run_rng)
 		h.play_end = maxf(h.t + 0.5, float(h.plan.end_time))
-	host._last_report_extra = "Got by you"
+	host.hud.last_report_extra = "Got by you"
 
 
 ## The batter is about to reach first: is the pitcher (you) standing on the bag to take the flip?
@@ -224,7 +224,7 @@ func check_cover(h: LiveHit) -> void:
 	var d = Vector2(head.x - h.cover_spot.x, head.z - h.cover_spot.z).length()
 	if d <= COVER_RADIUS:
 		fld.covers += 1
-		host._show_notice("Covered first", true)
+		host.hud.show_notice("Covered first", true)
 		host._haptics.play("catch", 0.6)
 		host._log("cover_first", {"covered": true, "distance": snappedf(d, 0.01)})
 		return
@@ -237,8 +237,8 @@ func check_cover(h: LiveHit) -> void:
 		"caught_in_air": false, "error": false}
 	h.plan = Baserunning.plan(h.play, host._game.bases, host._game.outs, host._batter_player, host._run_rng)
 	h.play_end = maxf(h.t + 0.8, float(h.plan.end_time))
-	host._last_report_extra = "Nobody covered first!"
-	host._show_notice("Nobody covered first - he is safe", true)
+	host.hud.last_report_extra = "Nobody covered first!"
+	host.hud.show_notice("Nobody covered first - he is safe", true)
 
 
 func human_hold_too_long(h: LiveHit) -> void:
@@ -266,7 +266,7 @@ func human_throw(h: LiveHit, vel: Vector3) -> void:
 		h.play = wild
 		h.plan = Baserunning.plan(wild, host._game.bases, host._game.outs, host._batter_player, host._run_rng)
 		h.play_end = maxf(h.t + 0.8, float(h.plan.end_time))
-		host._last_report_extra = "Wild throw!"
+		host.hud.last_report_extra = "Wild throw!"
 		fld.errors += 1
 		return
 	var base: int = choice.base
@@ -296,7 +296,7 @@ func human_throw(h: LiveHit, vel: Vector3) -> void:
 		"throw": h.plan.throws[0]})
 	h.plan["text"] = text
 	h.play_end = maxf(t_arrive + 0.6, float(h.plan.end_time))
-	host._last_report_extra = ("Throw to %s: %s" % [["", "first", "second", "third", "home"][base], "OUT" if outs > 0 else "safe"])
+	host.hud.last_report_extra = ("Throw to %s: %s" % [["", "first", "second", "third", "home"][base], "OUT" if outs > 0 else "safe"])
 	if outs > 0:
 		fld.assists += 1
 

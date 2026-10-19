@@ -37,7 +37,7 @@ func derby_tally(pitch: LivePitch, home_run: bool, struck: bool) -> void:
 		derby_hr += 1
 	elif struck or pitch.bat.get("swing", false) or pitch.bat.get("contact", false):
 		derby_outs += 1
-	host._show_notice("Derby: %d home runs, %d of 10 outs" % [derby_hr, derby_outs], true)
+	host.hud.show_notice("Derby: %d home runs, %d of 10 outs" % [derby_hr, derby_outs], true)
 	if derby_outs >= 10:
 		finish_derby()
 
@@ -48,7 +48,7 @@ func finish_derby() -> void:
 	var r = host._profile.record_challenge("derby", stars, derby_hr)
 	host._profile.save()
 	host._log("derby", {"home_runs": derby_hr, "stars": stars})
-	host._show_notice("DERBY OVER: %d home runs   %s%s" % [derby_hr, Scenario.stars_text(stars), "  (new best!)" if r.improved else ""], true)
+	host.hud.show_notice("DERBY OVER: %d home runs   %s%s" % [derby_hr, Scenario.stars_text(stars), "  (new best!)" if r.improved else ""], true)
 	host._props.later(7.0, func():
 		Session.show_menu = true
 		host.get_tree().reload_current_scene.call_deferred())
@@ -81,7 +81,7 @@ func run_drill(delta: float) -> void:
 	drill_left -= 1
 	drill_started += 1
 	drill_timer = 3.5
-	host._show_notice("Drill: ball %d of %d" % [drill_started, drill_started + drill_left], true)
+	host.hud.show_notice("Drill: ball %d of %d" % [drill_started, drill_started + drill_left], true)
 	host._debug_hit(ev, la, spray)
 
 
@@ -92,7 +92,7 @@ func finish_drill() -> void:
 	var r = host._profile.record_challenge("drill_f%d" % host.fielding.human_num(), stars, int(host.fielding.fld.caught))
 	host._profile.save()
 	host._log("drill", {"position": host.fielding.human_num(), "chances": host.fielding.fld.chances, "caught": host.fielding.fld.caught, "errors": host.fielding.fld.errors, "assists": host.fielding.fld.assists, "stars": stars})
-	host._show_notice("DRILL: %d of %d fielded, %d errors   %s%s" % [int(host.fielding.fld.caught), drill_started, int(host.fielding.fld.errors), Scenario.stars_text(stars), "  (new best!)" if r.improved else ""], true)
+	host.hud.show_notice("DRILL: %d of %d fielded, %d errors   %s%s" % [int(host.fielding.fld.caught), drill_started, int(host.fielding.fld.errors), Scenario.stars_text(stars), "  (new best!)" if r.improved else ""], true)
 	host._props.later(7.0, func():
 		Session.show_menu = true
 		host.get_tree().reload_current_scene.call_deferred())
@@ -104,21 +104,21 @@ func update_scenario(ev: Dictionary) -> void:
 		return
 	var st = scenario.update(host._game, ev)
 	if st == "running":
-		host._refresh_hud()
+		host.hud.refresh_hud()
 		return
 	scenario_done = true
 	var r = host._profile.record_challenge(scenario.id, scenario.stars, scenario.pitches)
 	host._profile.save()
 	host._log("challenge", {"id": scenario.id, "state": st, "stars": scenario.stars, "pitches": scenario.pitches})
 	if st == "success":
-		host._show_notice("CHALLENGE COMPLETE  %s%s" % [Scenario.stars_text(scenario.stars), "  (new best!)" if r.improved else ""], true)
+		host.hud.show_notice("CHALLENGE COMPLETE  %s%s" % [Scenario.stars_text(scenario.stars), "  (new best!)" if r.improved else ""], true)
 		host._sfx_later(0.3, "music_victory", null, -4.0)
 		host._sfx_later(0.3, "crowd_cheer_big")
 		host._haptics.play("rumble", 0.8)
 	else:
-		host._show_notice("Challenge failed - try again", true)
+		host.hud.show_notice("Challenge failed - try again", true)
 		host._sfx_later(0.3, "crowd_groan")
-	host._refresh_hud()
+	host.hud.refresh_hud()
 	host._props.later(6.0, func():
 		Session.show_menu = true
 		host.get_tree().reload_current_scene.call_deferred())
@@ -137,10 +137,10 @@ func tutorial_pitch(pitch: LivePitch) -> void:
 		return
 	var r = tutorial.on_pitch(pitch.label, bool(pitch.analysis.get("strike", false)))
 	if String(r.text) != "":
-		host._show_notice(String(r.text), true)
+		host.hud.show_notice(String(r.text), true)
 	if r.advanced:
 		host._settings.tutorial_step = tutorial.step
 		host._settings.save()
 		host._sfx("corner_chime")
 		host._haptics.play("ui_select")
-	host._refresh_hud()
+	host.hud.refresh_hud()

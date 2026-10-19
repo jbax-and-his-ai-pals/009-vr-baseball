@@ -11,7 +11,7 @@ func _init() -> void:
 			bp._debug_throw()
 	await process_frame
 	await process_frame
-	for b in [bp._pitch_board, bp._bat_board, bp._info_board]:
+	for b in [bp.hud.pitch_board, bp.hud.bat_board, bp.hud.info_board]:
 		var mesh_h := 0.0
 		var min_y := 0.0
 		for c in b.get_children():

@@ -58,7 +58,7 @@ func on_delivery_start() -> void:
 	steal = {"from": from_base, "runner": rnr, "run_t": run_c, "plan": plan_c, "call": call}
 	host._bat_call = call
 	host._log("play_call", {"call": call, "base": from_base, "runner": (rnr as Player).name, "batter": host._batter_ai.profile.name})
-	host._show_notice("%s!" % call.replace("_", " ").to_upper(), true)
+	host.hud.show_notice("%s!" % call.replace("_", " ").to_upper(), true)
 	host._refresh_base_runners()
 
 
@@ -73,7 +73,7 @@ func resolve_steal(a: Dictionary) -> void:
 		# He is going: get the ball out of the glove with your throwing hand and throw it to the base.
 		steal["await"] = {"left": maxf(float(steal.run_t) - t_now - 0.2, 0.8), "a_time": float(a.get("time", 0.5))}
 		host.fielding.field_samples.clear()
-		host._show_notice("THROW HIM OUT!", true)
+		host.hud.show_notice("THROW HIM OUT!", true)
 		host._haptics.play("ui_error", 0.5)
 		return
 	var res = StealModel.resolve(host._last_delivery, float(a.get("time", 0.5)), float(steal.run_t), host._run_rng,
@@ -105,7 +105,7 @@ func apply_steal(safe: bool, t_ball_raw: float, flight: float, info: Dictionary)
 	var entry = {"base": base, "safe": safe, "flight": flight}
 	entry.merge(info)
 	host._log("steal_resolve", entry)
-	host._last_report_extra = "STEAL ATTEMPT: %s" % ("safe" if safe else "OUT")
+	host.hud.last_report_extra = "STEAL ATTEMPT: %s" % ("safe" if safe else "OUT")
 
 
 func finish_steal() -> void:
@@ -116,9 +116,9 @@ func finish_steal() -> void:
 	# The scorebook only changes if he is still on that base (a walk or an inning change may have moved him).
 	if host._game.bases[base - 1] == steal.runner:
 		var ev = host._game.steal(base, bool(steal.safe))
-		host._last_report = ("STOLEN BASE\n" if steal.safe else "CAUGHT STEALING\n") + host._event_text(ev)
+		host.hud.last_report = ("STOLEN BASE\n" if steal.safe else "CAUGHT STEALING\n") + host.hud.event_text(ev)
 		host._after_event(ev)
-		host._refresh_hud()
+		host.hud.refresh_hud()
 	steal = {}
 	host._bat_call = ""
 
@@ -140,7 +140,7 @@ func do_pickoff(base: int, from: Vector3, vel: Vector3, err: float, quick: float
 		if host._runners_on():
 			call_balk("Threw to an empty base")
 		else:
-			host._show_notice("Throw to %s" % ["", "first", "second", "third"][base])
+			host.hud.show_notice("Throw to %s" % ["", "first", "second", "third"][base])
 		return
 	var lefty: bool = (host.throwing_hand == &"left_hand") if host._mode.human_pitcher else not host._ai_pitcher.player.throws_right
 	var chance = StealModel.pickoff_chance(float(leads[base - 1]), err, vel.length(), runner as Player, quick, base, lefty)
@@ -161,11 +161,11 @@ func do_pickoff(base: int, from: Vector3, vel: Vector3, err: float, quick: float
 	leads[base - 1] = StealModel.lead_after_throw()
 	if out:
 		var ev = host._game.pickoff(base)
-		host._last_report = "PICKED OFF at %s\n" % ["", "first", "second", "third"][base] + host._event_text(ev)
+		host.hud.last_report = "PICKED OFF at %s\n" % ["", "first", "second", "third"][base] + host.hud.event_text(ev)
 		host._after_event(ev)
 	else:
-		host._last_report = "Throw over to %s: safe" % ["", "first", "second", "third"][base]
-	host._refresh_hud()
+		host.hud.last_report = "Throw over to %s: safe" % ["", "first", "second", "third"][base]
+	host.hud.refresh_hud()
 
 
 ## A throw over catches him between the bases: two fielders run him back and forth. The book is settled
@@ -198,18 +198,18 @@ func start_rundown(base: int, runner, outcome: String) -> void:
 	match outcome:
 		"rundown_out":
 			var ev = host._game.pickoff(base)
-			text = "RUN DOWN between %s and %s\n" % [["", "first", "second", "third"][base], ["", "second", "third", "home"][base]] + host._event_text(ev)
+			text = "RUN DOWN between %s and %s\n" % [["", "first", "second", "third"][base], ["", "second", "third", "home"][base]] + host.hud.event_text(ev)
 			host._after_event(ev)
 		"rundown_safe_ahead":
 			var ev2 = host._game.advance_runner(base)
-			text = "Beats the rundown!\n" + host._event_text(ev2)
+			text = "Beats the rundown!\n" + host.hud.event_text(ev2)
 			host._after_event(ev2)
 		_:
 			text = "In a rundown, but he gets back safe"
-	host._last_report = text
+	host.hud.last_report = text
 	host._haptics.play("buzz", 0.3)
 	host._refresh_base_runners(before)             # the figure keeps running until the picture is done
-	host._refresh_hud()
+	host.hud.refresh_hud()
 
 
 func move_node(node: Node3D, to: Vector3, seconds: float) -> void:
@@ -231,9 +231,9 @@ func call_balk(why: String) -> void:
 		(plan["events"] as Array).append({"t": 0.1, "base": 0, "text": "BALK", "kind": "out", "at": Vector3(0.0, 0.0, 0.0)})
 		host._aux_play = {"plan": plan, "t": 0.0}
 		host._refresh_base_runners(before)
-	host._last_report = "BALK - %s\n" % why + host._event_text(ev)
+	host.hud.last_report = "BALK - %s\n" % why + host.hud.event_text(ev)
 	host._after_event(ev)
-	host._refresh_hud()
+	host.hud.refresh_hud()
 
 
 ## A ball in the air that is a throw: spawn it with a delay and a duration; the receiver puts his

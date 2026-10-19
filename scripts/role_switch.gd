@@ -107,10 +107,10 @@ func enter_bottom() -> void:
 	host._sync_batter()
 	host._begin_walk_on()
 	host._log("role_switch", {"to": "batting", "inning": top_game.inning, "score": "%d-%d" % [top_game.runs, top_game.home_score]})
-	host._show_notice("Bottom of %d: you are up to bat" % top_game.inning, true)
+	host.hud.show_notice("Bottom of %d: you are up to bat" % top_game.inning, true)
 	host._sfx("pa_pitching_change")
 	host._refresh_base_runners()
-	host._refresh_hud()
+	host.hud.refresh_hud()
 
 
 ## Your half is over (three outs, or a walk-off): the runs go on the board and you take the mound again.
@@ -139,12 +139,12 @@ func finish_bottom_half() -> void:
 		host._zone_markers.clear()
 	var ev = host._game.finish_bottom(half.runs, half.hits)
 	host._log("role_switch", {"to": "pitching", "runs": half.runs, "hits": half.hits, "game_over": host._game.over})
-	host._show_notice("Bottom %d: Home %s" % [int(ev.get("inning_ended", 0)), "scores %d" % half.runs if half.runs > 0 else "goes down in order"], true)
+	host.hud.show_notice("Bottom %d: Home %s" % [int(ev.get("inning_ended", 0)), "scores %d" % half.runs if half.runs > 0 else "goes down in order"], true)
 	host._after_event(ev)
 	if not host._game.over:
 		host._sync_batter()
 		host._begin_walk_on()
-	host._refresh_hud()
+	host.hud.refresh_hud()
 
 
 ## An event of the bottom half you are batting: the mini-game ending is the half ending, not the game.

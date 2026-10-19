@@ -55,7 +55,7 @@ func _init() -> void:
 		bp._process(1.0 / 60.0)
 		if h.result_shown:
 			break
-	var text: String = String(bp._last_report)
+	var text: String = String(bp.hud.last_report)
 	_check(h.result_shown and int(bp.fielding.fld.chances) == chances_before + 1, "it was played out and counted as a chance (%s)" % text.split("\n")[0])
 	_check(int(bp.fielding.fld.caught) + int(bp.fielding.fld.missed) == int(bp.fielding.fld.chances), "caught or missed, never neither")
 	if int(bp.fielding.fld.caught) > 0:
@@ -84,7 +84,7 @@ func _init() -> void:
 			bp2._process(1.0 / 60.0)
 			if chance.result_shown:
 				break
-		_check(chance.result_shown and int(bp2.fielding.fld.missed) == 1 and chance.human_state == "done", "with no glove on it, it gets by you and the AI plays it (%s)" % String(bp2._last_report).split("\n")[0])
+		_check(chance.result_shown and int(bp2.fielding.fld.missed) == 1 and chance.human_state == "done", "with no glove on it, it gets by you and the AI plays it (%s)" % String(bp2.hud.last_report).split("\n")[0])
 	bp2.queue_free()
 
 	print("FAILURES: %d" % _failures)

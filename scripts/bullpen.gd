@@ -102,8 +102,6 @@ var _logger := ThrowLogger.new()
 ## it scatters. Start from a recorded player; the first throws calibrate them quickly.
 var _aim_mu: Vector2:
 	get: return _human.aim_mu
-var _notice := ""
-var _notice_until := 0.0
 var _off_hand: XRController3D
 var _tag_index := 0
 var _tag_pressed := false
@@ -155,12 +153,7 @@ var _last_delivery := 0.9            # how long the last delivery took, motion s
 var _doll_styles := {}
 var _runner_styles := 0
 var _doll_demo_step := 0
-var _hud: Node3D                 # holds the stat boards
-var _pitch_board: StatBoard
-var _bat_board: StatBoard
-var _info_board: StatBoard
 var _stats := StatsTracker.new()
-var _last_report := ""
 var _canned_index := 0
 var _batter: CartoonBatter
 var _presenter: BatterPresenter           # the batter's walk-on, box, bat; owns the figure
@@ -208,9 +201,9 @@ var roles := RoleSwitch.new()                 # pitch the top halves, bat the bo
 var plays := RunnerPlays.new()                 # steals, throws over, rundowns, balks and the balls in the air that are not pitches
 var acts := Activities.new()                 # derby, drills, challenges and the pitching lesson
 var manager := Manager.new()                 # the pitcher's side of managing: signs, gestures, visits, changes, the infield alignment
+var hud := HudText.new()                 # the stat boards, the scoreboard feed, notices and the words of a report
 var _game_seed := 0
 var forced_seed := -1                       # tests and replays: use this seed (the --seed= flag does the same)
-var _last_report_extra := ""
 var _origin: XROrigin3D
 var _settings := Settings.new()
 var _menu: GameMenu
@@ -233,6 +226,7 @@ var _best_ev := 0.0
 
 
 func _init() -> void:
+	hud.host = self
 	manager.host = self
 	acts.host = self
 	plays.host = self
@@ -378,7 +372,7 @@ func _ready() -> void:
 				bits.append("thin air")
 			if Park.now().wind.length() >= 1.0:
 				bits.append(Park.now().wind_text())
-			_show_notice(", ".join(bits), false))
+			hud.show_notice(", ".join(bits), false))
 	if "--excite" in OS.get_cmdline_user_args():
 		_stadium.pulse(1.0)                  # debug: the crowd on its feet (it settles over about five seconds)
 	_perf_log = "--perf" in OS.get_cmdline_user_args()
@@ -400,7 +394,7 @@ func _ready() -> void:
 		get_tree().create_timer(0.3).timeout.connect(func(): _batter.swing_to(Vector3(0.0, 0.9, 0.2), 0.3))
 	if "--doll-demo" in OS.get_cmdline_user_args():
 		_spawn_doll_demo()
-	_set_hud_idle()
+	hud.set_hud_idle()
 	manager.refresh_sign()
 
 
@@ -510,7 +504,7 @@ func _log(kind: String, data: Dictionary = {}) -> void:
 func _mark_moment() -> void:
 	GameLog.mark("player_flag", _snapshot())
 	_sfx("ui_mark_moment")
-	_show_notice("Marked this moment in the log", true)
+	hud.show_notice("Marked this moment in the log", true)
 
 
 ## Frame times: a line every five seconds, and one for any frame over 60 ms with what was going on.
@@ -731,38 +725,7 @@ func _build_world() -> void:
 	_held_ball = _make_ball()
 	_held_ball.visible = false
 
-	_build_boards()
-
-
-## Three boards that hang still in the park (not on your head): what you have thrown, how the
-## lineup has hit, and the last pitch's details.
-func _build_boards() -> void:
-	_hud = Node3D.new()
-	add_child(_hud)
-	var mound := Vector3(0.0, 0.0, PitchPhysics.MOUND_Z)
-	# The two pitching boards stand just in front of the mound on either side, close enough to
-	# read at a glance. The batting board hangs behind the plate, drawn large to be read from here.
-	var specs := [
-		["pitch", Vector3(-2.7, 3.1, 15.2), 2.5, 1.0],
-		["info", Vector3(2.7, 2.8, 15.2), 2.7, 1.0],
-		["bat", Vector3(0.0, 14.0, -6.5), 2.7, 4.6],
-	]
-	for sp in specs:
-		var b := StatBoard.new()
-		b.width = sp[2]
-		_hud.add_child(b)
-		b.position = sp[1]
-		b.scale = Vector3.ONE * float(sp[3])
-		# Face the mound, where you stand.
-		var to_mound: Vector3 = mound - (sp[1] as Vector3)
-		b.rotation.y = atan2(to_mound.x, to_mound.z)
-		match sp[0]:
-			"pitch":
-				_pitch_board = b
-			"bat":
-				_bat_board = b
-			_:
-				_info_board = b
+	hud.build_boards()
 
 
 func _add_mesh(mesh: Mesh, color: Color, at: Vector3, parent: Node = null) -> MeshInstance3D:
@@ -982,8 +945,8 @@ func _process(delta: float) -> void:
 		if _game_over_timer <= 0.0:
 			_new_game()
 			_sync_batter()
-			_last_report = "New game."
-			_refresh_hud()
+			hud.last_report = "New game."
+			hud.refresh_hud()
 	_governor.update(delta)
 	if _xr_active:
 		_heartbeat_timer += delta
@@ -1002,9 +965,9 @@ func _process(delta: float) -> void:
 	var now := Time.get_ticks_usec() / 1_000_000.0
 	if not _mode.human_pitcher:
 		_run_ai_pitcher(delta)
-	if _notice != "" and now > _notice_until:
-		_notice = ""
-		_refresh_hud()
+	if hud.notice != "" and now > hud.notice_until:
+		hud.notice = ""
+		hud.refresh_hud()
 	if _xr_active and _hand:
 		_poll_tag()
 		if _mode.human_pitcher:
@@ -1052,7 +1015,7 @@ func _poll_tag() -> void:
 	var pressed := _off_hand.is_button_pressed("ax_button")
 	if pressed and not _tag_pressed:
 		_tag_index = (_tag_index + 1) % practice_tags.size()
-		_refresh_hud()
+		hud.refresh_hud()
 	_tag_pressed = pressed
 	var y_pressed := _off_hand.is_button_pressed("by_button")
 	if y_pressed and not _profile_pressed:
@@ -1066,7 +1029,7 @@ func _sync_batter() -> void:
 		_batter_player = _game.current_batter()
 		_batter_ai.profile = BatterProfile.from_player(_batter_player)
 	_batter_ai.bats_left = _batter_is_lefty()
-	_refresh_scoreboard()
+	hud.refresh_scoreboard()
 	# A batter already standing in his box (the first of a game) takes the right side now; everyone
 	# else is placed when he walks on, so the last batter never flips sides in front of you.
 	if _batter_ready and _walk_on.is_empty() and _aux_play.is_empty() and not _play_in_progress() and _batter != null:
@@ -1158,7 +1121,7 @@ func _build_menu(show_main: bool) -> void:
 
 func _open_menu_main() -> void:
 	_menu.open_main()
-	_hud.visible = false
+	hud.hud.visible = false
 
 
 func _toggle_pause() -> void:
@@ -1173,13 +1136,13 @@ func _toggle_pause() -> void:
 	_menu.model.can_leave = in_game
 	_menu.open_pause(Session.current if Session.current != null else _config)
 	_sfx("ui_pause_open")
-	_hud.visible = false
+	hud.hud.visible = false
 
 
 func _close_menu() -> void:
 	_sfx("ui_pause_close")
 	_menu.close()
-	_hud.visible = true
+	hud.hud.visible = true
 
 
 func _poll_menu_button() -> void:
@@ -1320,10 +1283,10 @@ func _new_game() -> void:
 	acts.scenario_done = false
 	if acts.scenario != null:
 		acts.scenario.apply(_game, _away.lineup)
-		_show_notice("%s: %s" % [acts.scenario.title, acts.scenario.goal], true)
+		hud.show_notice("%s: %s" % [acts.scenario.title, acts.scenario.goal], true)
 	_game_over_timer = -1.0
 	_refresh_base_runners()
-	_refresh_scoreboard()
+	hud.refresh_scoreboard()
 
 
 func _player_named(n: String) -> Player:
@@ -1344,7 +1307,7 @@ func _cycle_profile() -> void:
 	_batter_ai.profile = BatterProfile.by_name(names[(i + 1) % names.size()])
 	_batter_player = _player_named(_batter_ai.profile.name)
 	_batter_ai.expected_time = 0.6
-	_show_notice("Batter: %s" % _batter_ai.profile.name)
+	hud.show_notice("Batter: %s" % _batter_ai.profile.name)
 
 
 func _current_tag() -> String:
@@ -1360,7 +1323,7 @@ func _release_from_hand(release_t: float, vel_latency: float, spin_latency: floa
 			if bool(r.started):
 				plays.call_balk("Dropped the ball")
 			else:
-				_show_notice("Too soft - that was a drop. Throw it!")
+				hud.show_notice("Too soft - that was a drop. Throw it!")
 		"pickoff":
 			plays.do_pickoff(int(r.base), from, r.vel as Vector3, float(r.err), float(r.quick))
 		"pitch":
@@ -1502,7 +1465,7 @@ func _human_swing_check(pitch: LivePitch, next_pos: Vector3) -> bool:
 	var where := "off the end" if float(res.s) > 0.76 else ("jammed" if float(res.s) < 0.38 else ("on the barrel" if BatPhysics.sweetness(float(res.s)) > 0.8 else "off the barrel"))
 	var timing := "out front" if res.contact_pos.z > 0.35 else ("deep" if res.contact_pos.z < -0.2 else "on time")
 	if res.kind == "hit":
-		_show_notice("%s, %s: %.0f mph, %+.0f deg" % [where, timing, float(res.ev), float(res.la)], true)
+		hud.show_notice("%s, %s: %.0f mph, %+.0f deg" % [where, timing, float(res.ev), float(res.la)], true)
 	return true
 
 
@@ -1611,7 +1574,7 @@ func _land(pitch: LivePitch) -> void:
 		"hit_by_pitch":
 			_crew.call_it("ump_point", 0.3, 1.0)
 	if _runners_on() and plays.steal.is_empty():
-		_last_report_extra = "Delivery %.2f s with runners on" % _last_delivery
+		hud.last_report_extra = "Delivery %.2f s with runners on" % _last_delivery
 	plays.resolve_steal(a)
 	for i in 3:
 		plays.since_throw[i] = int(plays.since_throw[i]) + 1
@@ -1629,7 +1592,7 @@ func _land(pitch: LivePitch) -> void:
 			p_wild = Framing.gets_away(p_wild, fielding.receive_cover)
 			if off > 0.25 and fielding.receive_cover > 0.6:
 				fielding.fld.blocks += 1
-				_show_notice("Blocked!", false)
+				hud.show_notice("Blocked!", false)
 		if _run_rng.randf() < p_wild:
 			if fielding.is_catcher():
 				fielding.fld.passed += 1
@@ -1671,21 +1634,12 @@ func _land(pitch: LivePitch) -> void:
 		_crew.call_it("ump_out", 0.55, 1.1, "ump_strike_three")             # strike three is rung up
 	if wild_ev.get("result", "") != "":
 		_crew.chase()
-	var wild_text := _event_text(wild_ev)
-	_last_report = _format_report(pitch.label, a) + _bat_line(pitch) + ("\n" + wild_text if wild_text != "" else "") \
-		+ "\n" + _event_text(ev) + acts.lab_lines(pitch)
+	var wild_text := hud.event_text(wild_ev)
+	hud.last_report = hud.format_report(pitch.label, a) + hud.bat_line(pitch) + ("\n" + wild_text if wild_text != "" else "") \
+		+ "\n" + hud.event_text(ev) + acts.lab_lines(pitch)
 	_after_event(ev)
-	_refresh_hud()
-	print(_last_report.replace("\n", " | "))
-
-
-func _bat_line(pitch: LivePitch) -> String:
-	var b: Dictionary = pitch.bat
-	if b.get("swing", false):
-		return "\nBatter: swing and miss  (%s)" % _batter_ai.profile.name
-	if pitch.analysis.get("reached", false):
-		return "\nBatter takes: %s  (%s)" % ["called strike" if pitch.analysis.strike else "ball", _batter_ai.profile.name]
-	return ""
+	hud.refresh_hud()
+	print(hud.last_report.replace("\n", " | "))
 
 
 ## The bat meets the ball: end the pitch's flight and send a batted ball out.
@@ -1720,7 +1674,7 @@ func _contact(pitch: LivePitch) -> void:
 	_haptics.play("contact", clampf(float(b.ev) / 110.0, 0.0, 1.0))
 	if _dust != null and float(b.ev) > 55.0:
 		_dust.flash(pitch.pos, clampf(float(b.ev) / 250.0, 0.15, 0.45))        # the bat meets the ball
-	var head := _format_report(pitch.label, a)
+	var head := hud.format_report(pitch.label, a)
 	if "--contact-demo" in OS.get_cmdline_user_args():
 		var gap := _batter.sweet_spot_world().distance_to(pitch.pos)
 		print("CONTACT CHECK: bat sweet spot is %.1f cm from the ball at contact" % (gap * 100.0))
@@ -1728,7 +1682,7 @@ func _contact(pitch: LivePitch) -> void:
 	h.summary = sim
 	h.points = sim.points
 	h.dt = sim.dt
-	h.report = _format_hit(b, sim)
+	h.report = hud.format_hit(b, sim)
 	h.play = pitch.play
 	h.bunt = bool(b.get("bunt", false))
 	if sim.fair or sim.home_run:
@@ -1742,13 +1696,13 @@ func _contact(pitch: LivePitch) -> void:
 		# Until he has it, the batter runs and (on a grounder) forced runners go.
 		h.plan = Baserunning.plan_hold(_game.bases, _batter_player, float(sim.get("apex", 0.0)) < 3.0)
 		h.play_end = 1e9
-		_last_report_extra = "YOUR BALL - get your glove on it"
+		hud.last_report_extra = "YOUR BALL - get your glove on it"
 	elif not h.play.is_empty() and h.play.get("result", "") not in ["foul", ""]:
 		if _mode.human_fielders.has(1) and h.play.get("cover_pitcher", false) and h.play.get("result", "") == "out":
 			# The first baseman is pulled off the bag: you are the pitcher, so first base is yours to cover.
 			h.cover_t = float((h.play.run_times as Array)[0]) - 0.12
 			h.cover_spot = h.play.cover_spot
-			_show_notice("COVER FIRST!", true)
+			hud.show_notice("COVER FIRST!", true)
 			_haptics.play("ui_error", 0.6)
 		# Everyone on base runs on the same physics as the fielders.
 		var head_start := {}
@@ -1794,16 +1748,16 @@ func _contact(pitch: LivePitch) -> void:
 		_free_hit(_hits.pop_front())
 	# At contact: the pitch, plus how hard and at what angle it was hit. The full result
 	# (distance, hang time, where it went) appears when the ball lands.
-	_last_report = head + "\nCONTACT: %s  %.0f mph, launch %+.0f deg" % [
+	hud.last_report = head + "\nCONTACT: %s  %.0f mph, launch %+.0f deg" % [
 		"foul tip" if b.kind == "foul tip" else "%s" % sim.kind, b.ev, b.la]
 	if b.kind == "foul tip":
 		var tip_before := _game.bases.duplicate()
 		var tip_ev := _game.pitch("foul_tip")
 		_begin_pa_exit(tip_ev, tip_before)
-		_last_report += "\n" + _event_text(tip_ev)
+		hud.last_report += "\n" + hud.event_text(tip_ev)
 		_after_event(tip_ev)
-	_refresh_hud()
-	print(_last_report.replace("\n", " | "))
+	hud.refresh_hud()
+	print(hud.last_report.replace("\n", " | "))
 	var pl: Dictionary = h.play
 	var pn: Dictionary = h.plan
 	var runner_moves := []
@@ -1821,35 +1775,6 @@ func _contact(pitch: LivePitch) -> void:
 		"runners": runner_moves, "plan_outs": pn.get("outs_added", 0), "plan_runs": pn.get("runs", 0),
 		"plan_text": pn.get("text", ""), "plan_result": pn.get("result", ""),
 		"throws": (h.throws as Array).map(func(t): return {"base": t.get("base", 0), "by": t.get("by", 0), "rec": t.get("rec", 0)})})
-
-
-func _format_hit(b: Dictionary, sim: Dictionary) -> String:
-	if b.kind == "foul tip":
-		return "FOUL TIP\nExit velo %.0f mph" % b.ev
-	var outcome: String
-	if sim.home_run:
-		outcome = "HOME RUN!"
-	elif not sim.fair:
-		outcome = "FOUL BALL"
-	elif sim.wall:
-		outcome = "OFF THE WALL"
-	else:
-		outcome = sim.kind.to_upper()
-	var where := BattedBall.spray_text(sim.spray)
-	if sim.wall:
-		var wall_at: Vector3 = sim.rest_pos
-		var wall_d := Vector2(wall_at.x, wall_at.z).length()
-		return "%s  (%s)\nExit velo %.0f mph | Launch %+.0f deg | Spray %+.0f deg\nReaches the wall at %.0f m (%.0f ft) | Apex %.1f m" % [
-			outcome, where, sim.ev_mph, sim.launch, sim.spray, wall_d, wall_d * 3.28084, sim.apex]
-	if sim.apex < 2.0 and not sim.home_run:
-		# A ball that never leaves the ground: report where it rolls to.
-		var rest: Vector3 = sim.rest_pos
-		var roll := Vector2(rest.x, rest.z).length()
-		return "%s  (%s)\nExit velo %.0f mph | Launch %+.0f deg | Spray %+.0f deg\nRolls %.0f m (%.0f ft) | %d bounces" % [
-			outcome, where, sim.ev_mph, sim.launch, sim.spray, roll, roll * 3.28084, sim.bounces]
-	var feet: float = sim.distance * 3.28084
-	return "%s  (%s)\nExit velo %.0f mph | Launch %+.0f deg | Spray %+.0f deg\nDistance %.0f m (%.0f ft) | Apex %.1f m | Hang %.1f s" % [
-		outcome, where, sim.ev_mph, sim.launch, sim.spray, sim.distance, feet, sim.apex, sim.hang_time]
 
 
 func _update_hit(h: LiveHit, delta: float) -> void:
@@ -1962,7 +1887,7 @@ func _begin_walk_on() -> void:
 	# A new batter: the last batter's pitch dots are done with.
 	if _zone_markers:
 		_zone_markers.clear()
-	_refresh_hud()
+	hud.refresh_hud()
 	var duration := _presenter.begin_walk_on(_batter_is_lefty())
 	_log("walk_on", {"duration": snappedf(duration, 0.01), "batter": _batter_player.name if _batter_player else ""})
 	if _game != null and not _game.over and _fx_rng.randf() < 0.5:
@@ -2017,7 +1942,7 @@ func _update_batter_lifecycle(delta: float) -> void:
 			for lv in _leavers:
 				lv.visible = false
 			_refresh_base_runners()
-			_refresh_scoreboard()
+			hud.refresh_scoreboard()
 	_presenter.update(delta)
 
 
@@ -2038,7 +1963,7 @@ func _on_batter_arrived() -> void:
 	if _fx_rng.randf() < 0.5:
 		_sfx_later(0.5, "bat_tap_plate", Vector3(0.0, 0.1, 0.0), -4.0)
 	_batter_ready = true
-	_refresh_hud()
+	hud.refresh_hud()
 
 
 ## The play is over: tell the scorebook, say what happened.
@@ -2053,8 +1978,8 @@ func _announce_play(h: LiveHit) -> void:
 		return
 	elif play.get("foul_tip", false):
 		# Already counted when the bat hit it (a tip into the mitt is a strike on the spot).
-		_last_report = "FOUL TIP\n" + h.report
-		_refresh_hud()
+		hud.last_report = "FOUL TIP\n" + h.report
+		hud.refresh_hud()
 		return
 	elif play.get("result", "") == "foul":
 		var bases_foul := _game.bases.duplicate()
@@ -2069,39 +1994,19 @@ func _announce_play(h: LiveHit) -> void:
 			_sound.umpire_says_later(0.3, "ump_time")      # dead ball: two bases
 	if _runner:
 		_runner.visible = false       # he is on a base now (or out): the base figures take over
-	_last_report_extra = ""
+	hud.last_report_extra = ""
 	var lines := text.to_upper() + "\n" + h.report
 	if not ev.is_empty():
-		var extra := _event_text(ev)
+		var extra := hud.event_text(ev)
 		if extra != "":
 			lines += "\n" + extra
-	_last_report = lines
+	hud.last_report = lines
 	_after_event(ev, {"ev": float(h.summary.get("ev_mph", 0.0)), "dist": float(h.summary.get("distance", 0.0))})
-	_refresh_hud()
+	hud.refresh_hud()
 	_log("play_result", {"text": text, "result": ev.get("result", ""), "runs": ev.get("runs", 0), "outs_added": ev.get("outs_added", 0),
 		"pa_over": ev.get("pa_over", false), "half_over": ev.get("half_over", false), "game_over": ev.get("game_over", false),
 		"state_text": ev.get("text", ""), "duration": snappedf(h.t, 0.01)})
-	print(_last_report.replace("\n", " | "))
-
-
-## Words for what a pitch or play did to the game.
-func _event_text(ev: Dictionary) -> String:
-	if ev.is_empty():
-		return ""
-	var parts: Array[String] = []
-	if ev.get("text", "") != "":
-		parts.append(ev.text)
-	if ev.get("runs", 0) > 0 and "run" not in String(ev.get("text", "")):
-		parts.append("%d run%s" % [ev.runs, "" if ev.runs == 1 else "s"])
-	if ev.get("pa_over", false) and ev.get("result", "") == "strikeout":
-		parts.append("Strikeout")
-	if ev.get("half_over", false):
-		parts.append("THREE OUTS - end of inning %d" % int(ev.get("inning_ended", _game.inning - 1)))
-		if ev.has("home_runs_scored"):
-			parts.append("Bottom %d: Home %s" % [int(ev.inning_ended), "scores %d" % int(ev.home_runs_scored) if int(ev.home_runs_scored) > 0 else "goes down in order"])
-	if ev.get("game_over", false):
-		parts.append(_game.final_text() + " | " + _game.line_text())
-	return " | ".join(parts)
+	print(hud.last_report.replace("\n", " | "))
 
 
 ## What you did as a batter this game: the lineup is you, so it is the lineup's line against their pitcher.
@@ -2123,7 +2028,7 @@ func _finish_career_start() -> void:
 	_career.save()
 	var d: Dictionary = res.deltas
 	_log("career_start", {"won": res.won, "rank": res.rank, "over": res.over, "deltas": d, "line": line})
-	_show_notice("%s %d-%d vs %s   CMD %+.1f  STA %+.1f   Rank #%d%s" % ["WIN" if res.won else "LOSS", _game.home_score, _game.runs,
+	hud.show_notice("%s %d-%d vs %s   CMD %+.1f  STA %+.1f   Rank #%d%s" % ["WIN" if res.won else "LOSS", _game.home_score, _game.runs,
 		res.opponent, float(d.command), float(d.stamina), int(res.rank), "   SEASON OVER" if res.over else ""], true)
 	_props.later(7.0, func():
 		Session.show_menu = true
@@ -2160,7 +2065,7 @@ func _record_finished_game() -> void:
 	elif int(r.rank) > 0:
 		text += " - #%d on this board" % int(r.rank)
 	_log("game_recorded", {"score": r.score, "rank": r.rank, "key": r.key, "line": line})
-	_show_notice(text, true)
+	hud.show_notice(text, true)
 
 
 ## How far the crowd gets to its feet for this event (0 for nothing special).
@@ -2225,38 +2130,7 @@ func _after_event(ev: Dictionary, extra: Dictionary = {}) -> void:
 			"runs": _game.runs, "home": _game.home_score})
 	if _aux_play.is_empty():
 		_refresh_base_runners()
-	_refresh_scoreboard()
-
-
-func _refresh_scoreboard() -> void:
-	if _stadium == null or _game == null:
-		return
-	var g := roles.top_game if roles.top_game != null else _game
-	var live: GameState = _game if roles.top_game != null else null
-	var who := _batter_player.name if _batter_player else ""
-	var line := ""
-	if _batter_player:
-		var bs: Dictionary = _stats.batters.get(who, {})
-		line = StatsTracker.avg_text(int(bs.get("h", 0)), int(bs.get("ab", 0))) if not bs.is_empty() else ""
-		line = ("%s  %d-%d today" % [line, int(bs.get("h", 0)), int(bs.get("ab", 0))]) if not bs.is_empty() else ""
-	var pitcher := "YOU" if _mode.human_pitcher else _ai_pitcher.player.name
-	var home_by_inning: Array = g.home_inning_runs
-	var home_runs := g.home_score
-	var home_hits := g.home_team_hits
-	if live != null:
-		home_by_inning = g.home_inning_runs.duplicate()
-		while home_by_inning.size() < g.inning:
-			home_by_inning.append(0)
-		home_by_inning[g.inning - 1] = live.runs
-		home_runs += live.runs
-		home_hits += live.hits
-	_stadium.set_scoreboard({
-		"inning": g.inning, "innings": maxi(g.innings, g.inning), "inning_runs": g.inning_runs, "runs": g.runs,
-		"home_inning_runs": home_by_inning, "home_runs": home_runs, "home_hits": home_hits,
-		"hits": g.hits, "errors": g.errors, "balls": _game.balls, "strikes": _game.strikes, "outs": _game.outs,
-		"batter": who, "batter_line": line, "pitcher": pitcher,
-		"last_kind": String(_stats.last_pitch.get("kind", "")), "last_mph": float(_stats.last_pitch.get("mph", 0.0)),
-		"final": g.over})
+	hud.refresh_scoreboard()
 
 
 ## Figures on the bases that match the scorebook.
@@ -2338,8 +2212,8 @@ func _show_landing(h: LiveHit) -> void:
 	h.label.position = Vector3(spot.x, maxf(spot.y, 0.0) + 3.0, spot.z)
 	add_child(h.label)
 	if h.play.is_empty():
-		_last_report = h.report
-		_refresh_hud()
+		hud.last_report = h.report
+		hud.refresh_hud()
 		print(h.report.replace("\n", " | "))
 
 
@@ -2376,19 +2250,6 @@ func _mark_pitch(a: Dictionary, outcome: String) -> void:
 			if loc.halo:
 				halo = Color(1.0, 0.82, 0.15, 1.0)      # a corner that was not hit
 	_zone_markers.add(p.x, p.y, loc.color, halo)
-
-
-func _format_report(label: String, a: Dictionary) -> String:
-	var head := "%s\n%.1f mph | %d rpm" % [label, a.speed_mph, roundi(a.spin_rpm)]
-	if not a.reached:
-		return head + "\nDid not reach the plate"
-	var p: Vector3 = a.plate_pos
-	var text := head + "\nPlate %.1f mph in %.2fs" % [a.plate_mph, a.time]
-	if a.has("ivb_in"):
-		text += "\nInduced vert %+.1f in | horiz %+.1f in" % [a.ivb_in, a.hb_in]
-	text += "\n%s  %s  (%+.1f in x, %.1f in y)" % [
-		"STRIKE" if a.strike else "BALL", PitchLocation.classify(p.x, p.y).label, p.x * PitchPhysics.M_TO_IN, p.y * PitchPhysics.M_TO_IN]
-	return text
 
 
 ## Inject a batted ball without a pitch (for looking at fielding and baserunning).
@@ -2464,135 +2325,3 @@ func _rebuild_trail(pitch: LivePitch) -> void:
 	pitch.trail_mesh.surface_end()
 
 
-func _settings_line() -> String:
-	var line := "mode: %s" % _mode.name
-	if _mode.human_pitcher:
-		line += " | %s aim | %s spin | tag: %s" % [
-			AimMode.keys()[aim_mode].to_lower().replace("_", " "),
-			SpinMode.keys()[spin_mode].to_lower().replace("_", " "), _current_tag()]
-	else:
-		line += "\npitching: " + _ai_pitcher.player.pitcher_line()
-	if _batter_player:
-		line += "\nat bat: " + _batter_player.hitter_line()
-	return line
-
-
-func _set_hud_idle() -> void:
-	if _xr_active:
-		_last_report = "Hold GRIP to pick up the ball.\nThrow, then open your hand."
-	else:
-		_last_report = "No headset found.\nPress SPACE to throw a canned pitch."
-	_refresh_hud()
-
-
-func _show_notice(text: String, quiet: bool = false) -> void:
-	if not quiet:
-		_sfx("ui_notice", null, -6.0)
-	_notice = text
-	_notice_until = Time.get_ticks_msec() / 1000.0 + 1.6
-	_refresh_hud()
-
-
-func _short_name(full: String) -> String:
-	var parts := full.split(" ")
-	if parts.size() < 2:
-		return full
-	return "%s. %s" % [parts[0].substr(0, 1), parts[parts.size() - 1]]
-
-
-## Break a long report line at its " | " separators so it fits the board.
-func _wrap(text: String, max_chars: int = 58) -> Array:
-	var out: Array = []
-	for raw in text.split("\n"):
-		var line := ""
-		for piece in raw.split(" | "):
-			if line != "" and line.length() + piece.length() + 3 > max_chars:
-				out.append(line)
-				line = piece
-			else:
-				line = piece if line == "" else line + " | " + piece
-		if line != "":
-			out.append(line)
-	return out
-
-
-func _refresh_hud() -> void:
-	if _pitch_board == null:
-		return
-	# --- Pitching: what you have thrown.
-	var g := roles.top_game if roles.top_game != null else _game
-	var t := _stats.pitch_totals()
-	_pitch_board.title = "PITCHING"
-	_pitch_board.subtitle = _mode.name if _mode else ""
-	_pitch_board.accent = Color(0.12, 0.40, 0.78)
-	_pitch_board.tiles = [
-		[g.innings_pitched_text() if g else "0.0", "IP"], [str(g.pitch_count) if g else "0", "PITCHES"],
-		[str(g.strikeouts) if g else "0", "K"], [str(g.walks) if g else "0", "BB"], [str(g.hits) if g else "0", "H"]]
-	_pitch_board.columns = [{"head": "PITCH", "w": 0.34, "align": "l"}, {"head": "#", "w": 0.10, "align": "r"},
-		{"head": "AVG", "w": 0.17, "align": "r"}, {"head": "MAX", "w": 0.15, "align": "r"},
-		{"head": "STR%", "w": 0.12, "align": "r"}, {"head": "WHF%", "w": 0.12, "align": "r"}]
-	var prow: Array = []
-	for k in _stats.types_sorted():
-		var x: Dictionary = _stats.by_type[k]
-		prow.append([k, x.n, "%.0f" % _stats.avg_mph(x), "%.0f" % x.mph_max, "%.0f" % _stats.strike_pct(x),
-			("%.0f" % _stats.whiff_pct(x)) if x.swings > 0 else "-"])
-	if prow.is_empty():
-		prow.append(["-", "", "", "", "", ""])
-	else:
-		prow.append(["TOTAL", t.n, "%.0f" % (_stats.avg_mph(t)), "%.0f" % t.mph_max, "%.0f" % _stats.strike_pct(t),
-			("%.0f" % _stats.whiff_pct(t)) if t.swings > 0 else "-"])
-	_pitch_board.rows = prow
-	_pitch_board.total_row = prow.size() > 1
-	var pl: Array = []
-	if g:
-		pl.append("%s   |   %d R" % [_game.situation_text(), g.runs])
-		if roles.top_game != null:
-			pl.append("YOU ARE BATTING: bottom %d, Home %d - Away %d" % [g.inning, g.home_score + _game.runs, g.runs])
-		if acts.scenario != null:
-			pl.append("%s: %s" % [acts.scenario.title.to_upper(), acts.scenario.progress_text(g)])
-		if acts.tutorial != null:
-			pl.append(acts.tutorial.prompt())
-	_pitch_board.lines = pl
-	_pitch_board.refresh()
-
-	# --- Batting: how the lineup has done against you.
-	var bt := _stats.batting_totals()
-	_bat_board.title = "BATTING"
-	_bat_board.subtitle = "vs you"
-	_bat_board.accent = Color(0.72, 0.18, 0.20)
-	_bat_board.tiles = [[StatsTracker.avg_text(bt.h, bt.ab), "AVG"], [str(bt.h), "H"], [str(bt.hr), "HR"],
-		[str(bt.k), "K"], [("%.0f" % (_stats.ev_sum / maxf(float(_stats.ev_count), 1.0))) if _stats.ev_count > 0 else "-", "AVG EV"]]
-	_bat_board.columns = [{"head": "BATTER", "w": 0.34, "align": "l"}, {"head": "AB", "w": 0.10, "align": "r"},
-		{"head": "H", "w": 0.10, "align": "r"}, {"head": "HR", "w": 0.10, "align": "r"},
-		{"head": "BB", "w": 0.10, "align": "r"}, {"head": "K", "w": 0.10, "align": "r"},
-		{"head": "AVG", "w": 0.16, "align": "r"}]
-	var brow: Array = []
-	for n in _stats.batter_order:
-		var b: Dictionary = _stats.batters[n]
-		brow.append([_short_name(n), b.ab, b.h, b.hr, b.bb, b.k, StatsTracker.avg_text(b.h, b.ab)])
-	brow.append(["TOTAL", bt.ab, bt.h, bt.hr, bt.bb, bt.k, StatsTracker.avg_text(bt.h, bt.ab)])
-	_bat_board.rows = brow
-	var bl: Array = []
-	if _stats.ev_count > 0:
-		bl.append("Hardest hit %.0f mph (%s)   |   Longest %.0f m" % [_stats.ev_max, _short_name(_stats.hardest_name), _stats.longest])
-	_bat_board.lines = bl
-	_bat_board.refresh()
-
-	# --- The last pitch / play, and notices.
-	_info_board.show_plot = true
-	_info_board.plot = _zone_markers.entries() if _zone_markers else []
-	_info_board.title = "LAST PITCH"
-	_info_board.subtitle = _batter_player.name if _batter_player else ""
-	_info_board.accent = Color(0.18, 0.50, 0.30)
-	var info: Array = []
-	if _notice != "":
-		info.append(">> " + _notice)
-	info.append_array(_wrap(_last_report))
-	if _last_report_extra != "":
-		info.append(">> " + _last_report_extra)
-	if _batter_player:
-		info.append_array(_wrap(_batter_player.hitter_line()))
-	while info.size() > 9:
-		info.pop_front()
-	_info_board.lines = info
-	_info_board.refresh()

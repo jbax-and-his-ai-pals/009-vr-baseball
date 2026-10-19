@@ -15,11 +15,11 @@ func _init() -> void:
 	var n := 20
 	for i in n:
 		var t0 := Time.get_ticks_usec()
-		bp._refresh_hud()
-		bp._refresh_scoreboard()
-		bp._pitch_board._process(0.0)
-		bp._bat_board._process(0.0)
-		bp._info_board._process(0.0)
+		bp.hud.refresh_hud()
+		bp.hud.refresh_scoreboard()
+		bp.hud.pitch_board._process(0.0)
+		bp.hud.bat_board._process(0.0)
+		bp.hud.info_board._process(0.0)
 		bp._stadium._scoreboard._process(0.0)
 		var dt := (Time.get_ticks_usec() - t0) / 1000.0
 		total += dt
