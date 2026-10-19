@@ -42,14 +42,14 @@ func wants_intentional_walk() -> bool:
 ## Walk the batter on purpose (the manager's call, or the pause menu): no pitches, the usual
 ## forced advance, and he trots to first.
 func issue_intentional_walk() -> void:
-	if host._game == null or not host._batter_ready or not host._aux_play.is_empty() or host._game.over:
+	if host._game == null or not host.flow.batter_ready or not host.flow.aux_play.is_empty() or host._game.over:
 		return
 	host.slog.record("intentional_walk", {"batter": host._batter_player.name if host._batter_player else ""})
 	var before = host._game.bases.duplicate()
 	var ev = host._game.intentional_walk()
-	host._begin_pa_exit(ev, before)
+	host.flow.begin_pa_exit(ev, before)
 	host.hud.last_report = "INTENTIONAL WALK\n" + host.hud.event_text(ev)
-	host._after_event(ev)
+	host.flow.after_event(ev)
 	host.hud.refresh_hud()
 
 
@@ -186,7 +186,7 @@ func refresh_sign() -> void:
 		sign_label.visible = false
 		sign_marker.visible = false
 		return
-	var side = -1.0 if host._batter_is_lefty() else 1.0
+	var side = -1.0 if host.flow.batter_is_lefty() else 1.0
 	sign = CatcherSigns.call_pitch({"balls": host._game.balls, "strikes": host._game.strikes, "outs": host._game.outs,
 		"bases": [host._game.bases[0] != null, host._game.bases[1] != null, host._game.bases[2] != null], "batter_side": side}, [], host._fx_rng)
 	sign_label.text = "SIGN: %s" % sign.words

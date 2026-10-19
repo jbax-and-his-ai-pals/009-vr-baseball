@@ -45,9 +45,9 @@ func _init() -> void:
 		bp._game.outs = 0
 		bp.plays.steal = {}
 		bp.flight.batter_free_at = 1e9          # he takes every pitch, so only the steal happens
-		bp._aux_play = {}
-		bp._refresh_base_runners()
-		bp._batter_ready = true
+		bp.flow.aux_play = {}
+		bp.flow.refresh_base_runners()
+		bp.flow.batter_ready = true
 		bp._last_delivery = 0.45 + 0.07 * (trial % 12)
 		for k in 1500:
 			bp.plays.on_delivery_start()
@@ -77,9 +77,9 @@ func _init() -> void:
 	for i in tries:
 		bp._game.bases = [fast, null, null]
 		bp._game.outs = 0
-		bp._aux_play = {}
+		bp.flow.aux_play = {}
 		bp.plays.since_throw = [8, 8, 8]
-		bp._refresh_base_runners()
+		bp.flow.refresh_base_runners()
 		var before: int = bp._game.pickoffs
 		bp.plays.do_pickoff(1, Vector3(0.0, 2.1, 17.0), Vector3(-26.0, 0.0, 3.0), 2.0)
 		if bp._game.pickoffs > before:
@@ -91,8 +91,8 @@ func _init() -> void:
 	# --- A throw to an empty base with a runner on is a balk.
 	bp._game.bases = [fast, null, null]
 	bp._game.outs = 0
-	bp._aux_play = {}
-	bp._refresh_base_runners()
+	bp.flow.aux_play = {}
+	bp.flow.refresh_base_runners()
 	var balks_before: int = bp._game.balks
 	bp.plays.do_pickoff(3, Vector3(0.0, 2.1, 17.0), Vector3(26.0, 0.0, 3.0), 2.0)
 	_check(bp._game.balks == balks_before + 1 and bp._game.bases[1] != null, "throwing to an empty base with a runner on is a balk and he moves up")
@@ -100,10 +100,10 @@ func _init() -> void:
 	# --- The leads grow while you ignore the runners.
 	bp._game.bases = [fast, null, null]
 	bp.plays.since_throw = [0, 0, 0]
-	bp._refresh_base_runners()
+	bp.flow.refresh_base_runners()
 	var short_lead: float = bp.plays.leads[0]
 	bp.plays.since_throw = [7, 7, 7]
-	bp._refresh_base_runners()
+	bp.flow.refresh_base_runners()
 	_check(bp.plays.leads[0] > short_lead + 0.5, "his lead grows when you stop throwing over (%.1f -> %.1f m)" % [short_lead, bp.plays.leads[0]])
 
 	print("FAILURES: %d" % _failures)

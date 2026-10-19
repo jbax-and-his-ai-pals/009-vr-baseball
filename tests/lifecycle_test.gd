@@ -20,7 +20,7 @@ func _init() -> void:
 	root.add_child(bp)
 	await process_frame
 
-	_check(bp._batter_ready and bp._batter.visible, "the batter starts in the box, ready")
+	_check(bp.flow.batter_ready and bp._batter.visible, "the batter starts in the box, ready")
 	var home: Transform3D = bp._batter_home
 
 	var throw_timer := 0.0
@@ -41,26 +41,26 @@ func _init() -> void:
 		throw_timer -= dt
 		if throw_timer <= 0.0:
 			throw_timer = 1.0
-			if bp._batter_ready:
+			if bp.flow.batter_ready:
 				bp.flight.debug_throw()
 			else:
 				waited_unready += 1
 		# Whenever the next batter is walking up or is ready, you must be able to see him.
-		if (not bp._walk_on.is_empty() or bp._batter_ready) and not bp._batter.visible:
+		if (not bp._walk_on.is_empty() or bp.flow.batter_ready) and not bp._batter.visible:
 			invisible_frames += 1
 			if invisible_frames == 1:
-				var info := "ready=%s walk_on=%s aux=%s over=%s inning=%d outs=%d" % [bp._batter_ready, not bp._walk_on.is_empty(),
-					not bp._aux_play.is_empty(), bp._game.over, bp._game.inning, bp._game.outs]
+				var info := "ready=%s walk_on=%s aux=%s over=%s inning=%d outs=%d" % [bp.flow.batter_ready, not bp._walk_on.is_empty(),
+					not bp.flow.aux_play.is_empty(), bp._game.over, bp._game.inning, bp._game.outs]
 				for hh in bp.flight.hits:
 					info += " | hit result=%s shown=%s hidden=%s t=%.1f" % [hh.play.get("result", "?"), hh.result_shown, hh.plan.get("batter_hidden", "-"), hh.t]
 				print("  INVISIBLE: ", info)
-		if bp._batter_ready and bp._batter.transform.origin.distance_to(bp._batter_home.origin) > 0.1:
+		if bp.flow.batter_ready and bp._batter.transform.origin.distance_to(bp._batter_home.origin) > 0.1:
 			ready_away_frames += 1
-		if not bp._batter_ready:
+		if not bp.flow.batter_ready:
 			unready_run += dt
 			max_unready_run = maxf(max_unready_run, unready_run)
 			if absf(unready_run - 14.0) < dt * 0.6:
-				var info := "aux=%s walk_on=%s" % [not bp._aux_play.is_empty(), not bp._walk_on.is_empty()]
+				var info := "aux=%s walk_on=%s" % [not bp.flow.aux_play.is_empty(), not bp._walk_on.is_empty()]
 				for h in bp.flight.hits:
 					info += " | hit result=%s shown=%s t=%.1f end=%.1f state=%s" % [h.play.get("result", "?"), h.result_shown, h.t, h.play_end, h.human_state]
 				print("  STUCK? ", info)
@@ -79,7 +79,7 @@ func _init() -> void:
 	# Let everything settle, then the world must be at rest.
 	for i in 60 * 30:
 		bp._process(1.0 / 60.0)
-	_check(bp._batter_ready or bp._game.over, "after settling the batter is ready (or the game is over)")
+	_check(bp.flow.batter_ready or bp._game.over, "after settling the batter is ready (or the game is over)")
 	if not bp._game.over:
 		_check(bp._batter.visible, "the batter is visible in the box")
 		_check(bp._batter.transform.origin.distance_to(bp._batter_home.origin) < 0.05, "he stands where his box is")
@@ -88,10 +88,10 @@ func _init() -> void:
 		if lv.visible:
 			leaving += 1
 	_check(leaving == 0, "nobody is still walking back to the dugout")
-	_check(bp._aux_play.is_empty() and bp._walk_on.is_empty(), "no animation is left half-finished")
+	_check(bp.flow.aux_play.is_empty() and bp._walk_on.is_empty(), "no animation is left half-finished")
 	# Dots belong to one batter: when the next one is walking up there are none.
 	bp._zone_markers.add(0.0, 0.8, Color.GREEN)
-	bp._begin_walk_on()
+	bp.flow.begin_walk_on()
 	_check(bp._zone_markers.entries().is_empty(), "the pitch dots are cleared when the next batter comes up")
 	_check(not bp._runner.visible, "the batter-runner figure is put away")
 

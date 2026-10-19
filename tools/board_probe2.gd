@@ -7,7 +7,7 @@ func _init() -> void:
 	await process_frame
 	for i in 600:
 		bp._process(1.0 / 60.0)
-		if i % 90 == 0 and bp._batter_ready:
+		if i % 90 == 0 and bp.flow.batter_ready:
 			bp.flight.debug_throw()
 	await process_frame
 	await process_frame

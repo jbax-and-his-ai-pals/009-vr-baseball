@@ -26,7 +26,7 @@ func on_break() -> bool:
 func update_roles(delta: float) -> void:
 	if host._game == null or not two_way:
 		return
-	var settled = host._aux_play.is_empty() and host._walk_on.is_empty() and not host._play_in_progress()
+	var settled = host.flow.aux_play.is_empty() and host._walk_on.is_empty() and not host.flow.play_in_progress()
 	for h in host.flight.hits:
 		if not h.result_shown:
 			settled = false
@@ -103,13 +103,13 @@ func enter_bottom() -> void:
 	host._spectate_timer = 2.5
 	if host._zone_markers:
 		host._zone_markers.clear()
-	host._batter_ready = false
-	host._sync_batter()
-	host._begin_walk_on()
+	host.flow.batter_ready = false
+	host.flow.sync_batter()
+	host.flow.begin_walk_on()
 	host.slog.record("role_switch", {"to": "batting", "inning": top_game.inning, "score": "%d-%d" % [top_game.runs, top_game.home_score]})
 	host.hud.show_notice("Bottom of %d: you are up to bat" % top_game.inning, true)
 	host._sfx("pa_pitching_change")
-	host._refresh_base_runners()
+	host.flow.refresh_base_runners()
 	host.hud.refresh_hud()
 
 
@@ -140,10 +140,10 @@ func finish_bottom_half() -> void:
 	var ev = host._game.finish_bottom(half.runs, half.hits)
 	host.slog.record("role_switch", {"to": "pitching", "runs": half.runs, "hits": half.hits, "game_over": host._game.over})
 	host.hud.show_notice("Bottom %d: Home %s" % [int(ev.get("inning_ended", 0)), "scores %d" % half.runs if half.runs > 0 else "goes down in order"], true)
-	host._after_event(ev)
+	host.flow.after_event(ev)
 	if not host._game.over:
-		host._sync_batter()
-		host._begin_walk_on()
+		host.flow.sync_batter()
+		host.flow.begin_walk_on()
 	host.hud.refresh_hud()
 
 

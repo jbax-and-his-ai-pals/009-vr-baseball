@@ -79,16 +79,16 @@ func _init() -> void:
 		bp._game.runs = 0
 		var r: Player = bp._away.lineup[2]
 		bp._game.bases = [r, null, null]
-		bp._aux_play = {}
+		bp.flow.aux_play = {}
 		bp.plays.steal = {}
-		bp._refresh_base_runners()
+		bp.flow.refresh_base_runners()
 		bp.plays.pickoff_override = outcome
 		bp.plays.do_pickoff(1, Vector3(0.0, 1.5, 16.7), Vector3(-15.0, 2.0, 10.0), 2.0)
 		var flights_started: int = bp.plays.flights.size()
-		var moved: bool = not bp._aux_play.is_empty()
+		var moved: bool = not bp.flow.aux_play.is_empty()
 		for i in 60 * 16:
 			bp._process(1.0 / 60.0)
-			if bp._aux_play.is_empty() and i > 30:
+			if bp.flow.aux_play.is_empty() and i > 30:
 				break
 		var after: Array = bp._game.bases
 		var good := false
@@ -103,7 +103,7 @@ func _init() -> void:
 				good = after[0] == null and bp._game.outs == 1
 			_:
 				good = after[0] == r and bp._game.outs == 0
-		_check(good and bp._aux_play.is_empty() and moved, "scene, %s: the book is right and the play finishes (%d throws in the air)" % [outcome, flights_started])
+		_check(good and bp.flow.aux_play.is_empty() and moved, "scene, %s: the book is right and the play finishes (%d throws in the air)" % [outcome, flights_started])
 		for i in 120:
 			bp._process(1.0 / 60.0)
 	bp.queue_free()

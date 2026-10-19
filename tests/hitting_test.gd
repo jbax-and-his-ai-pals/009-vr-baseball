@@ -94,7 +94,7 @@ func _init() -> void:
 		# let the play finish before the next pitch
 		for i in 60 * 14:
 			bp._process(1.0 / 60.0)
-			if bp._batter_ready and bp._aux_play.is_empty() and bp.flight.hits.all(func(h): return h.result_shown):
+			if bp.flow.batter_ready and bp.flow.aux_play.is_empty() and bp.flight.hits.all(func(h): return h.result_shown):
 				break
 	_check(hit_found, "within a few pitches a swing through the ball made contact")
 
@@ -112,7 +112,7 @@ func _init() -> void:
 				break
 		for j in 60 * 12:
 			bp._process(1.0 / 60.0)
-			if bp._batter_ready and bp._aux_play.is_empty():
+			if bp.flow.batter_ready and bp.flow.aux_play.is_empty():
 				break
 	_check(bp._game.over and bp.results.game_recorded, "the game ends and is recorded")
 	var line: Dictionary = bp.results.hitting_line()

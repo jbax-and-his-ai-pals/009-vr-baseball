@@ -99,7 +99,7 @@ func _init() -> void:
 			hrs_seen = bp.acts.derby_hr
 		for i in 60 * 16:
 			bp._process(1.0 / 60.0)
-			if bp._batter_ready and bp._aux_play.is_empty() and bp.flight.hits.all(func(h): return h.result_shown):
+			if bp.flow.batter_ready and bp.flow.aux_play.is_empty() and bp.flight.hits.all(func(h): return h.result_shown):
 				break
 	_check(speeds.size() >= 6 and speeds.max() < 60.0, "batting practice pitches are slow (%.0f mph at most)" % speeds.max())
 	_check(in_zone >= speeds.size() - 1, "and over the plate (%d of %d)" % [in_zone, speeds.size()])

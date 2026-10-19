@@ -52,7 +52,7 @@ func catcher_release(vel: Vector3) -> void:
 	var w: Dictionary = host.plays.steal.get("await", {})
 	host.plays.steal.erase("await")
 	var target = int(host.plays.steal.from) + 1
-	var t_rel = float(host._aux_play.get("t", 0.0)) if not host._aux_play.is_empty() else 0.0
+	var t_rel = float(host.flow.aux_play.get("t", 0.0)) if not host.flow.aux_play.is_empty() else 0.0
 	var from = glove_pos(null)
 	if from.y < -10.0:
 		from = Vector3(0.0, 1.2, -1.0)                  # no controller: the throw starts from behind the plate

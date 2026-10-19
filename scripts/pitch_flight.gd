@@ -32,7 +32,7 @@ var in_play_count := 0
 ## He lets it go: a pitch at his body makes him jerk away, one near the zone sometimes
 ## draws a hitch of the bat (a check swing).
 func batter_takes(pitch: LivePitch) -> void:
-	var what = host._presenter.take(pitch.analysis, bool(pitch.bat.get("busy", false)), host._batter_is_lefty(), host._fx_rng.randf())
+	var what = host._presenter.take(pitch.analysis, bool(pitch.bat.get("busy", false)), host.flow.batter_is_lefty(), host._fx_rng.randf())
 	if what == "check":
 		host._sfx_later(float(pitch.analysis.get("time", 0.5)) * 0.5, "bat_swing_slow", host._batter.global_position + Vector3(0.0, 1.1, 0.0), -6.0)
 
@@ -79,7 +79,7 @@ func release_from_hand(release_t: float, vel_latency: float, spin_latency: float
 ## Read the controller each frame: the ball in your hand follows it; grabs, the start of your delivery and
 ## releases come back as events.
 func poll_hand(now: float) -> void:
-	for e in host._human.poll(now, host._hand, host._batter_ready and host.manager.visit_timer <= 0.0, host.release_mode == host.ReleaseMode.AUTO_PEAK):
+	for e in host._human.poll(now, host._hand, host.flow.batter_ready and host.manager.visit_timer <= 0.0, host.release_mode == host.ReleaseMode.AUTO_PEAK):
 		match String(e.type):
 			"grab":
 				host._haptics.play("grab")
@@ -276,7 +276,7 @@ func land(pitch: LivePitch) -> void:
 		outcome = "swinging_strike"
 	elif a.get("reached", false) and a.get("strike", false):
 		outcome = "called_strike"
-	elif a.get("reached", false) and PitchLocation.hits_batter(plate.x, plate.y, host._batter_is_lefty()):
+	elif a.get("reached", false) and PitchLocation.hits_batter(plate.x, plate.y, host.flow.batter_is_lefty()):
 		outcome = "hit_by_pitch"
 	if host.fielding.is_catcher() and a.get("reached", false) and outcome in ["ball", "called_strike"]:
 		outcome = host.fielding.receive(pitch, plate, outcome)
@@ -341,12 +341,12 @@ func land(pitch: LivePitch) -> void:
 		ev = host._game.dropped_third_strike(host._run_rng.randf() < 0.55)
 	else:
 		ev = host._game.pitch(outcome)
-	if not wild_plan.is_empty() and not ev.get("pa_over", false) and host._aux_play.is_empty():
+	if not wild_plan.is_empty() and not ev.get("pa_over", false) and host.flow.aux_play.is_empty():
 		# Show them go: the batter stays put, the men on base run.
 		var shown_from: Array = wild_plan["_before"]
-		host._aux_play = {"plan": wild_plan, "t": 0.0}
-		host._refresh_base_runners(shown_from)
-	host._begin_pa_exit(ev, bases_before)
+		host.flow.aux_play = {"plan": wild_plan, "t": 0.0}
+		host.flow.refresh_base_runners(shown_from)
+	host.flow.begin_pa_exit(ev, bases_before)
 	# The at-bat ended on a pitch a runner was running on (strike 'em out, throw 'em out).
 	if ev.get("pa_over", false) and not host.plays.steal.is_empty() and host.plays.steal.has("apply_at"):
 		host.plays.finish_steal()
@@ -367,7 +367,7 @@ func land(pitch: LivePitch) -> void:
 	var wild_text = host.hud.event_text(wild_ev)
 	host.hud.last_report = host.hud.format_report(pitch.label, a) + host.hud.bat_line(pitch) + ("\n" + wild_text if wild_text != "" else "") \
 		+ "\n" + host.hud.event_text(ev) + host.acts.lab_lines(pitch)
-	host._after_event(ev)
+	host.flow.after_event(ev)
 	host.hud.refresh_hud()
 	print(host.hud.last_report.replace("\n", " | "))
 
@@ -389,7 +389,7 @@ func contact(pitch: LivePitch) -> void:
 		strikes += 1
 	var in_play: bool = b.kind == "hit" and (sim.fair or sim.home_run)
 	if in_play:
-		host._batter_ready = false
+		host.flow.batter_ready = false
 	mark_pitch(a, "in_play" if in_play else "foul")
 	host.acts.derby_tally(pitch, bool(sim.get("home_run", false)), false)
 	host.acts.tutorial_pitch(pitch)
@@ -437,10 +437,10 @@ func contact(pitch: LivePitch) -> void:
 		# Everyone on base runs on the same physics as the fielders.
 		var head_start = {}
 		if not host.plays.steal.is_empty():
-			head_start[int(host.plays.steal.from)] = float(host._aux_play.get("t", 0.0)) if not host._aux_play.is_empty() else 0.0
+			head_start[int(host.plays.steal.from)] = float(host.flow.aux_play.get("t", 0.0)) if not host.flow.aux_play.is_empty() else 0.0
 			host.plays.steal = {}
 			host._bat_call = ""
-			host._aux_play = {}
+			host.flow.aux_play = {}
 		h.plan = Baserunning.plan(h.play, host._game.bases, host._game.outs, host._batter_player, host._run_rng, head_start)
 		h.play_end = maxf(h.play_end, float(h.plan.end_time))
 		# A double play (or a throw to a runner) changes where the ball goes and who covers.
@@ -453,7 +453,7 @@ func contact(pitch: LivePitch) -> void:
 					"t0": 0.3, "t1": maxf(float(cv.t) - 0.1, 0.8), "dive": false})
 		h.throws = host._director.build_throws(h)
 		# Any play with runners (a caught foul ball too) takes the batter out of the box.
-		host._batter_ready = false
+		host.flow.batter_ready = false
 	play_hit = h
 	host._director.start_play(h)
 	h.ball = host.world.make_ball()
@@ -483,9 +483,9 @@ func contact(pitch: LivePitch) -> void:
 	if b.kind == "foul tip":
 		var tip_before = host._game.bases.duplicate()
 		var tip_ev = host._game.pitch("foul_tip")
-		host._begin_pa_exit(tip_ev, tip_before)
+		host.flow.begin_pa_exit(tip_ev, tip_before)
 		host.hud.last_report += "\n" + host.hud.event_text(tip_ev)
-		host._after_event(tip_ev)
+		host.flow.after_event(tip_ev)
 	host.hud.refresh_hud()
 	print(host.hud.last_report.replace("\n", " | "))
 	var pl: Dictionary = h.play
@@ -566,7 +566,7 @@ func update_hit(h: LiveHit, delta: float) -> void:
 		host._director.update_play(h)
 	if not h.result_shown and h.t >= h.play_end:
 		h.result_shown = true
-		host._announce_play(h)
+		host.flow.announce_play(h)
 	if h.t >= maxf(maxf(h.play_end, path_end), host._director.plan_anim_end(h.plan)):
 		h.done = true
 		h.ball.global_position = h.ball.global_position

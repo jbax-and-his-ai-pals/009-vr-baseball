@@ -28,11 +28,11 @@ func _init() -> void:
 	for i in 60 * 150:
 		bp._process(1.0 / 60.0)
 		throw_timer -= 1.0 / 60.0
-		if throw_timer <= 0.0 and bp._batter_ready and not bp._game.over:
+		if throw_timer <= 0.0 and bp.flow.batter_ready and not bp._game.over:
 			throw_timer = 1.0
 			if i % 7 == 0:
 				bp._game.bases = [fast, null, null]
-				bp._refresh_base_runners()
+				bp.flow.refresh_base_runners()
 			bp.plays.on_delivery_start()
 			bp.flight.debug_throw()
 		if i == 60 * 40:

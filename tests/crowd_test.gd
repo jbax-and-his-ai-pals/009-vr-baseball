@@ -41,9 +41,9 @@ func _init() -> void:
 	bp.menu_on_start = false
 	root.add_child(bp)
 	await process_frame
-	_check(bp._crowd_excitement({"result": "home_run"}) == 1.0 and bp._crowd_excitement({"result": "double"}) == 0.5 and bp._crowd_excitement({"result": "strikeout"}) == 0.3, "the scene picks how excited: homer, double, strikeout")
-	_check(bp._crowd_excitement({"result": "single", "runs": 1}) == 0.6 and bp._crowd_excitement({"result": "out"}) == 0.0, "a run scores a cheer, an ordinary out nothing")
-	bp._after_event({"result": "home_run", "runs": 1, "pa_over": false, "half_over": false, "game_over": false, "text": "", "batter": null})
+	_check(bp.flow.crowd_excitement({"result": "home_run"}) == 1.0 and bp.flow.crowd_excitement({"result": "double"}) == 0.5 and bp.flow.crowd_excitement({"result": "strikeout"}) == 0.3, "the scene picks how excited: homer, double, strikeout")
+	_check(bp.flow.crowd_excitement({"result": "single", "runs": 1}) == 0.6 and bp.flow.crowd_excitement({"result": "out"}) == 0.0, "a run scores a cheer, an ordinary out nothing")
+	bp.flow.after_event({"result": "home_run", "runs": 1, "pa_over": false, "half_over": false, "game_over": false, "text": "", "batter": null})
 	_check(bp._stadium.excitement() == 1.0, "a home run in the game gets the crowd up")
 	bp.queue_free()
 

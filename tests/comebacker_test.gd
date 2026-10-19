@@ -40,7 +40,7 @@ func _init() -> void:
 		# Not a comebacker: let it play out and try another.
 		for i in 60 * 14:
 			bp._process(1.0 / 60.0)
-			if h.result_shown and bp._aux_play.is_empty() and bp._batter_ready:
+			if h.result_shown and bp.flow.aux_play.is_empty() and bp.flow.batter_ready:
 				break
 	_check(found, "some balls through the middle become your chance (%s)" % str(spec_used))
 	if not found:
@@ -76,7 +76,7 @@ func _init() -> void:
 			break
 		for i in 60 * 14:
 			bp2._process(1.0 / 60.0)
-			if h2.result_shown and bp2._aux_play.is_empty() and bp2._batter_ready:
+			if h2.result_shown and bp2.flow.aux_play.is_empty() and bp2.flow.batter_ready:
 				break
 	_check(chance != null, "found a comebacker again")
 	if chance != null:

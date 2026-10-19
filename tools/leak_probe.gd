@@ -18,11 +18,11 @@ func _init() -> void:
 		step_us += Time.get_ticks_usec() - t0
 		steps += 1
 		t_throw -= 1.0 / 60.0
-		if t_throw <= 0.0 and bp._batter_ready:
+		if t_throw <= 0.0 and bp.flow.batter_ready:
 			t_throw = 1.0
 			bp.flight.debug_throw()
 		if bp._game.over:
-			bp._game_over_timer = 0.01
+			bp.flow.game_over_timer = 0.01
 		if i % (60 * 120) == 0:
 			print("t=%4ds | nodes %d | objects %d | orphans %d | static %.1f MB | hits %d pitches %d | step %.0f us" % [
 				i / 60, Performance.get_monitor(Performance.OBJECT_NODE_COUNT), Performance.get_monitor(Performance.OBJECT_COUNT),

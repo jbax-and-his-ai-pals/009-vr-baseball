@@ -95,8 +95,8 @@ func _init() -> void:
 	_check(bp._game.bottom_live and bp._mode.human_pitcher, "the game starts with you pitching and the bottom live")
 	bp._game.runs = 1
 	var top_end := _strike_out_side(bp._game)
-	bp._after_event(top_end)
-	_check(bp.roles.on_break() and not bp._batter_ready, "at the break nobody pitches and no batter walks up")
+	bp.flow.after_event(top_end)
+	_check(bp.roles.on_break() and not bp.flow.batter_ready, "at the break nobody pitches and no batter walks up")
 	for i in 60 * 8:
 		bp._process(1.0 / 60.0)
 		if bp.roles.top_game != null:
@@ -106,18 +106,18 @@ func _init() -> void:
 	var fielder: Doll = bp._field_nodes[6]
 	_check(fielder.jersey == bp._away.jersey and bp._field_nodes[1].jersey == bp._away.jersey, "the visitors take the field in their uniforms")
 	_check(bp._runner.jersey == bp._home.jersey, "and your runners wear yours")
-	bp._after_event(bp._game.pitch("called_strike"))
+	bp.flow.after_event(bp._game.pitch("called_strike"))
 	_check(bp.roles.top_game != null, "a strike changes nothing")
 	for i in 60 * 6:
 		bp._process(1.0 / 60.0)
-		if bp._batter_ready:
+		if bp.flow.batter_ready:
 			break
 	var board: Dictionary = {}
 	bp.hud.refresh_scoreboard()
 	_check(bp.roles.top_game.pitch_count == 0 or bp.roles.top_game.pitch_count >= 0, "your pitching line is kept")
 	# Score two runs and the game is won at once.
 	bp._game.runs = 2
-	bp._after_event(bp._game.pitch("called_strike"))
+	bp.flow.after_event(bp._game.pitch("called_strike"))
 	_check(bp.roles.bottom_end_timer > 0.0, "a walk-off ends the half")
 	for i in 60 * 10:
 		bp._process(1.0 / 60.0)

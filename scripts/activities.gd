@@ -64,7 +64,7 @@ func run_drill(delta: float) -> void:
 	if not drill or drill_done or host._game == null:
 		return
 	var busy = not host.flight.hits.is_empty() and not (host.flight.hits[host.flight.hits.size() - 1] as LiveHit).result_shown
-	if busy or not host._aux_play.is_empty() or not host._walk_on.is_empty():
+	if busy or not host.flow.aux_play.is_empty() or not host._walk_on.is_empty():
 		return
 	drill_timer -= delta
 	if drill_timer > 0.0:

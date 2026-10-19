@@ -173,13 +173,13 @@ func _init() -> void:
 	for i in 60 * 120:
 		bp._process(1.0 / 60.0)
 		throw_timer -= 1.0 / 60.0
-		if throw_timer <= 0.0 and bp._batter_ready:
+		if throw_timer <= 0.0 and bp.flow.batter_ready:
 			throw_timer = 1.0
 			bp.flight.debug_throw()
 		if bp.acts.scenario_done:
 			break
 	_check(bp.acts.scenario_done and bp._profile.challenge("side").attempts == 1, "it was judged and the attempt recorded (%s, stars %d)" % [bp.acts.scenario.state, bp.acts.scenario.stars])
-	_check(bp._game_over_timer < 0.0, "a finished challenge does not restart a new game by itself")
+	_check(bp.flow.game_over_timer < 0.0, "a finished challenge does not restart a new game by itself")
 	bp.queue_free()
 
 	print("FAILURES: %d" % _failures)

@@ -80,7 +80,7 @@ func _init() -> void:
 	root.add_child(bp)
 	await process_frame
 	_check(bp._dugouts != null and bp._dugouts.mates.home.size() == Dugouts.MATES, "the game has its dugouts")
-	bp._after_event({"result": "home_run", "runs": 1, "pa_over": false, "half_over": false, "game_over": false, "text": "", "batter": null})
+	bp.flow.after_event({"result": "home_run", "runs": 1, "pa_over": false, "half_over": false, "game_over": false, "text": "", "batter": null})
 	_check(bp._dugouts.pending() > 0, "and a home run in it sets them off")
 	bp.queue_free()
 

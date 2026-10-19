@@ -181,13 +181,13 @@ func _init() -> void:
 	for i in 60 * 400:
 		bp._process(1.0 / 60.0)
 		t -= 1.0 / 60.0
-		if t <= 0.0 and bp._batter_ready:
+		if t <= 0.0 and bp.flow.batter_ready:
 			t = 1.0
 			bp.flight.debug_throw()
 		if bp._career.matchday > 0:
 			break
 	_check(bp._career.matchday == 1 and bp._career.starts.size() == 1 and bp._career.league.results.size() == 4, "the finished start moves the season on (matchday %d)" % bp._career.matchday)
-	_check(bp._game_over_timer < 0.0 and bp._props.pending_count() > 0, "no automatic new game: a way back to the menu is scheduled")
+	_check(bp.flow.game_over_timer < 0.0 and bp._props.pending_count() > 0, "no automatic new game: a way back to the menu is scheduled")
 	_check(int(bp._profile.totals.get("games", 0)) >= 1, "it counts in your lifetime totals")
 	bp.queue_free()
 

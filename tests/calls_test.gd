@@ -154,10 +154,10 @@ func _init() -> void:
 		bp._game.home_score = 2
 		bp._game.bases = [null, null, bp._away.lineup[0]]
 		bp._batter_ai.profile = BatterProfile.by_name("Contact Hitter")
-		bp._batter_ready = true
+		bp.flow.batter_ready = true
 		bp.plays.steal = {}
-		bp._aux_play = {}
-		bp._refresh_base_runners()
+		bp.flow.aux_play = {}
+		bp.flow.refresh_base_runners()
 		var tries := 0
 		while bp.plays.steal.is_empty() and tries < 200:
 			bp.plays.on_delivery_start()
@@ -170,7 +170,7 @@ func _init() -> void:
 		bp.flight.debug_throw()
 		for i in 60 * 12:
 			bp._process(1.0 / 60.0)
-			if bp.plays.steal.is_empty() and bp._aux_play.is_empty() and bp.flight.hits.all(func(h): return h.result_shown):
+			if bp.plays.steal.is_empty() and bp.flow.aux_play.is_empty() and bp.flight.hits.all(func(h): return h.result_shown):
 				break
 		if bp.plays.steal.is_empty() and bp._bat_call == "":
 			finished += 1

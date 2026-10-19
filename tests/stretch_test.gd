@@ -88,7 +88,7 @@ func _init() -> void:
 	bp.plays.since_throw = [8, 8, 8]
 	var threw := false
 	for i in 400:
-		bp._aux_play = {}
+		bp.flow.aux_play = {}
 		bp.plays.steal = {}
 		bp._game.bases = [bp._away.lineup[0], null, null]
 		bp.plays.leads[0] = 5.2

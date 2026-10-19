@@ -141,14 +141,11 @@ var _batter_home: Transform3D:             # where he stands in his box
 	set(v):
 		if _presenter != null:
 			_presenter.home = v
-var _batter_ready := true                  # in the box and pitching may go on
-var _unready_for := 0.0
 var _walk_on: Dictionary:                  # the next batter's walk to the box
 	get: return _presenter.walk if _presenter != null else {}
 	set(v):
 		if _presenter != null:
 			_presenter.walk = v
-var _aux_play := {}                        # a walk or strikeout's own runner animation
 var _leavers: Array[Node3D] = []   # figures that walk back to the dugout after an out
 var _stadium: Stadium
 var _xr_interface: XRInterface
@@ -167,7 +164,6 @@ var _ai_pitcher: AIPitcher
 var _spectate_timer := 2.0
 var _defense: Defense
 var _game: GameState
-var _game_over_timer := -1.0
 var _base_runners: Array[Node3D] = []
 var _field_nodes := {}            # fielder number -> Node3D
 var _runner: Node3D
@@ -184,6 +180,7 @@ var slog := SessionRecorder.new()                 # the session log: events, sna
 var results := GameResults.new()                 # what a finished game is worth: lines, the book, the career
 var world := WorldBuilder.new()                 # builds the park, the people and the headset rig
 var flight := PitchFlight.new()                 # pitches and batted balls: launch, flight, landing, contact, the play
+var flow := GameFlow.new()                 # the batter's turn, the play's end and what follows an event
 var _game_seed := 0
 var forced_seed := -1                       # tests and replays: use this seed (the --seed= flag does the same)
 var _origin: XROrigin3D
@@ -198,6 +195,7 @@ const SWING_RECOVERY := 0.75
 
 
 func _init() -> void:
+	flow.host = self
 	flight.host = self
 	world.host = self
 	results.host = self
@@ -313,14 +311,14 @@ func _ready() -> void:
 	_director.props = _props
 	_director.sound = _sound
 	_director.human_num = Callable(fielding, "human_num")
-	_director.refresh_base_runners = Callable(self, "_refresh_base_runners")
-	_director.batter_hidden.connect(_on_batter_hidden)
+	_director.refresh_base_runners = Callable(flow, "refresh_base_runners")
+	_director.batter_hidden.connect(flow.on_batter_hidden)
 	_crew.umpire_voice.connect(func(id: String): _sound.umpire_says(id))
 	_crew.throw_started.connect(func(at: Vector3): _sfx_later(0.42, "throw_whoosh", at))
 	_sound.umpire = _umpire
 	_sound.batter = _batter
 	_presenter.walk_step.connect(_on_walk_step)
-	_presenter.arrived.connect(_on_batter_arrived)
+	_presenter.arrived.connect(flow.on_batter_arrived)
 	_sound.tired_source = Callable(manager, "arm_fatigue")
 	_audio.apply_volumes(_settings.volumes)
 	_menu.ui_sound.connect(func(id: String): _sfx(id))
@@ -338,7 +336,7 @@ func _ready() -> void:
 	_batter_ai = BatterAI.new(BatterProfile.by_name(batter_profile))
 	_batter_player = _player_named(batter_profile)
 	_seed_rules()
-	_sync_batter()
+	flow.sync_batter()
 	if not _xr_active:
 		_governor.set_refresh_rate(60.0)  # a desktop window is judged against 60 Hz, not a headset's 90
 	if _props != null and (Park.now().wind.length() >= 1.0 or Park.now().air < 0.95) and not acts.derby:
@@ -417,7 +415,7 @@ func _run_ai_pitcher(delta: float) -> void:
 	if _spectate_timer > 0.0:
 		return
 	var play_running: bool = flight.play_hit != null and not flight.play_hit.result_shown
-	if play_running or not _batter_ready:
+	if play_running or not flow.batter_ready:
 		return
 	manager.maybe_change_pitcher()
 	# The manager's call: with first base open and a dangerous hitter up, put him on.
@@ -436,7 +434,7 @@ func _run_ai_pitcher(delta: float) -> void:
 		# He winds up and throws: the ball leaves his hand as the arm comes through.
 		(mound_man as Doll).throw_to(Vector3(0.0, 1.0, 0.0), "overhand", 0.75)
 		_props.later(0.45, func():
-			if _game != null and not _game.over and _batter_ready:
+			if _game != null and not _game.over and flow.batter_ready:
 				flight.launch(release, pitch.vel, pitch.spin, pitch.kind))
 	else:
 		flight.launch(release, pitch.vel, pitch.spin, pitch.kind)
@@ -480,13 +478,13 @@ func _process(delta: float) -> void:
 		if flag and not slog.mark_pressed:
 			slog.mark_moment()
 		slog.mark_pressed = flag
-	_update_batter_lifecycle(delta)
+	flow.update_batter_lifecycle(delta)
 	roles.update_roles(delta)
-	if _game_over_timer > 0.0:
-		_game_over_timer -= delta
-		if _game_over_timer <= 0.0:
+	if flow.game_over_timer > 0.0:
+		flow.game_over_timer -= delta
+		if flow.game_over_timer <= 0.0:
 			_new_game()
-			_sync_batter()
+			flow.sync_batter()
 			hud.last_report = "New game."
 			hud.refresh_hud()
 	_governor.update(delta)
@@ -520,7 +518,7 @@ func _process(delta: float) -> void:
 			fielding.poll_fielding(now)
 	elif _demo:
 		_demo_timer -= delta
-		if _demo_timer <= 0.0 and _batter_ready:
+		if _demo_timer <= 0.0 and flow.batter_ready:
 			_demo_timer = _demo_interval
 			flight.debug_throw()
 	for i in range(flight.hits.size() - 1, -1, -1):
@@ -563,25 +561,6 @@ func _poll_tag() -> void:
 	if y_pressed and not _profile_pressed:
 		_cycle_profile()
 	_profile_pressed = y_pressed
-
-
-## Put the right hitter at the plate: the lineup's next man in a Game, the chosen archetype in Practice.
-func _sync_batter() -> void:
-	if lineup_mode == "Game" and _game and _game.current_batter() != null:
-		_batter_player = _game.current_batter()
-		_batter_ai.profile = BatterProfile.from_player(_batter_player)
-	_batter_ai.bats_left = _batter_is_lefty()
-	hud.refresh_scoreboard()
-	# A batter already standing in his box (the first of a game) takes the right side now; everyone
-	# else is placed when he walks on, so the last batter never flips sides in front of you.
-	if _batter_ready and _walk_on.is_empty() and _aux_play.is_empty() and not _play_in_progress() and _batter != null:
-		_presenter.place_in_box(_batter_is_lefty())
-
-
-func _batter_is_lefty() -> bool:
-	if "--lefty" in OS.get_cmdline_user_args():
-		return true                      # debug: make every batter left-handed
-	return _batter_player != null and not _batter_player.bats_right
 
 
 ## Player preferences: handedness and the assist preset (funnel, glove, throw cone).
@@ -787,9 +766,9 @@ func _new_game() -> void:
 	_stats.reset()
 	if _zone_markers:
 		_zone_markers.clear()
-	_aux_play = {}
+	flow.aux_play = {}
 	_walk_on = {}
-	_batter_ready = true
+	flow.batter_ready = true
 	if _batter != null:
 		_batter.visible = true
 		_batter.transform = _batter_home
@@ -820,8 +799,8 @@ func _new_game() -> void:
 	if acts.scenario != null:
 		acts.scenario.apply(_game, _away.lineup)
 		hud.show_notice("%s: %s" % [acts.scenario.title, acts.scenario.goal], true)
-	_game_over_timer = -1.0
-	_refresh_base_runners()
+	flow.game_over_timer = -1.0
+	flow.refresh_base_runners()
 	hud.refresh_scoreboard()
 
 
@@ -851,256 +830,6 @@ func _current_tag() -> String:
 
 
 # ------------------------------------------------------------------ human fielding
-
-
-## A strikeout or a walk ended the at-bat on the pitch: the batter leaves the box (walks off,
-## or jogs to first with the men ahead of him moving up) and the next batter walks on.
-func _begin_pa_exit(ev: Dictionary, bases_before: Array) -> void:
-	if not ev.get("pa_over", false):
-		return
-	_batter_ready = false
-	slog.record("pa_exit", {"result": ev.get("result", ""), "text": ev.get("text", "")})
-	var plan: Dictionary
-	if String(ev.get("result", "")) in ["walk", "hit_by_pitch"] or ev.get("batter_reached", false):
-		plan = Baserunning.plan_hold(bases_before, _batter_player, true)
-		plan["hide_batter_at"] = 0.3
-		if String(ev.get("result", "")) == "hit_by_pitch":
-			(plan["events"] as Array).append({"t": 0.1, "base": 0, "text": "HIT BY PITCH", "kind": "out",
-				"at": Vector3(0.9, 0.0, 0.0)})
-	else:
-		plan = Baserunning.plan_leave(_batter_player)
-	plan["walk_on_when_hidden"] = true
-	if String(ev.get("result", "")) == "strikeout":
-		plan["keep_bat"] = true            # he carries it back to the dugout
-	_aux_play = {"plan": plan, "t": 0.0}
-	for lab in _play_labels:
-		lab.visible = false
-	_refresh_base_runners(bases_before)
-
-
-## The next batter comes from the dugout to the box. Pitching waits until he is there.
-func _begin_walk_on() -> void:
-	if roles.on_break():
-		_batter_ready = false         # between the halves: nobody walks up
-		return
-	_crew.return_to_plate()      # the umpire is back behind the plate for the next batter
-	if _game != null and not _game.over:
-		_sfx("pa_now_batting")
-		if _fx_rng.randf() < 0.4:
-			_sfx("organ_stinger", null, -6.0)
-	if _game != null and _game.over:
-		_batter_ready = true
-		return
-	_batter_ready = false
-	# A new batter: the last batter's pitch dots are done with.
-	if _zone_markers:
-		_zone_markers.clear()
-	hud.refresh_hud()
-	var duration := _presenter.begin_walk_on(_batter_is_lefty())
-	slog.record("walk_on", {"duration": snappedf(duration, 0.01), "batter": _batter_player.name if _batter_player else ""})
-	if _game != null and not _game.over and _fx_rng.randf() < 0.5:
-		_sfx("music_walkup", null, -10.0)
-
-
-## True while a ball in play (one with runners moving) has not been announced yet.
-func _play_in_progress() -> bool:
-	for h in flight.hits:
-		if not h.result_shown and not h.plan.is_empty():
-			return true
-	return false
-
-
-func _update_batter_lifecycle(delta: float) -> void:
-	plays.update_flights(delta)
-	if flight.play_hit == null or flight.play_hit.done:
-		_director.drift_to_homes(delta)        # between plays the fielders walk to where they should stand
-	if not plays.steal.is_empty():
-		if plays.steal.has("apply_at") and not plays.steal.get("done", false):
-			# Decided on the base: put it in the book (also if the run animation has already ended).
-			if _aux_play.is_empty() or float(_aux_play.t) >= float(plays.steal.apply_at):
-				plays.finish_steal()
-		elif plays.steal.has("await") and _aux_play.is_empty():
-			fielding.catcher_release(Vector3.ZERO)       # the run is over and you never threw
-		elif _aux_play.is_empty():
-			plays.steal = {}            # the delivery never became a pitch: nothing to resolve
-			_bat_call = ""
-	# Safety net: if nothing is happening that could make the batter ready, make him ready.
-	var busy := not _aux_play.is_empty() or not _walk_on.is_empty()
-	for h in flight.hits:
-		if not h.result_shown:
-			busy = true
-	if _batter_ready or busy or roles.on_break():
-		_unready_for = 0.0
-	else:
-		_unready_for += delta
-		if _unready_for > 2.0:
-			GameLog.mark("watchdog: the batter was not ready for 2 s and nothing explained it", slog.snapshot())
-			_batter_ready = true
-			_batter.visible = true
-			_batter.set_carry(false, true)
-			_batter.transform = _batter_home
-			_unready_for = 0.0
-	if not _aux_play.is_empty():
-		_aux_play.t += delta
-		var plan: Dictionary = _aux_play.plan
-		_director.animate_plan(plan, float(_aux_play.t))
-		if float(_aux_play.t) >= _director.plan_anim_end(plan):
-			_aux_play = {}
-			_runner.visible = false
-			for lv in _leavers:
-				lv.visible = false
-			_refresh_base_runners()
-			hud.refresh_scoreboard()
-	_presenter.update(delta)
-
-
-## The batter-runner has left the box: his bat drops (unless he carries it off), and if the plan says
-## so the next batter starts walking on.
-func _on_batter_hidden(plan: Dictionary) -> void:
-	if not plan.get("keep_bat", false):
-		flight.drop_bat()
-	_batter.visible = false
-	if plan.get("walk_on_when_hidden", false):
-		_begin_walk_on()
-
-
-## He is in the box: the pitcher may throw.
-func _on_batter_arrived() -> void:
-	manager.refresh_sign()
-	_sfx("batter_step_dirt", _batter_home.origin)
-	if _fx_rng.randf() < 0.5:
-		_sfx_later(0.5, "bat_tap_plate", Vector3(0.0, 0.1, 0.0), -4.0)
-	_batter_ready = true
-	hud.refresh_hud()
-
-
-## The play is over: tell the scorebook, say what happened.
-func _announce_play(h: LiveHit) -> void:
-	var play := h.play
-	var text: String = play.get("text", "")
-	var ev := {}
-	if h.summary.get("home_run", false):
-		text = "HOME RUN!"
-		ev = _game.in_play({"result": "home_run"}, h.plan)
-	elif play.is_empty():
-		return
-	elif play.get("foul_tip", false):
-		# Already counted when the bat hit it (a tip into the mitt is a strike on the spot).
-		hud.last_report = "FOUL TIP\n" + h.report
-		hud.refresh_hud()
-		return
-	elif play.get("result", "") == "foul":
-		var bases_foul := _game.bases.duplicate()
-		_crew.call_it("ump_foul", 0.1, 1.0)
-		ev = _game.pitch("foul_bunt" if h.bunt else "foul")
-		text = "Foul bunt" if h.bunt else "Foul ball"
-		if ev.get("pa_over", false):
-			_begin_pa_exit(ev, bases_foul)
-	else:
-		ev = _game.in_play(play, h.plan)
-		if play.get("ground_rule", false):
-			_sound.umpire_says_later(0.3, "ump_time")      # dead ball: two bases
-	if _runner:
-		_runner.visible = false       # he is on a base now (or out): the base figures take over
-	hud.last_report_extra = ""
-	var lines := text.to_upper() + "\n" + h.report
-	if not ev.is_empty():
-		var extra := hud.event_text(ev)
-		if extra != "":
-			lines += "\n" + extra
-	hud.last_report = lines
-	_after_event(ev, {"ev": float(h.summary.get("ev_mph", 0.0)), "dist": float(h.summary.get("distance", 0.0))})
-	hud.refresh_hud()
-	slog.record("play_result", {"text": text, "result": ev.get("result", ""), "runs": ev.get("runs", 0), "outs_added": ev.get("outs_added", 0),
-		"pa_over": ev.get("pa_over", false), "half_over": ev.get("half_over", false), "game_over": ev.get("game_over", false),
-		"state_text": ev.get("text", ""), "duration": snappedf(h.t, 0.01)})
-	print(hud.last_report.replace("\n", " | "))
-
-
-## How far the crowd gets to its feet for this event (0 for nothing special).
-func _crowd_excitement(ev: Dictionary) -> float:
-	match String(ev.get("result", "")):
-		"home_run":
-			return 1.0
-		"triple", "double":
-			return 0.5
-		"strikeout":
-			return 0.3
-	return 0.6 if int(ev.get("runs", 0)) > 0 else 0.0
-
-
-## After anything that changes the game: next batter, runners, scoreboard, game over.
-func _after_event(ev: Dictionary, extra: Dictionary = {}) -> void:
-	if ev.is_empty():
-		return
-	if roles.top_game != null:
-		ev = roles.bottom_event(ev, extra)
-	if _sound != null:
-		_sound.crowd_react(ev, _game)
-	if _stadium != null:
-		_stadium.pulse(_crowd_excitement(ev))
-	if _dugouts != null:
-		_dugouts.react_event(ev, "home" if roles.top_game != null else "away")
-		if ev.get("game_over", false):
-			_dugouts.cheer("home" if _game.home_score > _game.runs else "away", "celebrate", true)
-	match String(ev.get("result", "")):
-		"home_run":
-			_haptics.play("rumble", 1.0)
-		"strikeout":
-			_haptics.play("rumble", 0.3)
-	if ev.get("pa_over", false):
-		if _batter_player and roles.top_game == null:
-			_stats.record_result(_batter_player.name, String(ev.get("result", "out")),
-				float(extra.get("ev", 0.0)), float(extra.get("dist", 0.0)))
-		_sync_batter()
-		if _aux_play.is_empty():
-			_begin_walk_on()          # after a ball in play the next batter comes up now
-	elif _aux_play.is_empty() and _walk_on.is_empty() and not _play_in_progress():
-		_batter_ready = true          # a foul (or any pitch that did not end the at-bat): he is still up
-	if acts.drill or acts.derby:
-		# A drill is not a game: nobody is ever out, nobody stays on, the count never fills.
-		_game.outs = 0
-		_game.bases = [null, null, null]
-		_game.balls = 0
-		_game.strikes = 0
-		_game.inning = 1
-		_game.over = false
-	acts.update_scenario(ev)
-	manager.update_alignment()
-	manager.refresh_sign()
-	if ev.get("game_over", false):
-		results.record_finished_game()
-		_game_over_timer = -1.0 if (acts.scenario != null or _career_game) else 8.0
-		slog.record("game_over", {"final": _game.final_text(), "line": _game.line_text(), "stats": {"k": _game.strikeouts,
-			"bb": _game.walks, "hits": _game.hits, "wp": _game.wild_pitches, "sb": _game.stolen_bases, "cs": _game.caught_stealing,
-			"po": _game.pickoffs, "balks": _game.balks, "hbp": _game.hit_by_pitches, "sac": _game.sacrifices}})
-	if ev.get("half_over", false):
-		slog.record("half_over", {"inning": ev.get("inning_ended", 0), "home_runs_scored": ev.get("home_runs_scored", -1),
-			"runs": _game.runs, "home": _game.home_score})
-	if _aux_play.is_empty():
-		_refresh_base_runners()
-	hud.refresh_scoreboard()
-
-
-## Figures on the bases that match the scorebook.
-func _refresh_base_runners(bases: Array = []) -> void:
-	if _game == null:
-		return
-	var on: Array = bases if bases.size() == 3 else _game.bases
-	if _base_runners.is_empty():
-		for i in 3:
-			var fig := world.runner_doll(_director.stand_for(i + 1))
-			fig.idle_bounce = true             # on his toes off the bag
-			fig.crouch = 0.6
-			fig.visible = false
-			_base_runners.append(fig)
-	for i in 3:
-		var who = on[i]
-		plays.leads[i] = StealModel.lead(who as Player, int(plays.since_throw[i])) if who is Player else 2.4
-		_base_runners[i].visible = on[i] != null
-		(_base_runners[i] as Doll).watching = false
-		_base_runners[i].position = _director.stand_for(i + 1)
-		_base_runners[i].rotation.y = atan2(-Baserunning.BASE_POS[i + 1].x, -Baserunning.BASE_POS[i + 1].z)
 
 
 ## Meters from the nearer foul line (the lines run out from the plate at 45 degrees).

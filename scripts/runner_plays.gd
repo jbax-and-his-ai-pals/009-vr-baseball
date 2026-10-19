@@ -21,7 +21,7 @@ var flights: Array = []             # balls in the air that are not a pitch or a
 func on_delivery_start() -> void:
 	if host._runners_on():
 		GameLog.event("delivery_start", {"s": host.slog.brief(), "t_hand": host._delivery_start})
-	if host._game == null or not host._runners_on() or not steal.is_empty() or not host._aux_play.is_empty() or host._game.over:
+	if host._game == null or not host._runners_on() or not steal.is_empty() or not host.flow.aux_play.is_empty() or host._game.over:
 		return
 	var tired = 0.0
 	if host._mode.human_pitcher:
@@ -36,11 +36,11 @@ func on_delivery_start() -> void:
 		var lead: float = float(leads[base - 1])
 		var run_t = StealModel.run_time(runner as Player, base, lead)
 		var plan = Baserunning.plan_steal(base, runner, run_t)
-		host._aux_play = {"plan": plan, "t": 0.0}
+		host.flow.aux_play = {"plan": plan, "t": 0.0}
 		steal = {"from": base, "runner": runner, "run_t": run_t, "plan": plan}
 		host.slog.record("steal_break", {"base": base, "runner": (runner as Player).name, "chance": snappedf(p, 0.001), "lead": lead,
 			"run_t": run_t, "delivery_so_far": host._last_delivery})
-		host._refresh_base_runners()
+		host.flow.refresh_base_runners()
 		return
 	# No steal: perhaps a play is on (squeeze, hit and run).
 	var call = StealModel.play_call(host._game.bases, host._game.outs, host._game.strikes, host._game.inning, host._game.runs - host._game.home_score,
@@ -54,12 +54,12 @@ func on_delivery_start() -> void:
 	var lead_c: float = float(leads[from_base - 1])
 	var run_c = StealModel.run_time(rnr as Player, from_base, lead_c)
 	var plan_c = Baserunning.plan_steal(from_base, rnr, run_c)
-	host._aux_play = {"plan": plan_c, "t": 0.0}
+	host.flow.aux_play = {"plan": plan_c, "t": 0.0}
 	steal = {"from": from_base, "runner": rnr, "run_t": run_c, "plan": plan_c, "call": call}
 	host._bat_call = call
 	host.slog.record("play_call", {"call": call, "base": from_base, "runner": (rnr as Player).name, "batter": host._batter_ai.profile.name})
 	host.hud.show_notice("%s!" % call.replace("_", " ").to_upper(), true)
-	host._refresh_base_runners()
+	host.flow.refresh_base_runners()
 
 
 ## The pitch is in the catcher's glove (or it was hit and the steal was cancelled elsewhere):
@@ -68,7 +68,7 @@ func resolve_steal(a: Dictionary) -> void:
 	if steal.is_empty() or steal.has("apply_at") or steal.has("await"):
 		return
 	var base = int(steal.from)
-	var t_now = float(host._aux_play.get("t", 0.0)) if not host._aux_play.is_empty() else 0.0
+	var t_now = float(host.flow.aux_play.get("t", 0.0)) if not host.flow.aux_play.is_empty() else 0.0
 	if host.fielding.is_catcher() and base < 3 and not steal.has("call"):
 		# He is going: get the ball out of the glove with your throwing hand and throw it to the base.
 		steal["await"] = {"left": maxf(float(steal.run_t) - t_now - 0.2, 0.8), "a_time": float(a.get("time", 0.5))}
@@ -84,7 +84,7 @@ func resolve_steal(a: Dictionary) -> void:
 ## Put a steal's result in the picture and in the book (_finish_steal does the book when the picture gets there).
 func apply_steal(safe: bool, t_ball_raw: float, flight: float, info: Dictionary) -> void:
 	var plan: Dictionary = steal.plan
-	var t_now = float(host._aux_play.get("t", 0.0)) if not host._aux_play.is_empty() else 0.0
+	var t_now = float(host.flow.aux_play.get("t", 0.0)) if not host.flow.aux_play.is_empty() else 0.0
 	var base = int(steal.from)
 	var t_ball: float = maxf(t_ball_raw, t_now + 0.3)
 	if safe:
@@ -117,7 +117,7 @@ func finish_steal() -> void:
 	if host._game.bases[base - 1] == steal.runner:
 		var ev = host._game.steal(base, bool(steal.safe))
 		host.hud.last_report = ("STOLEN BASE\n" if steal.safe else "CAUGHT STEALING\n") + host.hud.event_text(ev)
-		host._after_event(ev)
+		host.flow.after_event(ev)
 		host.hud.refresh_hud()
 	steal = {}
 	host._bat_call = ""
@@ -151,18 +151,18 @@ func do_pickoff(base: int, from: Vector3, vel: Vector3, err: float, quick: float
 	var out = outcome == "out"
 	host.slog.record("pickoff", {"base": base, "runner": (runner as Player).name, "lead": lead_now, "err_deg": err, "quick": snappedf(quick, 0.01), "lefty": lefty,
 		"speed": vel.length(), "chance": snappedf(chance, 0.001), "outcome": outcome})
-	if outcome.begins_with("rundown") and host._aux_play.is_empty():
+	if outcome.begins_with("rundown") and host.flow.aux_play.is_empty():
 		start_rundown(base, runner, outcome)
 		return
-	if host._aux_play.is_empty():
+	if host.flow.aux_play.is_empty():
 		var bag = Baserunning.BASE_POS[base] as Vector3
 		var plan = Baserunning.plan_dive_back(base, runner, host._director.stand_for(base), PlayDirector.BASE_STANDS[base - 1], dur + 0.25, out)
-		host._aux_play = {"plan": plan, "t": 0.0}
+		host.flow.aux_play = {"plan": plan, "t": 0.0}
 	leads[base - 1] = StealModel.lead_after_throw()
 	if out:
 		var ev = host._game.pickoff(base)
 		host.hud.last_report = "PICKED OFF at %s\n" % ["", "first", "second", "third"][base] + host.hud.event_text(ev)
-		host._after_event(ev)
+		host.flow.after_event(ev)
 	else:
 		host.hud.last_report = "Throw over to %s: safe" % ["", "first", "second", "third"][base]
 	host.hud.refresh_hud()
@@ -173,7 +173,7 @@ func do_pickoff(base: int, from: Vector3, vel: Vector3, err: float, quick: float
 func start_rundown(base: int, runner, outcome: String) -> void:
 	var before = host._game.bases.duplicate()
 	var plan = Baserunning.plan_rundown(base, runner, outcome)
-	host._aux_play = {"plan": plan, "t": 0.0}
+	host.flow.aux_play = {"plan": plan, "t": 0.0}
 	leads[base - 1] = StealModel.lead_after_throw()
 	var behind = int(HumanFielding.receiver(base, 1))
 	var ahead = 2 if base >= 3 else (5 if base == 2 else 4)
@@ -199,16 +199,16 @@ func start_rundown(base: int, runner, outcome: String) -> void:
 		"rundown_out":
 			var ev = host._game.pickoff(base)
 			text = "RUN DOWN between %s and %s\n" % [["", "first", "second", "third"][base], ["", "second", "third", "home"][base]] + host.hud.event_text(ev)
-			host._after_event(ev)
+			host.flow.after_event(ev)
 		"rundown_safe_ahead":
 			var ev2 = host._game.advance_runner(base)
 			text = "Beats the rundown!\n" + host.hud.event_text(ev2)
-			host._after_event(ev2)
+			host.flow.after_event(ev2)
 		_:
 			text = "In a rundown, but he gets back safe"
 	host.hud.last_report = text
 	host._haptics.play("buzz", 0.3)
-	host._refresh_base_runners(before)             # the figure keeps running until the picture is done
+	host.flow.refresh_base_runners(before)             # the figure keeps running until the picture is done
 	host.hud.refresh_hud()
 
 
@@ -226,13 +226,13 @@ func call_balk(why: String) -> void:
 	var ev = host._game.balk()
 	if ev.get("result", "") == "":
 		return
-	if host._aux_play.is_empty():
+	if host.flow.aux_play.is_empty():
 		var plan = Baserunning.plan_advance(before)
 		(plan["events"] as Array).append({"t": 0.1, "base": 0, "text": "BALK", "kind": "out", "at": Vector3(0.0, 0.0, 0.0)})
-		host._aux_play = {"plan": plan, "t": 0.0}
-		host._refresh_base_runners(before)
+		host.flow.aux_play = {"plan": plan, "t": 0.0}
+		host.flow.refresh_base_runners(before)
 	host.hud.last_report = "BALK - %s\n" % why + host.hud.event_text(ev)
-	host._after_event(ev)
+	host.flow.after_event(ev)
 	host.hud.refresh_hud()
 
 
@@ -291,7 +291,7 @@ func update_flights(delta: float) -> void:
 ## With a runner leading off, the AI pitcher sometimes steps off and throws over instead of pitching.
 ## Returns true if he did (the pitch waits a moment).
 func ai_throw_over() -> bool:
-	if host.acts.derby or host._game == null or not host._runners_on() or not steal.is_empty() or not host._aux_play.is_empty():
+	if host.acts.derby or host._game == null or not host._runners_on() or not steal.is_empty() or not host.flow.aux_play.is_empty():
 		return false
 	for b in [1, 2, 3]:
 		var runner = host._game.bases[b - 1]
