@@ -88,7 +88,7 @@ func _init() -> void:
 	ThrowLogger.override_path = "user://test_throws.jsonl"
 	var bp: Node3D = load("res://scenes/bullpen.tscn").instantiate()
 	bp.menu_on_start = false
-	bp._two_way = true
+	bp.roles.two_way = true
 	bp.game_innings = 1
 	root.add_child(bp)
 	await process_frame
@@ -96,40 +96,40 @@ func _init() -> void:
 	bp._game.runs = 1
 	var top_end := _strike_out_side(bp._game)
 	bp._after_event(top_end)
-	_check(bp._on_break() and not bp._batter_ready, "at the break nobody pitches and no batter walks up")
+	_check(bp.roles.on_break() and not bp._batter_ready, "at the break nobody pitches and no batter walks up")
 	for i in 60 * 8:
 		bp._process(1.0 / 60.0)
-		if bp._top_game != null:
+		if bp.roles.top_game != null:
 			break
-	_check(bp._top_game != null and bp._mode.human_batter and not bp._mode.human_pitcher, "then you are the batter")
+	_check(bp.roles.top_game != null and bp._mode.human_batter and not bp._mode.human_pitcher, "then you are the batter")
 	_check(bp._game.innings == 1 and bp._game.lineup == bp._home.lineup, "against your own lineup in a one-inning half")
 	var fielder: Doll = bp._field_nodes[6]
 	_check(fielder.jersey == bp._away.jersey and bp._field_nodes[1].jersey == bp._away.jersey, "the visitors take the field in their uniforms")
 	_check(bp._runner.jersey == bp._home.jersey, "and your runners wear yours")
 	bp._after_event(bp._game.pitch("called_strike"))
-	_check(bp._top_game != null, "a strike changes nothing")
+	_check(bp.roles.top_game != null, "a strike changes nothing")
 	for i in 60 * 6:
 		bp._process(1.0 / 60.0)
 		if bp._batter_ready:
 			break
 	var board: Dictionary = {}
 	bp._refresh_scoreboard()
-	_check(bp._top_game.pitch_count == 0 or bp._top_game.pitch_count >= 0, "your pitching line is kept")
+	_check(bp.roles.top_game.pitch_count == 0 or bp.roles.top_game.pitch_count >= 0, "your pitching line is kept")
 	# Score two runs and the game is won at once.
 	bp._game.runs = 2
 	bp._after_event(bp._game.pitch("called_strike"))
-	_check(bp._bottom_end_timer > 0.0, "a walk-off ends the half")
+	_check(bp.roles.bottom_end_timer > 0.0, "a walk-off ends the half")
 	for i in 60 * 10:
 		bp._process(1.0 / 60.0)
-		if bp._top_game == null:
+		if bp.roles.top_game == null:
 			break
-	_check(bp._top_game == null and bp._mode.human_pitcher and not bp._mode.human_batter, "and you are back on the mound")
+	_check(bp.roles.top_game == null and bp._mode.human_pitcher and not bp._mode.human_batter, "and you are back on the mound")
 	_check(bp._field_nodes[6].jersey == bp._home.jersey and bp._runner.jersey == bp._away.jersey, "in your own uniforms again")
 	bp._field_nodes[6].play("catch", 0.4)
 	bp._field_nodes[6]._process(0.1)
 	_check(bp._field_nodes[6].busy(), "and a recolored fielder still animates")
 	_check(bp._game.over and bp._game.walk_off and bp._game.home_score == 2 and bp._game.runs == 1, "with the game won (%s)" % bp._game.final_text())
-	_check(bp._bat_log.rbi == 2 and bp._bat_log.h == 0, "your batting is tallied")
+	_check(bp.roles.bat_log.rbi == 2 and bp.roles.bat_log.h == 0, "your batting is tallied")
 	bp.queue_free()
 
 	print("FAILURES: %d" % _failures)

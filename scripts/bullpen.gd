@@ -152,11 +152,6 @@ var _tracker := SwingTracker.new()          # your controller as a bat (Hitting)
 var _bat_view: MeshInstance3D               # the bat in your hand
 var _bat_call := ""                         # a play called with this pitch: "squeeze" or "hit_and_run" ("" for none)
 var _daily := 0                            # a daily game: the day it belongs to (0 for an ordinary game)
-var _two_way := false                       # you also bat: the bottom halves are played live
-var _top_game: GameState                    # while you bat, the pitching game waits here
-var _bottom_end_timer := -1.0               # counts down once your half is over, then hands the game back
-var _opp_pitcher: AIPitcher                 # their pitcher, kept from one bottom half to the next
-var _bat_log: Dictionary = {"ab": 0, "h": 0, "hr": 0, "rbi": 0, "bb": 0, "k": 0}
 var _tutorial: Tutorial                     # the pitching lesson, when that is what you are playing
 var _derby := false                         # home run derby: ten outs of easy pitches
 var _derby_outs := 0
@@ -242,6 +237,7 @@ var _play_labels: Array[Label3D] = []
 var _run_rng := RandomNumberGenerator.new()
 var _fx_rng := RandomNumberGenerator.new()   # presentation choices only: never shares a stream with the rules
 var fielding := FieldingControl.new()                 # human fielding, catching and the catcher's throw
+var roles := RoleSwitch.new()                 # pitch the top halves, bat the bottom halves
 var _game_seed := 0
 var forced_seed := -1                       # tests and replays: use this seed (the --seed= flag does the same)
 var _last_report_extra := ""
@@ -267,6 +263,7 @@ var _best_ev := 0.0
 
 
 func _init() -> void:
+	roles.host = self
 	fielding.host = self
 	# --- directors are wired to the scene here
 
@@ -1365,7 +1362,7 @@ func _process(delta: float) -> void:
 			_mark_moment()
 		_mark_pressed = flag
 	_update_batter_lifecycle(delta)
-	_update_roles(delta)
+	roles.update_roles(delta)
 	if _game_over_timer > 0.0:
 		_game_over_timer -= delta
 		if _game_over_timer <= 0.0:
@@ -1496,7 +1493,7 @@ func _current_config() -> GameConfig:
 	c.activity = "Game" if lineup_mode == "Game" else "Practice"
 	c.scenario = _scenario_id
 	c.career = _career_game
-	c.two_way = _two_way
+	c.two_way = roles.two_way
 	c.daily = _daily
 	c.park = Park.now().id
 	if _career_game:
@@ -1517,7 +1514,7 @@ func apply_config(c: GameConfig) -> void:
 	_drill = c.activity == "Drill" and not _mode_is_not_fielding(c)
 	_derby = c.activity == "Derby" and c.mode == "Hitting"
 	_tutorial = Tutorial.new(_settings.tutorial_step) if c.tutorial else null
-	_two_way = c.two_way
+	roles.two_way = c.two_way
 	_daily = c.daily
 	if _daily > 0:
 		forced_seed = GameConfig.daily_seed(_daily)
@@ -1623,7 +1620,7 @@ func _on_menu_event(ev: Dictionary) -> void:
 
 ## Your pitching line only counts the pitches you threw, not the ones you hit.
 func _stat_pitch(label: String, mph: float, outcome: String) -> void:
-	if _top_game == null:
+	if roles.top_game == null:
 		_stats.record_pitch(label, mph, outcome)
 
 
@@ -1650,10 +1647,10 @@ func _new_game() -> void:
 	if _game_seed != 0:
 		_game.rng.seed = _run_rng.randi()
 	_game.allow_extra = true
-	_game.bottom_live = _two_way and _mode.human_pitcher
-	_top_game = null
-	_bottom_end_timer = -1.0
-	_bat_log = {"ab": 0, "h": 0, "hr": 0, "rbi": 0, "bb": 0, "k": 0}
+	_game.bottom_live = roles.two_way and _mode.human_pitcher
+	roles.top_game = null
+	roles.bottom_end_timer = -1.0
+	roles.bat_log = {"ab": 0, "h": 0, "hr": 0, "rbi": 0, "bb": 0, "k": 0}
 	_game.bottom_sim = Callable(self, "_simulate_bottom_half")
 	_home_order = 0
 	if _sound != null:
@@ -2340,7 +2337,7 @@ func _begin_pa_exit(ev: Dictionary, bases_before: Array) -> void:
 
 ## The next batter comes from the dugout to the box. Pitching waits until he is there.
 func _begin_walk_on() -> void:
-	if _on_break():
+	if roles.on_break():
 		_batter_ready = false         # between the halves: nobody walks up
 		return
 	_crew.return_to_plate()      # the umpire is back behind the plate for the next batter
@@ -2389,7 +2386,7 @@ func _update_batter_lifecycle(delta: float) -> void:
 	for h in _hits:
 		if not h.result_shown:
 			busy = true
-	if _batter_ready or busy or _on_break():
+	if _batter_ready or busy or roles.on_break():
 		_unready_for = 0.0
 	else:
 		_unready_for += delta
@@ -2812,7 +2809,7 @@ func _finish_career_start() -> void:
 
 ## What you did in this game, as one pitching line.
 func _game_line() -> Dictionary:
-	return GameRecords.pitching(_game, _stats, _sign_tally, _away.name, _left_line, _bat_log)
+	return GameRecords.pitching(_game, _stats, _sign_tally, _away.name, _left_line, roles.bat_log)
 
 
 ## A finished game goes in the book (only games you pitch that count for a leaderboard).
@@ -2843,153 +2840,6 @@ func _record_finished_game() -> void:
 	_show_notice(text, true)
 
 
-## ---------------------------------------------------------------- two-way games: pitch, then bat
-## Between the halves of a two-way game you change roles: when your pitching half is over the game waits a
-## moment, then you are the batter for the bottom (a one-inning GameState of your lineup against their
-## pitcher), and when that is over you are on the mound again. The pitching game is kept in `_top_game`.
-var _role_timer := 2.5
-
-
-## True while the game is between the halves: nobody pitches and no batter walks up.
-func _on_break() -> bool:
-	return _game != null and (_game.awaiting_bottom or _bottom_end_timer > 0.0)
-
-
-func _update_roles(delta: float) -> void:
-	if _game == null or not _two_way:
-		return
-	var settled := _aux_play.is_empty() and _walk_on.is_empty() and not _play_in_progress()
-	for h in _hits:
-		if not h.result_shown:
-			settled = false
-	if _top_game == null and _game.awaiting_bottom and settled:
-		_role_timer -= delta
-		if _role_timer <= 0.0:
-			_role_timer = 2.5
-			_enter_bottom()
-	elif _top_game != null and _bottom_end_timer > 0.0 and settled:
-		_bottom_end_timer -= delta
-		if _bottom_end_timer <= 0.0:
-			_bottom_end_timer = -1.0
-			_finish_bottom_half()
-	else:
-		_role_timer = 2.5
-
-
-## Where you stand for the role: on the mound, or in the box.
-func _place_for_role() -> void:
-	var mz := PitchPhysics.MOUND_Z
-	var mh := PitchPhysics.MOUND_H
-	if _origin != null:
-		if _mode.human_batter:
-			var side := 1.0 if _settings.hand == "right" else -1.0
-			_origin.position = Vector3(side * 1.2, 0.0, -0.1)
-			_origin.rotation = Vector3(0.0, PI, 0.0)
-		else:
-			_origin.position = Vector3(0.0, mh, mz)
-			_origin.rotation = Vector3.ZERO
-	elif _camera != null:
-		if _mode.human_batter:
-			_camera.global_position = Vector3(3.5, 1.7, -5.0)
-			_camera.look_at(Vector3(0.0, 1.5, 18.0))
-		else:
-			_camera.global_position = Vector3(0.0, mh + 1.7, mz + 0.5)
-			_camera.look_at(Vector3(0.0, 1.0, 0.0))
-
-
-## Who wears what: the home team fields in the top halves, the visitors in the bottoms (and the other way
-## round for the men on the bases).
-func _dress_teams(bottom: bool) -> void:
-	var fielding: Team = _away if bottom else _home
-	var batting: Team = _home if bottom else _away
-	for n in _field_nodes:
-		var d = _field_nodes[n]
-		if d is Doll:
-			(d as Doll).recolor(fielding.jersey, fielding.pants, fielding.cap)
-	var runners: Array = [_runner]
-	runners.append_array(_base_runners)
-	runners.append_array(_leavers)
-	for r in runners:
-		if r is Doll:
-			(r as Doll).recolor(batting.jersey, batting.pants, batting.cap)
-
-
-func _enter_bottom() -> void:
-	_top_game = _game
-	var half := GameState.new(_home.lineup, 1)
-	half.order_index = _home_order % maxi(_home.lineup.size(), 1)
-	_game = half
-	_drop_held()
-	_mode = GameMode.hitting()
-	_sound.mode = _mode
-	_ensure_bat_view()
-	_bat_view.visible = true
-	if _opp_pitcher == null:
-		_opp_pitcher = AIPitcher.new(_away.player_at(1))
-		_opp_pitcher.rng.seed = _run_rng.randi()
-	_ai_pitcher = _opp_pitcher
-	_ensure_pitcher_doll()
-	(_field_nodes[1] as Node3D).visible = true
-	_dress_teams(true)
-	_place_for_role()
-	_spectate_timer = 2.5
-	if _zone_markers:
-		_zone_markers.clear()
-	_batter_ready = false
-	_sync_batter()
-	_begin_walk_on()
-	_log("role_switch", {"to": "batting", "inning": _top_game.inning, "score": "%d-%d" % [_top_game.runs, _top_game.home_score]})
-	_show_notice("Bottom of %d: you are up to bat" % _top_game.inning, true)
-	_sfx("pa_pitching_change")
-	_refresh_base_runners()
-	_refresh_hud()
-
-
-## Your half is over (three outs, or a walk-off): the runs go on the board and you take the mound again.
-func _finish_bottom_half() -> void:
-	var half := _game
-	_bat_log.h += half.hits
-	_bat_log.hr += half.home_runs
-	_bat_log.bb += half.walks
-	_bat_log.k += half.strikeouts
-	_bat_log.rbi += half.runs
-	_home_order = half.order_index
-	_opp_pitcher = _ai_pitcher
-	_game = _top_game
-	_top_game = null
-	_mode = GameMode.pitching()
-	_sound.mode = _mode
-	_dress_teams(false)
-	if _bat_view != null:
-		_bat_view.visible = false
-	if _field_nodes.has(1):
-		(_field_nodes[1] as Node3D).visible = false
-	_place_for_role()
-	_batter.visible = true
-	_batter.transform = _batter_home
-	if _zone_markers:
-		_zone_markers.clear()
-	var ev := _game.finish_bottom(half.runs, half.hits)
-	_log("role_switch", {"to": "pitching", "runs": half.runs, "hits": half.hits, "game_over": _game.over})
-	_show_notice("Bottom %d: Home %s" % [int(ev.get("inning_ended", 0)), "scores %d" % half.runs if half.runs > 0 else "goes down in order"], true)
-	_after_event(ev)
-	if not _game.over:
-		_sync_batter()
-		_begin_walk_on()
-	_refresh_hud()
-
-
-## An event of the bottom half you are batting: the mini-game ending is the half ending, not the game.
-func _bottom_event(ev: Dictionary, extra: Dictionary) -> Dictionary:
-	var out := ev.duplicate()
-	var walk_off: bool = _top_game.inning >= _top_game.innings and _top_game.home_score + _game.runs > _top_game.runs
-	if bool(out.get("game_over", false)) or walk_off:
-		out["game_over"] = false
-		out["half_over"] = false
-		_bottom_end_timer = 2.5
-	return out
-
-
 ## How far the crowd gets to its feet for this event (0 for nothing special).
 func _crowd_excitement(ev: Dictionary) -> float:
 	match String(ev.get("result", "")):
@@ -3006,14 +2856,14 @@ func _crowd_excitement(ev: Dictionary) -> float:
 func _after_event(ev: Dictionary, extra: Dictionary = {}) -> void:
 	if ev.is_empty():
 		return
-	if _top_game != null:
-		ev = _bottom_event(ev, extra)
+	if roles.top_game != null:
+		ev = roles.bottom_event(ev, extra)
 	if _sound != null:
 		_sound.crowd_react(ev, _game)
 	if _stadium != null:
 		_stadium.pulse(_crowd_excitement(ev))
 	if _dugouts != null:
-		_dugouts.react_event(ev, "home" if _top_game != null else "away")
+		_dugouts.react_event(ev, "home" if roles.top_game != null else "away")
 		if ev.get("game_over", false):
 			_dugouts.cheer("home" if _game.home_score > _game.runs else "away", "celebrate", true)
 	match String(ev.get("result", "")):
@@ -3022,7 +2872,7 @@ func _after_event(ev: Dictionary, extra: Dictionary = {}) -> void:
 		"strikeout":
 			_haptics.play("rumble", 0.3)
 	if ev.get("pa_over", false):
-		if _batter_player and _top_game == null:
+		if _batter_player and roles.top_game == null:
 			_stats.record_result(_batter_player.name, String(ev.get("result", "out")),
 				float(extra.get("ev", 0.0)), float(extra.get("dist", 0.0)))
 		_sync_batter()
@@ -3058,8 +2908,8 @@ func _after_event(ev: Dictionary, extra: Dictionary = {}) -> void:
 func _refresh_scoreboard() -> void:
 	if _stadium == null or _game == null:
 		return
-	var g := _top_game if _top_game != null else _game
-	var live: GameState = _game if _top_game != null else null
+	var g := roles.top_game if roles.top_game != null else _game
+	var live: GameState = _game if roles.top_game != null else null
 	var who := _batter_player.name if _batter_player else ""
 	var line := ""
 	if _batter_player:
@@ -3347,7 +3197,7 @@ func _refresh_hud() -> void:
 	if _pitch_board == null:
 		return
 	# --- Pitching: what you have thrown.
-	var g := _top_game if _top_game != null else _game
+	var g := roles.top_game if roles.top_game != null else _game
 	var t := _stats.pitch_totals()
 	_pitch_board.title = "PITCHING"
 	_pitch_board.subtitle = _mode.name if _mode else ""
@@ -3373,7 +3223,7 @@ func _refresh_hud() -> void:
 	var pl: Array = []
 	if g:
 		pl.append("%s   |   %d R" % [_game.situation_text(), g.runs])
-		if _top_game != null:
+		if roles.top_game != null:
 			pl.append("YOU ARE BATTING: bottom %d, Home %d - Away %d" % [g.inning, g.home_score + _game.runs, g.runs])
 		if _scenario != null:
 			pl.append("%s: %s" % [_scenario.title.to_upper(), _scenario.progress_text(g)])
