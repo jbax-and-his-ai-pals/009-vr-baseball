@@ -109,6 +109,12 @@ func _add_totals(line: Dictionary) -> void:
 		for k in ["chances", "caught", "missed", "errors", "assists"]:
 			totals["f_" + k] = int(totals.get("f_" + k, 0)) + int(line.get(k, 0))
 		return
+	var bat = line.get("bat", {})
+	if bat is Dictionary and not (bat as Dictionary).is_empty():
+		# What you did at the plate in a two-way game counts toward your lifetime batting.
+		for k in ["h", "hr", "k", "bb"]:
+			totals["h_" + k] = int(totals.get("h_" + k, 0)) + int(bat.get(k, 0))
+		totals["h_r"] = int(totals.get("h_r", 0)) + int(bat.get("rbi", 0))
 	totals["games"] = int(totals.get("games", 0)) + 1
 	var types: Dictionary = totals.get("types", {})
 	var lt = line.get("types", {})

@@ -215,7 +215,7 @@ Play > Pitching > setup > **Also bat: On**, then Start. Check in the headset:
 - The scoreboard shows the bottom live (runs and hits update as you bat); the pitching board keeps your pitching line.
 - Three outs, or a walk-off in the last inning, hand you back to the mound; the walk to the mound/box is instant (no transition yet) - note if it is disorienting.
 - Leaving the game (pause menu) switches the bottoms back to simulated.
-- Not done yet: your batting line is not saved to the profile (only counted in the game), and the fielders keep your jerseys in the bottom.
+- Your batting in a two-way game is shown after the game ("At bat: ...") and counts toward your lifetime batting totals. Not done yet: the fielders keep your jerseys in the bottom.
 
 ## 18. Playing catcher
 

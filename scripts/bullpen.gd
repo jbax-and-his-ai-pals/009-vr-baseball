@@ -3011,25 +3011,12 @@ func _update_alignment() -> void:
 
 ## What you did as a batter this game: the lineup is you, so it is the lineup's line against their pitcher.
 func _hitting_line() -> Dictionary:
-	return {"kind": "hitting", "pa": _game.batters_faced, "h": _game.hits, "hr": _game.home_runs, "k": _game.strikeouts,
-		"bb": _game.walks, "r": _game.runs, "ev_max": _best_ev, "opp": _home.name, "innings": _game.innings,
-		"won": _game.runs > _game.home_score, "lost": _game.runs < _game.home_score,
-		"score_for": _game.runs, "score_against": _game.home_score}
+	return GameRecords.hitting(_game, _best_ev, _home.name)
 
 
 ## What you did as a fielder this game (see PlayerProfile.fielding_score).
 func _fielding_line() -> Dictionary:
-	var l := _fld.duplicate()
-	l["kind"] = "fielding"
-	l["position"] = _human_num()
-	l["r"] = _game.runs
-	l["opp"] = _away.name
-	l["innings"] = _game.innings
-	l["won"] = _game.home_score > _game.runs
-	l["lost"] = _game.home_score < _game.runs
-	l["score_for"] = _game.home_score
-	l["score_against"] = _game.runs
-	return l
+	return GameRecords.fielding(_game, _fld, _human_num(), _away.name)
 
 
 ## The pitch lab: in the bullpen (and the lesson) every pitch is explained under its report.
@@ -3077,26 +3064,7 @@ func _finish_career_start() -> void:
 
 ## What you did in this game, as one pitching line.
 func _game_line() -> Dictionary:
-	if not _left_line.is_empty():
-		# You left earlier: the line is closed, but win or loss is the team's result.
-		var l := _left_line.duplicate()
-		l["won"] = _game.home_score > _game.runs
-		l["lost"] = _game.home_score < _game.runs
-		l["score_for"] = _game.home_score
-		l["score_against"] = _game.runs
-		return l
-	var t := _stats.pitch_totals()
-	var n := maxi(int(t.n), 1)
-	var types := {}
-	for kind in _stats.by_type:
-		var x: Dictionary = _stats.by_type[kind]
-		types[kind] = {"n": int(x.n), "strikes": int(x.strikes), "whiffs": int(x.whiffs), "swings": int(x.swings),
-			"mph_sum": float(x.mph_sum), "mph_max": float(x.mph_max)}
-	return {"signs": int(_sign_tally.called), "sign_hits": int(_sign_tally.perfect), "opp": _away.name, "innings": _game.innings, "types": types, "outs": _game.outs_recorded, "pitches": _game.pitch_count, "strikes": int(t.strikes), "k": _game.strikeouts,
-		"bb": _game.walks, "h": _game.hits, "r": _game.runs, "hr": _game.home_runs,
-		"max_mph": float(t.mph_max), "avg_mph": float(t.mph_sum) / n,
-		"won": _game.home_score > _game.runs, "lost": _game.home_score < _game.runs,
-		"score_for": _game.home_score, "score_against": _game.runs}
+	return GameRecords.pitching(_game, _stats, _sign_tally, _away.name, _left_line, _bat_log)
 
 
 ## A finished game goes in the book (only games you pitch that count for a leaderboard).
@@ -3116,6 +3084,9 @@ func _record_finished_game() -> void:
 	var r := _profile.record_game(cfg, line)
 	_profile.save()
 	var text := "Game Score %d" % int(r.score)
+	var bat_note := GameRecords.bat_text(line.get("bat", {}))
+	if bat_note != "":
+		text += "   " + bat_note
 	if int(r.rank) == 1:
 		text += " - best on this board!"
 	elif int(r.rank) > 0:
