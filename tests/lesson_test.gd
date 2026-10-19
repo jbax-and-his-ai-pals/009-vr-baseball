@@ -89,17 +89,17 @@ func _init() -> void:
 	root.add_child(bp)
 	await process_frame
 	bp._config = n
-	bp._tutorial = Tutorial.new()
+	bp.acts.tutorial = Tutorial.new()
 	var pitch := LivePitch.new()
 	pitch.label = "Fastball"
 	pitch.analysis = {"reached": true, "strike": true, "speed_mph": 80.0, "spin_rpm": 2000.0, "ivb_in": 12.0, "hb_in": 0.0}
 	pitch.shape = {"z_snap": 0.0, "z_side": 0.0, "z_gyro": 0.0, "z_slot": 0.0, "z_wind": 0.0, "stiff": 0.0}
-	_check(bp._lab_lines(pitch).contains("usual throw"), "in the lesson every pitch gets its explanation")
+	_check(bp.acts.lab_lines(pitch).contains("usual throw"), "in the lesson every pitch gets its explanation")
 	for i in 8:
-		bp._tutorial_pitch(pitch)
-	_check(bp._tutorial.step == 1 and bp._settings.tutorial_step == 1, "eight fastballs advance the lesson and save your place")
+		bp.acts.tutorial_pitch(pitch)
+	_check(bp.acts.tutorial.step == 1 and bp._settings.tutorial_step == 1, "eight fastballs advance the lesson and save your place")
 	bp._config = GameConfig.new()
-	_check(bp._lab_lines(pitch) == "", "in a normal game there is no lab text")
+	_check(bp.acts.lab_lines(pitch) == "", "in a normal game there is no lab text")
 	bp.queue_free()
 
 	print("FAILURES: %d" % _failures)

@@ -50,25 +50,25 @@ func _init() -> void:
 	bp.game_mode_name = "Hitting"
 	root.add_child(bp)
 	await process_frame
-	bp._derby = true
+	bp.acts.derby = true
 	var fake := LivePitch.new()
 	fake.bat = {"contact": true}
-	bp._derby_tally(fake, true, false)
-	bp._derby_tally(fake, false, false)
-	_check(bp._derby_hr == 1 and bp._derby_outs == 1, "a homer is counted, any other contact is an out")
+	bp.acts.derby_tally(fake, true, false)
+	bp.acts.derby_tally(fake, false, false)
+	_check(bp.acts.derby_hr == 1 and bp.acts.derby_outs == 1, "a homer is counted, any other contact is an out")
 	var ball_only := LivePitch.new()
 	ball_only.bat = {"swing": false, "contact": false}
-	bp._derby_tally(ball_only, false, false)
-	_check(bp._derby_outs == 1, "a ball you let go is free")
-	bp._derby_hr = 0
-	bp._derby_outs = 0
+	bp.acts.derby_tally(ball_only, false, false)
+	_check(bp.acts.derby_outs == 1, "a ball you let go is free")
+	bp.acts.derby_hr = 0
+	bp.acts.derby_outs = 0
 	var seen: Array = []
 	var speeds: Array = []
 	var in_zone := 0
 	var swings := 0
 	var hrs_seen := 0
 	for round in 40:
-		if bp._derby_done:
+		if bp.acts.derby_done:
 			break
 		var pitch: LivePitch = null
 		for i in 60 * 30:
@@ -95,15 +95,15 @@ func _init() -> void:
 				break
 		if pitch.bat.get("contact", false):
 			print("  swing %d: %s %.0f mph la %.0f dist %.0f hr %s" % [round, pitch.bat.kind, pitch.bat.ev, pitch.bat.la, pitch.sim.get("distance", 0.0), pitch.sim.get("home_run", false)])
-		if int(bp._derby_hr) > hrs_seen:
-			hrs_seen = bp._derby_hr
+		if int(bp.acts.derby_hr) > hrs_seen:
+			hrs_seen = bp.acts.derby_hr
 		for i in 60 * 16:
 			bp._process(1.0 / 60.0)
 			if bp._batter_ready and bp._aux_play.is_empty() and bp._hits.all(func(h): return h.result_shown):
 				break
 	_check(speeds.size() >= 6 and speeds.max() < 60.0, "batting practice pitches are slow (%.0f mph at most)" % speeds.max())
 	_check(in_zone >= speeds.size() - 1, "and over the plate (%d of %d)" % [in_zone, speeds.size()])
-	_check(bp._derby_done and bp._derby_outs >= 10, "ten outs end it (%d outs, %d homers)" % [bp._derby_outs, bp._derby_hr])
+	_check(bp.acts.derby_done and bp.acts.derby_outs >= 10, "ten outs end it (%d outs, %d homers)" % [bp.acts.derby_outs, bp.acts.derby_hr])
 	_check(int(bp._profile.challenge("derby").attempts) == 1, "the result is saved")
 	_check(bp._props.pending_count() > 0 and not bp._game_recorded, "a way back to the menu is scheduled, and it is not a recorded game")
 	print("  homers hit in the test: %d" % hrs_seen)

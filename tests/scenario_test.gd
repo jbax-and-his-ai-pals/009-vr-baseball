@@ -164,10 +164,10 @@ func _init() -> void:
 	ThrowLogger.override_path = "user://test_throws.jsonl"
 	var bp: Node3D = load("res://scenes/bullpen.tscn").instantiate()
 	bp.menu_on_start = false
-	bp._scenario_id = "side"
+	bp.acts.scenario_id = "side"
 	root.add_child(bp)
 	await process_frame
-	_check(bp._scenario != null and bp._game.inning == 3 and bp._game.bases[0] == null and bp._profile.save_path == "user://test_profile.json",
+	_check(bp.acts.scenario != null and bp._game.inning == 3 and bp._game.bases[0] == null and bp._profile.save_path == "user://test_profile.json",
 		"the scene starts the challenge in its situation, saving to the test profile")
 	var throw_timer := 0.0
 	for i in 60 * 120:
@@ -176,9 +176,9 @@ func _init() -> void:
 		if throw_timer <= 0.0 and bp._batter_ready:
 			throw_timer = 1.0
 			bp._debug_throw()
-		if bp._scenario_done:
+		if bp.acts.scenario_done:
 			break
-	_check(bp._scenario_done and bp._profile.challenge("side").attempts == 1, "it was judged and the attempt recorded (%s, stars %d)" % [bp._scenario.state, bp._scenario.stars])
+	_check(bp.acts.scenario_done and bp._profile.challenge("side").attempts == 1, "it was judged and the attempt recorded (%s, stars %d)" % [bp.acts.scenario.state, bp.acts.scenario.stars])
 	_check(bp._game_over_timer < 0.0, "a finished challenge does not restart a new game by itself")
 	bp.queue_free()
 

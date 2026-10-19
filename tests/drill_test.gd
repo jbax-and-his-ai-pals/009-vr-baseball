@@ -56,15 +56,15 @@ func _init() -> void:
 	bp.fielding_position = 6
 	root.add_child(bp)
 	await process_frame
-	bp._drill = true
+	bp.acts.drill = true
 	bp.fielding.auto_field = true
 	var worst_outs := 0
 	for i in 60 * 400:
 		bp._process(1.0 / 60.0)
 		worst_outs = maxi(worst_outs, bp._game.outs)
-		if bp._drill_done:
+		if bp.acts.drill_done:
 			break
-	_check(bp._drill_done and bp._drill_started == 10, "ten balls were hit and the drill finished (%d)" % bp._drill_started)
+	_check(bp.acts.drill_done and bp.acts.drill_started == 10, "ten balls were hit and the drill finished (%d)" % bp.acts.drill_started)
 	_check(worst_outs <= 1 and bp._game.inning == 1, "no inning ever ended on you (most outs seen: %d)" % worst_outs)
 	_check(int(bp.fielding.fld.chances) >= 3 and int(bp.fielding.fld.caught) + int(bp.fielding.fld.missed) + int(bp.fielding.fld.errors) >= 3, "your chances were counted (%s)" % str(bp.fielding.fld))
 	var rec: Dictionary = bp._profile.challenge("drill_f6")

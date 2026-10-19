@@ -291,7 +291,7 @@ func update_flights(delta: float) -> void:
 ## With a runner leading off, the AI pitcher sometimes steps off and throws over instead of pitching.
 ## Returns true if he did (the pitch waits a moment).
 func ai_throw_over() -> bool:
-	if host._derby or host._game == null or not host._runners_on() or not steal.is_empty() or not host._aux_play.is_empty():
+	if host.acts.derby or host._game == null or not host._runners_on() or not steal.is_empty() or not host._aux_play.is_empty():
 		return false
 	for b in [1, 2, 3]:
 		var runner = host._game.bases[b - 1]

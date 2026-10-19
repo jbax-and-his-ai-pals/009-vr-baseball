@@ -150,19 +150,6 @@ var _tracker := SwingTracker.new()          # your controller as a bat (Hitting)
 var _bat_view: MeshInstance3D               # the bat in your hand
 var _bat_call := ""                         # a play called with this pitch: "squeeze" or "hit_and_run" ("" for none)
 var _daily := 0                            # a daily game: the day it belongs to (0 for an ordinary game)
-var _tutorial: Tutorial                     # the pitching lesson, when that is what you are playing
-var _derby := false                         # home run derby: ten outs of easy pitches
-var _derby_outs := 0
-var _derby_hr := 0
-var _derby_done := false
-var _drill := false                         # ten balls hit to your fielding position
-var _drill_left := 10
-var _drill_timer := 3.0
-var _drill_started := 0
-var _drill_done := false
-var _scenario: Scenario            # the challenge being played (null in an ordinary game)
-var _scenario_id := ""
-var _scenario_done := false
 var _haptics := Haptics.new()     # controller vibration
 var _sound: SoundDirector
 var _audio: AudioManager          # _sound.audio, for the loops that follow the ball
@@ -233,6 +220,7 @@ var _fx_rng := RandomNumberGenerator.new()   # presentation choices only: never 
 var fielding := FieldingControl.new()                 # human fielding, catching and the catcher's throw
 var roles := RoleSwitch.new()                 # pitch the top halves, bat the bottom halves
 var plays := RunnerPlays.new()                 # steals, throws over, rundowns, balks and the balls in the air that are not pitches
+var acts := Activities.new()                 # derby, drills, challenges and the pitching lesson
 var _game_seed := 0
 var forced_seed := -1                       # tests and replays: use this seed (the --seed= flag does the same)
 var _last_report_extra := ""
@@ -258,6 +246,7 @@ var _best_ev := 0.0
 
 
 func _init() -> void:
+	acts.host = self
 	plays.host = self
 	roles.host = self
 	fielding.host = self
@@ -394,7 +383,7 @@ func _ready() -> void:
 	_sync_batter()
 	if not _xr_active:
 		_governor.set_refresh_rate(60.0)  # a desktop window is judged against 60 Hz, not a headset's 90
-	if _props != null and (Park.now().wind.length() >= 1.0 or Park.now().air < 0.95) and not _derby:
+	if _props != null and (Park.now().wind.length() >= 1.0 or Park.now().air < 0.95) and not acts.derby:
 		_props.later(2.5, func():
 			var bits: Array = [Park.now().name]
 			if Park.now().air < 0.95:
@@ -1010,7 +999,7 @@ func _run_ai_pitcher(delta: float) -> void:
 	var release := Vector3(0.0, PitchPhysics.MOUND_H + 1.85, PitchPhysics.MOUND_Z - 1.7)
 	_last_delivery = clampf(_run_rng.randfn(1.05, 0.15) - 0.2 * (_ai_pitcher.player.command - 50.0) / 50.0, 0.7, 1.5)
 	plays.on_delivery_start()
-	var pitch := _derby_pitch(release) if _derby else _ai_pitcher.next_pitch(release)
+	var pitch := acts.derby_pitch(release) if acts.derby else _ai_pitcher.next_pitch(release)
 	var mound_man = _field_nodes.get(1)
 	if mound_man is Doll:
 		# He winds up and throws: the ball leaves his hand as the arm comes through.
@@ -1046,7 +1035,7 @@ func _process(delta: float) -> void:
 		fielding.sample_glove(_game_time)
 		fielding.poll_catcher_throw(delta, _game_time)
 	_poll_gestures(delta)
-	_run_drill(delta)
+	acts.run_drill(delta)
 	if _visit_timer > 0.0:
 		_visit_timer -= delta
 	_crew.update(delta)
@@ -1190,7 +1179,7 @@ func _current_config() -> GameConfig:
 	c.batter = batter_profile
 	c.assist = _settings.assist
 	c.activity = "Game" if lineup_mode == "Game" else "Practice"
-	c.scenario = _scenario_id
+	c.scenario = acts.scenario_id
 	c.career = _career_game
 	c.two_way = roles.two_way
 	c.daily = _daily
@@ -1209,10 +1198,10 @@ func apply_config(c: GameConfig) -> void:
 	game_innings = c.innings
 	batter_profile = c.batter
 	lineup_mode = "Game" if c.activity == "Game" else "Practice"
-	_scenario_id = c.scenario
-	_drill = c.activity == "Drill" and not _mode_is_not_fielding(c)
-	_derby = c.activity == "Derby" and c.mode == "Hitting"
-	_tutorial = Tutorial.new(_settings.tutorial_step) if c.tutorial else null
+	acts.scenario_id = c.scenario
+	acts.drill = c.activity == "Drill" and not acts.mode_is_not_fielding(c)
+	acts.derby = c.activity == "Derby" and c.mode == "Hitting"
+	acts.tutorial = Tutorial.new(_settings.tutorial_step) if c.tutorial else null
 	roles.two_way = c.two_way
 	_daily = c.daily
 	if _daily > 0:
@@ -1253,7 +1242,7 @@ func _toggle_pause() -> void:
 		if _menu.model.screen() == "pause":
 			_close_menu()
 		return
-	var in_game := _mode.human_pitcher and lineup_mode == "Game" and _game != null and not _game.over and _scenario == null
+	var in_game := _mode.human_pitcher and lineup_mode == "Game" and _game != null and not _game.over and acts.scenario == null
 	_menu.model.can_mound_visit = in_game and not _visit_used
 	_menu.model.can_leave = in_game
 	_menu.open_pause(Session.current if Session.current != null else _config)
@@ -1356,13 +1345,13 @@ func _new_game() -> void:
 		_sound.new_game()
 	_game_recorded = false
 	fielding.fld = {"chances": 0, "caught": 0, "missed": 0, "errors": 0, "assists": 0, "frames": 0, "lost": 0, "blocks": 0, "passed": 0, "covers": 0, "uncovered": 0}
-	_derby_outs = 0
-	_derby_hr = 0
-	_derby_done = false
-	_drill_left = 10
-	_drill_started = 0
-	_drill_timer = 3.0
-	_drill_done = false
+	acts.derby_outs = 0
+	acts.derby_hr = 0
+	acts.derby_done = false
+	acts.drill_left = 10
+	acts.drill_started = 0
+	acts.drill_timer = 3.0
+	acts.drill_done = false
 	_sign_tally = {"called": 0, "perfect": 0, "type": 0, "loc": 0, "shaken": 0}
 	_sign = {}
 	_visit_used = false
@@ -1401,11 +1390,11 @@ func _new_game() -> void:
 						var c := kv[1].split("-")
 						_game.balls = int(c[0])
 						_game.strikes = int(c[1])
-	_scenario = Scenario.by_id(_scenario_id) if _scenario_id != "" else null
-	_scenario_done = false
-	if _scenario != null:
-		_scenario.apply(_game, _away.lineup)
-		_show_notice("%s: %s" % [_scenario.title, _scenario.goal], true)
+	acts.scenario = Scenario.by_id(acts.scenario_id) if acts.scenario_id != "" else null
+	acts.scenario_done = false
+	if acts.scenario != null:
+		acts.scenario.apply(_game, _away.lineup)
+		_show_notice("%s: %s" % [acts.scenario.title, acts.scenario.goal], true)
 	_game_over_timer = -1.0
 	_refresh_base_runners()
 	_refresh_scoreboard()
@@ -1673,11 +1662,11 @@ func _land(pitch: LivePitch) -> void:
 	if fielding.is_catcher() and a.get("reached", false) and outcome in ["ball", "called_strike"]:
 		outcome = fielding.receive(pitch, plate, outcome)
 	_mark_pitch(a, outcome)
-	_derby_tally(pitch, false, outcome in ["called_strike", "swinging_strike"])
-	_tutorial_pitch(pitch)
+	acts.derby_tally(pitch, false, outcome in ["called_strike", "swinging_strike"])
+	acts.tutorial_pitch(pitch)
 	_grade_sign(pitch, plate)
-	if _scenario != null and a.get("reached", false):
-		_scenario.on_pitch(String(PitchLocation.classify(plate.x, plate.y).kind), bool(a.get("strike", false)) and outcome != "hit_by_pitch")
+	if acts.scenario != null and a.get("reached", false):
+		acts.scenario.on_pitch(String(PitchLocation.classify(plate.x, plate.y).kind), bool(a.get("strike", false)) and outcome != "hit_by_pitch")
 	if _sound != null:
 		_sound.pitch_arrives(a, outcome, plate)
 	if a.get("reached", false) and outcome != "hit_by_pitch":
@@ -1758,7 +1747,7 @@ func _land(pitch: LivePitch) -> void:
 		_crew.chase()
 	var wild_text := _event_text(wild_ev)
 	_last_report = _format_report(pitch.label, a) + _bat_line(pitch) + ("\n" + wild_text if wild_text != "" else "") \
-		+ "\n" + _event_text(ev) + _lab_lines(pitch)
+		+ "\n" + _event_text(ev) + acts.lab_lines(pitch)
 	_after_event(ev)
 	_refresh_hud()
 	print(_last_report.replace("\n", " | "))
@@ -1792,8 +1781,8 @@ func _contact(pitch: LivePitch) -> void:
 	if in_play:
 		_batter_ready = false
 	_mark_pitch(a, "in_play" if in_play else "foul")
-	_derby_tally(pitch, bool(sim.get("home_run", false)), false)
-	_tutorial_pitch(pitch)
+	acts.derby_tally(pitch, bool(sim.get("home_run", false)), false)
+	acts.tutorial_pitch(pitch)
 	_grade_sign(pitch, a.get("plate_pos", Vector3.ZERO))
 	_stat_pitch(pitch.label, a.speed_mph, "in_play" if in_play else "foul")
 	if in_play:
@@ -2194,109 +2183,6 @@ func _event_text(ev: Dictionary) -> String:
 	return " | ".join(parts)
 
 
-## Batting practice pitches: slow, straight and over the middle (a little wandering so it is not a machine).
-func _derby_pitch(release: Vector3) -> Dictionary:
-	var target := Vector3(_run_rng.randf_range(-0.12, 0.12), _run_rng.randf_range(0.65, 1.0), 0.0)
-	var vel := PitchPhysics.solve_aim(release, 23.0, Vector3.ZERO, target)
-	return {"vel": vel, "spin": Vector3.ZERO, "kind": "BP fastball"}
-
-
-## One pitch of the derby is over: a homer is a homer; a swing that is not, or a strike you took, is an out;
-## a ball you let go is free. Ten outs and it is over.
-func _derby_tally(pitch: LivePitch, home_run: bool, struck: bool) -> void:
-	if not _derby or _derby_done:
-		return
-	if home_run:
-		_derby_hr += 1
-	elif struck or pitch.bat.get("swing", false) or pitch.bat.get("contact", false):
-		_derby_outs += 1
-	_show_notice("Derby: %d home runs, %d of 10 outs" % [_derby_hr, _derby_outs], true)
-	if _derby_outs >= 10:
-		_finish_derby()
-
-
-func _finish_derby() -> void:
-	_derby_done = true
-	var stars := 3 if _derby_hr >= 8 else (2 if _derby_hr >= 5 else (1 if _derby_hr >= 2 else 0))
-	var r := _profile.record_challenge("derby", stars, _derby_hr)
-	_profile.save()
-	_log("derby", {"home_runs": _derby_hr, "stars": stars})
-	_show_notice("DERBY OVER: %d home runs   %s%s" % [_derby_hr, Scenario.stars_text(stars), "  (new best!)" if r.improved else ""], true)
-	_props.later(7.0, func():
-		Session.show_menu = true
-		get_tree().reload_current_scene.call_deferred())
-
-
-func _mode_is_not_fielding(c: GameConfig) -> bool:
-	return c.mode != "Fielding"
-
-
-## The drill: every few seconds a ball is hit at your position (grounders to an infielder, fly balls to an
-## outfielder); after ten the result is saved as stars and you go back to the menu.
-func _run_drill(delta: float) -> void:
-	if not _drill or _drill_done or _game == null:
-		return
-	var busy := not _hits.is_empty() and not (_hits[_hits.size() - 1] as LiveHit).result_shown
-	if busy or not _aux_play.is_empty() or not _walk_on.is_empty():
-		return
-	_drill_timer -= delta
-	if _drill_timer > 0.0:
-		return
-	if _drill_left <= 0:
-		_finish_drill()
-		return
-	var n := fielding.human_num()
-	var home: Vector3 = _defense.fielder_by_num(n).home
-	var spray := rad_to_deg(atan2(home.x, home.z)) + _run_rng.randf_range(-5.0, 5.0)
-	var infield := n in [3, 4, 5, 6]
-	var ev := _run_rng.randf_range(68.0, 92.0) if infield else _run_rng.randf_range(86.0, 98.0)
-	var la := _run_rng.randf_range(-8.0, 3.0) if infield else _run_rng.randf_range(20.0, 34.0)
-	_drill_left -= 1
-	_drill_started += 1
-	_drill_timer = 3.5
-	_show_notice("Drill: ball %d of %d" % [_drill_started, _drill_started + _drill_left], true)
-	_debug_hit(ev, la, spray)
-
-
-func _finish_drill() -> void:
-	_drill_done = true
-	var caught := int(fielding.fld.caught) + int(fielding.fld.assists)
-	var stars := 3 if (int(fielding.fld.caught) >= 9 and int(fielding.fld.errors) == 0) else (2 if int(fielding.fld.caught) >= 7 else (1 if int(fielding.fld.caught) >= 5 else 0))
-	var r := _profile.record_challenge("drill_f%d" % fielding.human_num(), stars, int(fielding.fld.caught))
-	_profile.save()
-	_log("drill", {"position": fielding.human_num(), "chances": fielding.fld.chances, "caught": fielding.fld.caught, "errors": fielding.fld.errors, "assists": fielding.fld.assists, "stars": stars})
-	_show_notice("DRILL: %d of %d fielded, %d errors   %s%s" % [int(fielding.fld.caught), _drill_started, int(fielding.fld.errors), Scenario.stars_text(stars), "  (new best!)" if r.improved else ""], true)
-	_props.later(7.0, func():
-		Session.show_menu = true
-		get_tree().reload_current_scene.call_deferred())
-
-
-## A challenge is judged after every event; when it ends the result is saved and you go back to the menu.
-func _update_scenario(ev: Dictionary) -> void:
-	if _scenario == null or _scenario_done:
-		return
-	var st := _scenario.update(_game, ev)
-	if st == "running":
-		_refresh_hud()
-		return
-	_scenario_done = true
-	var r := _profile.record_challenge(_scenario.id, _scenario.stars, _scenario.pitches)
-	_profile.save()
-	_log("challenge", {"id": _scenario.id, "state": st, "stars": _scenario.stars, "pitches": _scenario.pitches})
-	if st == "success":
-		_show_notice("CHALLENGE COMPLETE  %s%s" % [Scenario.stars_text(_scenario.stars), "  (new best!)" if r.improved else ""], true)
-		_sfx_later(0.3, "music_victory", null, -4.0)
-		_sfx_later(0.3, "crowd_cheer_big")
-		_haptics.play("rumble", 0.8)
-	else:
-		_show_notice("Challenge failed - try again", true)
-		_sfx_later(0.3, "crowd_groan")
-	_refresh_hud()
-	_props.later(6.0, func():
-		Session.show_menu = true
-		get_tree().reload_current_scene.call_deferred())
-
-
 ## The catcher comes out to the mound: you catch your breath (the arm is rested by 15 pitches) and cannot
 ## pitch for a few seconds. Once a game.
 func _mound_visit() -> void:
@@ -2357,7 +2243,7 @@ func _on_umpire_spoke(id: String, delay: float) -> void:
 ## Hand signals with your glove hand (Options > Hand signals): overhead is an intentional walk, at the
 ## ear calls for the bullpen. Only while you pitch and the other hand is empty.
 func _poll_gestures(delta: float) -> void:
-	if not _settings.gestures or not _xr_active or _off_hand == null or _camera == null or not _off_hand.get_is_active() 			or not _mode.human_pitcher or _game == null or _game.over or _scenario != null:
+	if not _settings.gestures or not _xr_active or _off_hand == null or _camera == null or not _off_hand.get_is_active() 			or not _mode.human_pitcher or _game == null or _game.over or acts.scenario != null:
 		return
 	var sig := _gestures.update(delta, _camera.global_position, _off_hand.global_position, _held)
 	match sig:
@@ -2390,7 +2276,7 @@ func _seat_check() -> void:
 ## The catcher calls the next pitch (Options > Catcher signs): a pitch and a spot, shown by his knee and a
 ## marker on the zone. Only when you pitch in a game.
 func _signs_enabled() -> bool:
-	return _settings.signs and _mode.human_pitcher and lineup_mode == "Game" and _scenario == null and _game != null and not _game.over
+	return _settings.signs and _mode.human_pitcher and lineup_mode == "Game" and acts.scenario == null and _game != null and not _game.over
 
 
 func _refresh_sign() -> void:
@@ -2463,28 +2349,6 @@ func _fielding_line() -> Dictionary:
 	return GameRecords.fielding(_game, fielding.fld, fielding.human_num(), _away.name)
 
 
-## The pitch lab: in the bullpen (and the lesson) every pitch is explained under its report.
-func _lab_lines(pitch: LivePitch) -> String:
-	if not (_config.activity == "Bullpen" or _config.tutorial) or pitch.shape.is_empty():
-		return ""
-	return "\n" + "\n".join(PitchLab.explain(pitch.label, pitch.analysis, pitch.shape))
-
-
-## One pitch of the lesson: it moves on by itself and says what it saw.
-func _tutorial_pitch(pitch: LivePitch) -> void:
-	if _tutorial == null or pitch.shape.is_empty() or not pitch.analysis.get("reached", false):
-		return
-	var r := _tutorial.on_pitch(pitch.label, bool(pitch.analysis.get("strike", false)))
-	if String(r.text) != "":
-		_show_notice(String(r.text), true)
-	if r.advanced:
-		_settings.tutorial_step = _tutorial.step
-		_settings.save()
-		_sfx("corner_chime")
-		_haptics.play("ui_select")
-	_refresh_hud()
-
-
 ## A career pitcher's command narrows or widens the aim funnel (1.0 for everyone else).
 func _command_scale() -> float:
 	return _career.funnel_factor() if _career_game and _career != null else 1.0
@@ -2513,7 +2377,7 @@ func _game_line() -> Dictionary:
 
 ## A finished game goes in the book (only games you pitch that count for a leaderboard).
 func _record_finished_game() -> void:
-	if _drill or _derby or _game_recorded or not (_mode.human_pitcher or _user_left or not _mode.human_fielders.is_empty() or _mode.human_batter):
+	if acts.drill or acts.derby or _game_recorded or not (_mode.human_pitcher or _user_left or not _mode.human_fielders.is_empty() or _mode.human_batter):
 		return
 	_game_recorded = true
 	var cfg := _current_config()
@@ -2579,7 +2443,7 @@ func _after_event(ev: Dictionary, extra: Dictionary = {}) -> void:
 			_begin_walk_on()          # after a ball in play the next batter comes up now
 	elif _aux_play.is_empty() and _walk_on.is_empty() and not _play_in_progress():
 		_batter_ready = true          # a foul (or any pitch that did not end the at-bat): he is still up
-	if _drill or _derby:
+	if acts.drill or acts.derby:
 		# A drill is not a game: nobody is ever out, nobody stays on, the count never fills.
 		_game.outs = 0
 		_game.bases = [null, null, null]
@@ -2587,12 +2451,12 @@ func _after_event(ev: Dictionary, extra: Dictionary = {}) -> void:
 		_game.strikes = 0
 		_game.inning = 1
 		_game.over = false
-	_update_scenario(ev)
+	acts.update_scenario(ev)
 	_update_alignment()
 	_refresh_sign()
 	if ev.get("game_over", false):
 		_record_finished_game()
-		_game_over_timer = -1.0 if (_scenario != null or _career_game) else 8.0
+		_game_over_timer = -1.0 if (acts.scenario != null or _career_game) else 8.0
 		_log("game_over", {"final": _game.final_text(), "line": _game.line_text(), "stats": {"k": _game.strikeouts,
 			"bb": _game.walks, "hits": _game.hits, "wp": _game.wild_pitches, "sb": _game.stolen_bases, "cs": _game.caught_stealing,
 			"po": _game.pickoffs, "balks": _game.balks, "hbp": _game.hit_by_pitches, "sac": _game.sacrifices}})
@@ -2924,10 +2788,10 @@ func _refresh_hud() -> void:
 		pl.append("%s   |   %d R" % [_game.situation_text(), g.runs])
 		if roles.top_game != null:
 			pl.append("YOU ARE BATTING: bottom %d, Home %d - Away %d" % [g.inning, g.home_score + _game.runs, g.runs])
-		if _scenario != null:
-			pl.append("%s: %s" % [_scenario.title.to_upper(), _scenario.progress_text(g)])
-		if _tutorial != null:
-			pl.append(_tutorial.prompt())
+		if acts.scenario != null:
+			pl.append("%s: %s" % [acts.scenario.title.to_upper(), acts.scenario.progress_text(g)])
+		if acts.tutorial != null:
+			pl.append(acts.tutorial.prompt())
 	_pitch_board.lines = pl
 	_pitch_board.refresh()
 
