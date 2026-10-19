@@ -246,3 +246,10 @@ Play > any mode > setup > Park: Harbor Field (the old park), Cozy Yard (84 m sho
 ## 22. Hands and glove
 
 Your controllers are now a cartoon hand (throwing hand; both hands when batting) and a leather glove (the other hand). Check: scale and comfort (hand about 17 cm long, glove 30 cm), that the glove's pocket (12 cm in front of the controller) is where the catch feels like it happens, that the hand does not hide the ball you are holding, and left-handed mirroring. `tools/hand_preview.gd` renders them (see its header).
+
+## 23. Dugouts, crowd, effects, daily game
+
+- Teammates stand at both dugout rails and a coach in each box; they cheer runs/homers and groan strikeouts (check they are readable from the mound and not in the way of the batter's walk-up, `Dugouts`).
+- The crowd stands and bounces after a homer (`Stadium.pulse`); look at it from the mound: is it too subtle at that distance?
+- Chalk puffs on foul lines, grass kicks on outfield bounces, a flash where the bat meets the ball and at the mitt's pop (`DustPuffs`).
+- Play > Daily game: three innings with the day's visitors; play it twice to confirm the opposing lineup is the same (your pitches differ, so the game differs).

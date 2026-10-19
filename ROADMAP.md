@@ -134,7 +134,7 @@ criteria for each phase are in section 5; this is the at-a-glance view. Updated 
 - [ ] Store readiness if shipping on Meta (comfort rating, performance, entitlement, privacy policy)
 
 ### Later
-- [ ] Async ghost multiplayer (same seed, same lineup)
+- [~] Async ghost multiplayer (same seed, same lineup): the daily game is in (Play > Daily game: the day's visitors and dice are the same for everyone, three innings, a board per day kept two weeks; tests/daily_test.gd); sharing scores and ghosts between players needs a server and is open
 - [ ] Weather and altitude
 - [ ] Replay camera for big plays
 

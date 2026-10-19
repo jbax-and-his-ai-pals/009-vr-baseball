@@ -26,6 +26,7 @@ var batter := "Contact Hitter"
 var assist := "Standard"
 var scenario := ""             # a challenge id (see Scenario); "" for an ordinary game
 var tutorial := false          # the pitching lesson (a bullpen with prompts)
+var daily := 0                 # a daily game: the day number (days since 1970), 0 for an ordinary game
 var park := "harbor"           # which ballpark (see Park)
 var two_way := false           # pitch the top halves, bat the bottom halves yourself
 var career := false            # the next start of your saved career (teams, pitcher and innings come from it)
@@ -62,7 +63,14 @@ func normalized() -> GameConfig:
 		c.activity = "Game"
 		c.innings = int(Scenario.by_id(scenario).setup.get("innings", 9)) if int(Scenario.by_id(scenario).setup.get("innings", 9)) in INNINGS else 9
 	c.park = park if park in Park.ids() else Park.DEFAULT_ID
-	c.two_way = two_way and c.mode == "Pitching" and c.activity == "Game" and c.scenario == "" and not c.career and not c.tutorial
+	if daily > 0 and scenario == "" and not career and not tutorial:
+		# The daily game: everybody gets the same visitors and the same dice for the day, three innings.
+		c.daily = daily
+		c.mode = "Pitching"
+		c.activity = "Game"
+		c.innings = 3
+		c.park = Park.DEFAULT_ID
+	c.two_way = two_way and c.mode == "Pitching" and c.activity == "Game" and c.scenario == "" and not c.career and not c.tutorial and c.daily == 0
 	# Spectating is always a full game of watching; there is nothing to practise.
 	if c.mode == "Spectate":
 		c.activity = "Game"
@@ -86,13 +94,30 @@ func is_scored() -> bool:
 func leaderboard_key() -> String:
 	if not is_scored():
 		return ""
+	if daily > 0:
+		return "Daily/%d/%s" % [daily, assist]
 	var where := "%s/%dinn%s%s" % [mode, innings, "+bat" if two_way else "", "" if park == Park.DEFAULT_ID else "@" + park]
 	if mode == "Fielding":
 		where = "Fielding%d/%dinn" % [position, innings]
 	return "%s/%s" % [where, assist]
 
 
+## Days since 1970-01-01 (UTC): the day a daily game belongs to.
+static var today_override := 0
+
+
+static func today() -> int:
+	return today_override if today_override > 0 else int(Time.get_unix_time_from_system() / 86400.0)
+
+
+## The seed everyone shares for a daily game.
+static func daily_seed(day: int) -> int:
+	return day * 7919 + 13
+
+
 func title() -> String:
+	if daily > 0:
+		return "Daily game - %s" % Time.get_date_string_from_unix_time(daily * 86400)
 	if scenario != "":
 		return "Challenge - %s" % Scenario.by_id(scenario).title
 	if tutorial:
@@ -119,7 +144,7 @@ func title() -> String:
 
 func to_dict() -> Dictionary:
 	return {"mode": mode, "activity": activity, "position": position, "innings": innings,
-		"batter": batter, "assist": assist, "scenario": scenario, "career": career, "tutorial": tutorial, "two_way": two_way, "park": park}
+		"batter": batter, "assist": assist, "scenario": scenario, "career": career, "tutorial": tutorial, "two_way": two_way, "park": park, "daily": daily}
 
 
 static func from_dict(d: Dictionary) -> GameConfig:
@@ -135,4 +160,5 @@ static func from_dict(d: Dictionary) -> GameConfig:
 	c.tutorial = bool(d.get("tutorial", false))
 	c.two_way = bool(d.get("two_way", false))
 	c.park = str(d.get("park", Park.DEFAULT_ID))
+	c.daily = int(d.get("daily", 0))
 	return c.normalized()

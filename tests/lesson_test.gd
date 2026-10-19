@@ -74,12 +74,12 @@ func _init() -> void:
 	var m := MenuModel.new(s)
 	m.stack = ["main", "play"]
 	var rows := m.items().map(func(r): return r.id)
-	_check(rows[0] == "tutorial" and String(m.items()[0].value) == "lesson 4 of 5", "Play lists the lesson first and where you are (%s)" % m.items()[0].value)
-	var ev := m.activate(0)
+	_check(rows[1] == "tutorial" and String(m.items()[1].value) == "lesson 4 of 5", "Play lists the lesson first and where you are (%s)" % m.items()[1].value)
+	var ev := m.activate(1)
 	_check(ev.get("type", "") == "start" and ev.config.tutorial and s.last_game.get("tutorial", false), "choosing it starts it")
 	s.tutorial_step = 5
-	_check(String(m.items()[0].value).begins_with("done"), "after finishing it offers a replay")
-	m.activate(0)
+	_check(String(m.items()[1].value).begins_with("done"), "after finishing it offers a replay")
+	m.activate(1)
 	_check(s.tutorial_step == 0, "and a replay starts over")
 
 	# In the scene.

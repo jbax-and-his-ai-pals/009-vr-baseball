@@ -152,6 +152,7 @@ var _node_moves: Array = []                 # fielders walking into position for
 var _tracker := SwingTracker.new()          # your controller as a bat (Hitting)
 var _bat_view: MeshInstance3D               # the bat in your hand
 var _bat_call := ""                         # a play called with this pitch: "squeeze" or "hit_and_run" ("" for none)
+var _daily := 0                            # a daily game: the day it belongs to (0 for an ordinary game)
 var _two_way := false                       # you also bat: the bottom halves are played live
 var _top_game: GameState                    # while you bat, the pitching game waits here
 var _bottom_end_timer := -1.0               # counts down once your half is over, then hands the game back
@@ -317,6 +318,8 @@ func _ready() -> void:
 	else:
 		_home = Team.generate("Home", 55.0, 7)
 		_away = Team.generate("Away", 52.0, 14)
+		if _daily > 0:
+			_away = Team.generate("Away", 46.0 + float(_daily % 13), _daily * 31 + 5)      # the day's visitors, the same for everyone
 		_away.jersey = Color(0.84, 0.16, 0.18)          # the visitors wear red (the runners and the batter already do)
 		_away.pants = Color(0.95, 0.95, 0.97)
 		_away.cap = Color(0.12, 0.17, 0.50)
@@ -1471,6 +1474,7 @@ func _current_config() -> GameConfig:
 	c.scenario = _scenario_id
 	c.career = _career_game
 	c.two_way = _two_way
+	c.daily = _daily
 	c.park = Park.now().id
 	if _career_game:
 		c.innings = _career.innings_per_start
@@ -1491,6 +1495,9 @@ func apply_config(c: GameConfig) -> void:
 	_derby = c.activity == "Derby" and c.mode == "Hitting"
 	_tutorial = Tutorial.new(_settings.tutorial_step) if c.tutorial else null
 	_two_way = c.two_way
+	_daily = c.daily
+	if _daily > 0:
+		forced_seed = GameConfig.daily_seed(_daily)
 	Park.current = Park.by_id("harbor" if c.career else c.park)
 	_career_game = c.career and _career != null and not _career.is_over()
 

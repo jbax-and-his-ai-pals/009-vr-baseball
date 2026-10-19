@@ -61,6 +61,7 @@ func record_game(config: GameConfig, line: Dictionary, when: float = -1.0) -> Di
 	_add_totals(line)
 	var out := {"score": score, "rank": 0, "personal_best": false, "key": key}
 	if key != "":
+		_prune_daily(key)
 		var board: Array = boards.get(key, [])
 		out.personal_best = board.is_empty() or score > int(board[0].score)
 		board.append({"score": score, "t": t, "line": line})
@@ -73,6 +74,27 @@ func record_game(config: GameConfig, line: Dictionary, when: float = -1.0) -> Di
 				out.rank = i + 1
 				break
 	return out
+
+
+## Daily boards pile up one per day: keep the last two weeks.
+const DAILY_KEPT := 14
+
+
+func _prune_daily(new_key: String) -> void:
+	if not new_key.begins_with("Daily/"):
+		return
+	var days := {}
+	for k in boards.keys():
+		if String(k).begins_with("Daily/"):
+			days[int(String(k).split("/")[1])] = true
+	days[int(new_key.split("/")[1])] = true
+	var sorted_days: Array = days.keys()
+	sorted_days.sort()
+	while sorted_days.size() > DAILY_KEPT:
+		var old: int = sorted_days.pop_front()
+		for k in boards.keys():
+			if String(k).begins_with("Daily/%d/" % old):
+				boards.erase(k)
 
 
 func _add_totals(line: Dictionary) -> void:

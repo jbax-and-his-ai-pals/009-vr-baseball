@@ -107,6 +107,10 @@ func items() -> Array[Dictionary]:
 			rows.append(_row("stats", "Stats & leaderboards"))
 			rows.append(_row("quit", "Quit"))
 		"play":
+			var day := GameConfig.today()
+			var dkey := "Daily/%d/%s" % [day, settings.assist]
+			var dtop: Array = profile.top(dkey, 1) if profile != null else []
+			rows.append(_row("daily", "Daily game", "best today: %d" % int(dtop[0].score) if not dtop.is_empty() else "new today", true, "everyone gets the same visitors and dice today: three innings"))
 			rows.append(_row("tutorial", "Learn to pitch", "lesson %d of %d" % [mini(settings.tutorial_step + 1, Tutorial.STEPS.size()), Tutorial.STEPS.size()] if settings.tutorial_step < Tutorial.STEPS.size() else "done (replay)", true, "a short lesson: your usual throw, then one gesture per pitch"))
 			rows.append(_row("mode:Pitching", "Pitching", "you pitch to AI batters"))
 			rows.append(_row("mode:Fielding", "Fielding", "you play a position"))
@@ -322,6 +326,13 @@ func activate(index: int) -> Dictionary:
 			cc = cc.normalized()
 			settings.last_game = cc.to_dict()
 			return {"type": "start", "config": cc}
+	if id == "daily":
+		var dc := GameConfig.new()
+		dc.daily = GameConfig.today()
+		dc.assist = settings.assist
+		dc = dc.normalized()
+		settings.last_game = dc.to_dict()
+		return {"type": "start", "config": dc}
 	if id == "tutorial":
 		var tc := GameConfig.new()
 		tc.tutorial = true
