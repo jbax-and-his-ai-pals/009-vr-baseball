@@ -280,3 +280,23 @@ func refresh_hud() -> void:
 		info.pop_front()
 	info_board.lines = info
 	info_board.refresh()
+
+
+## Between the halves: a card with the inning's story (hits, runs and strikeouts since the half began).
+var half_start := {"hits": 0, "k": 0, "bb": 0, "runs": 0}
+
+
+func counters() -> Dictionary:
+	var g: GameState = host._game
+	return {"hits": g.hits, "k": g.strikeouts, "bb": g.walks, "runs": g.runs}
+
+
+func on_half_over(ev: Dictionary) -> void:
+	var g: GameState = host._game
+	var now := counters()
+	if not ev.get("game_over", false):
+		var due: Player = g.current_batter()
+		show_notice("
+".join(InningCard.lines(int(ev.get("inning_ended", g.inning)), half_start, now, g.runs, g.home_score, due.name if due != null else "")), true)
+	half_start = now
+

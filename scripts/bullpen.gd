@@ -225,6 +225,7 @@ func _wire_bus() -> void:
 	bus.game_over.connect(results.on_game_over)
 	bus.game_over.connect(slog.on_game_over)
 	bus.half_over.connect(slog.on_half_over)
+	bus.half_over.connect(hud.on_half_over)
 	bus.play_announced.connect(slog.on_play_announced)
 
 

@@ -130,7 +130,7 @@ criteria for each phase are in section 5; this is the at-a-glance view. Updated 
 - [x] 2-3 parks, day and night (`Park`: four now - Summit Field with thin air as well as Harbor Field, Cozy Yard with a short porch and low wall, Canyon Park at night with a tall wall; fence and wall change homers, colors/sky/light the look; Play > setup > Park; tests/park_test.gd)
 - [x] Animated crowd (shaders/crowd.gdshader: every fan sways, the park stands and bounces for homers, doubles, runs and strikeouts, settling over ~5 s; `Stadium.pulse`; tests/crowd_test.gd; BUDGET OK)
 - [ ] Record and source the P0 audio (mitt, bat, crowd, umpire voice), then P1; real music
-- [ ] Menu and board art pass, transitions, between-innings presentation
+- [~] Menu and board art pass, transitions, between-innings presentation: the between-innings card is in (`InningCard`: the inning, score, what the half did, who is due up; tests/inning_card_test.gd); the art pass and transitions are open
 - [ ] Store readiness if shipping on Meta (comfort rating, performance, entitlement, privacy policy)
 
 ### Later
