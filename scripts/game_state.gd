@@ -235,11 +235,20 @@ func dropped_third_strike(reaches: bool) -> Dictionary:
 ## A runner went on the pitch. safe: he made it (the base is his); otherwise he is out.
 func steal(from_base: int, safe: bool) -> Dictionary:
 	var ev := _event()
-	if over or from_base < 1 or from_base > 2 or bases[from_base - 1] == null:
+	if over or from_base < 1 or from_base > 3 or bases[from_base - 1] == null:
 		return ev
 	var runner = bases[from_base - 1]
-	var names := ["", "second", "third"]
-	if safe and bases[from_base] == null:
+	var names := ["", "second", "third", "home"]
+	if safe and from_base == 3:
+		# A runner breaking from third on a squeeze that goes wrong but not for him: he scores.
+		bases[2] = null
+		stolen_bases += 1
+		ev.result = "stolen_base"
+		ev.text = "Safe at home"
+		ev.runs = 1
+		_score(1)
+		return ev
+	if safe and from_base < 3 and bases[from_base] == null:
 		bases[from_base] = runner
 		bases[from_base - 1] = null
 		stolen_bases += 1

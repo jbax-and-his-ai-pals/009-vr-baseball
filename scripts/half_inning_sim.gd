@@ -32,6 +32,8 @@ static func play(lineup: Array[Player], start_index: int, pitcher: Player, field
 		var p := ai_pitcher.next_pitch(RELEASE)
 		var batter := game.current_batter()
 		batter_ai.profile = BatterProfile.from_player(batter)
+		batter_ai.bats_left = not batter.bats_right
+		batter_ai.platoon = BatterAI.platoon_for(batter.bats_right, pitcher.throws_right)
 		var a: Dictionary = p.analysis
 		if not a.get("reached", false):
 			game.pitch("ball")

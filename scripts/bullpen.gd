@@ -130,6 +130,7 @@ var _profile := PlayerProfile.load_from()   # lifetime stats, leaderboards, chal
 var _career: Career = Career.load_from()    # the saved season, if any
 var _career_game := false                    # this game is the next start of the career
 var _game_recorded := false
+var _bat_call := ""                         # a play called with this pitch: "squeeze" or "hit_and_run" ("" for none)
 var _scenario: Scenario            # the challenge being played (null in an ordinary game)
 var _scenario_id := ""
 var _scenario_done := false
@@ -500,6 +501,24 @@ func _on_delivery_start() -> void:
 			"run_t": run_t, "delivery_so_far": _last_delivery})
 		_refresh_base_runners()
 		return
+	# No steal: perhaps a play is on (squeeze, hit and run).
+	var call := StealModel.play_call(_game.bases, _game.outs, _game.strikes, _game.inning, _game.runs - _game.home_score,
+		_batter_ai.profile, _run_rng)
+	if call == "":
+		return
+	var from_base := 3 if call == "squeeze" else 1
+	var rnr = _game.bases[from_base - 1]
+	if not (rnr is Player):
+		return
+	var lead_c: float = float(_leads[from_base - 1])
+	var run_c := StealModel.run_time(rnr as Player, from_base, lead_c)
+	var plan_c := Baserunning.plan_steal(from_base, rnr, run_c)
+	_aux_play = {"plan": plan_c, "t": 0.0}
+	_steal = {"from": from_base, "runner": rnr, "run_t": run_c, "plan": plan_c, "call": call}
+	_bat_call = call
+	_log("play_call", {"call": call, "base": from_base, "runner": (rnr as Player).name, "batter": _batter_ai.profile.name})
+	_show_notice("%s!" % call.replace("_", " ").to_upper(), true)
+	_refresh_base_runners()
 
 
 ## The pitch is in the catcher's glove (or it was hit and the steal was cancelled elsewhere):
@@ -508,7 +527,8 @@ func _resolve_steal(a: Dictionary) -> void:
 	if _steal.is_empty() or _steal.has("apply_at"):
 		return
 	var plan: Dictionary = _steal.plan
-	var res := StealModel.resolve(_last_delivery, float(a.get("time", 0.5)), float(_steal.run_t), _run_rng)
+	var res := StealModel.resolve(_last_delivery, float(a.get("time", 0.5)), float(_steal.run_t), _run_rng,
+		0.4 if int(_steal.from) == 3 else StealModel.POP_TIME)       # at the plate the catcher just tags him
 	var t_now := float(_aux_play.get("t", 0.0)) if not _aux_play.is_empty() else 0.0
 	var base := int(_steal.from)
 	var t_ball: float = maxf(float(res.t_ball), t_now + 0.3)
@@ -517,12 +537,13 @@ func _resolve_steal(a: Dictionary) -> void:
 	else:
 		Baserunning.steal_out(plan, t_ball)
 	# The catcher's throw: from the plate to the glove of the man covering the base.
-	var cover: int = RECEIVE_FOR_STEAL[base]
+	var cover: int = RECEIVE_FOR_STEAL.get(base, 2)
 	var glove: Vector3 = (Baserunning.RECEIVE_SPOT[base + 1] as Vector3) + Vector3(0.0, 1.15, 0.0)
 	var dur := Vector2(0.0 - glove.x, -1.35 - glove.z).length() / 33.0 + 0.1
-	_spawn_flight(Vector3(0.0, 1.5, -1.2), glove, maxf(t_ball - dur - t_now, 0.05), dur, cover, not res.safe)
-	# He comes up out of the crouch and throws; the arm starts early enough that the ball leaves on time.
-	_crew.pop_throw_in(maxf(maxf(t_ball - dur - t_now, 0.05) - 0.42, 0.0), glove)
+	if base < 3:
+		_spawn_flight(Vector3(0.0, 1.5, -1.2), glove, maxf(t_ball - dur - t_now, 0.05), dur, cover, not res.safe)
+		# He comes up out of the crouch and throws; the arm starts early enough that the ball leaves on time.
+		_crew.pop_throw_in(maxf(maxf(t_ball - dur - t_now, 0.05) - 0.42, 0.0), glove)
 	_steal["safe"] = res.safe
 	_steal["apply_at"] = t_ball
 	_log("steal_resolve", {"base": base, "safe": res.safe, "delivery": _last_delivery, "flight": a.get("time", 0.0),
@@ -542,6 +563,7 @@ func _finish_steal() -> void:
 		_after_event(ev)
 		_refresh_hud()
 	_steal = {}
+	_bat_call = ""
 
 
 const RECEIVE_FOR_STEAL := {1: 6, 2: 5}
@@ -1167,6 +1189,7 @@ func _sync_batter() -> void:
 	if lineup_mode == "Game" and _game and _game.current_batter() != null:
 		_batter_player = _game.current_batter()
 		_batter_ai.profile = BatterProfile.from_player(_batter_player)
+	_batter_ai.bats_left = _batter_is_lefty()
 	_refresh_scoreboard()
 	# A batter already standing in his box (the first of a game) takes the right side now; everyone
 	# else is placed when he walks on, so the last batter never flips sides in front of you.
@@ -1449,9 +1472,12 @@ func _launch(from: Vector3, vel: Vector3, spin: Vector3, label: String, flutter_
 	pitch.flutter_amp = flutter_amp
 	pitch.flutter_seed = flutter_seed
 	pitch.analysis = PitchPhysics.analyze(from, vel, spin, flutter_amp, flutter_seed)
+	var pitcher_right := (throwing_hand == &"right_hand") if _mode.human_pitcher else _ai_pitcher.player.throws_right
+	if _batter_player != null:
+		_batter_ai.platoon = BatterAI.platoon_for(_batter_player.bats_right, pitcher_right)
 	pitch.bat = _batter_ai.evaluate({"release": from, "vel": vel, "spin": spin,
 		"situation": {"bases": [_game.bases[0] != null, _game.bases[1] != null, _game.bases[2] != null],
-			"outs": _game.outs, "strikes": _game.strikes, "balls": _game.balls},
+			"outs": _game.outs, "strikes": _game.strikes, "balls": _game.balls, "call": _bat_call},
 		"flutter_amp": flutter_amp, "flutter_seed": flutter_seed, "analysis": pitch.analysis})
 	if pitch.bat.swing:
 		# He is still finishing the previous swing: he cannot offer at this one.
@@ -1542,6 +1568,7 @@ func _update_flight(pitch: LivePitch, delta: float) -> void:
 
 
 func _land(pitch: LivePitch) -> void:
+	_bat_call = ""
 	if _audio != null:
 		_audio.loop_off("whiz")
 	pitch.landed = true
@@ -1651,6 +1678,7 @@ func _bat_line(pitch: LivePitch) -> String:
 
 ## The bat meets the ball: end the pitch's flight and send a batted ball out.
 func _contact(pitch: LivePitch) -> void:
+	_bat_call = ""
 	if _audio != null:
 		_audio.loop_off("whiz")
 	pitch.landed = true
@@ -1704,6 +1732,7 @@ func _contact(pitch: LivePitch) -> void:
 		if not _steal.is_empty():
 			head_start[int(_steal.from)] = float(_aux_play.get("t", 0.0)) if not _aux_play.is_empty() else 0.0
 			_steal = {}
+			_bat_call = ""
 			_aux_play = {}
 		h.plan = Baserunning.plan(h.play, _game.bases, _game.outs, _batter_player, _run_rng, head_start)
 		h.play_end = maxf(h.play_end, float(h.plan.end_time))
@@ -2132,6 +2161,7 @@ func _update_batter_lifecycle(delta: float) -> void:
 				_finish_steal()
 		elif _aux_play.is_empty():
 			_steal = {}            # the delivery never became a pitch: nothing to resolve
+			_bat_call = ""
 	# Safety net: if nothing is happening that could make the batter ready, make him ready.
 	var busy := not _aux_play.is_empty() or not _walk_on.is_empty()
 	for h in _hits:

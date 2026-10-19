@@ -32,6 +32,23 @@ static func steal_chance(runner: Player, base: int, outs: int, bases: Array, pit
 	return clampf(p * (1.0 + 0.5 * pitcher_fatigue), 0.0, 0.35)
 
 
+## A play called with the pitch (beyond a plain steal): "squeeze" (runner on third breaks on the
+## delivery, the batter bunts him in: late, close, a hitter who is not a slugger) or "hit_and_run"
+## (runner on first alone breaks, the batter must protect him: a contact hitter). "" for none.
+## `margin` is the batting team's runs minus the fielding team's.
+static func play_call(bases: Array, outs: int, strikes: int, inning: int, margin: int, batter: BatterProfile, rng: RandomNumberGenerator) -> String:
+	if batter == null or strikes >= 2:
+		return ""
+	if bases[2] != null and outs < 2 and inning >= 6 and margin >= -1 and margin <= 0 and batter.power < 0.7:
+		var p_sq := 0.14 * (0.5 + 0.5 * batter.contact) * (1.0 - batter.power)
+		if rng.randf() < p_sq:
+			return "squeeze"
+	if bases[0] != null and bases[1] == null and bases[2] == null and outs < 2 and batter.contact >= 0.6:
+		if rng.randf() < 0.07 * batter.contact:
+			return "hit_and_run"
+	return ""
+
+
 ## Seconds from the runner's first step to the next base from his lead.
 static func run_time(runner: Player, from_base: int, lead: float) -> float:
 	var rf := runner.run_factor() if runner != null else 1.0

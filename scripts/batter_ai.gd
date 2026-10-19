@@ -15,7 +15,10 @@ extends RefCounted
 ##  5. COLLIDE: compare the ball's real position with the bat. Vertical offset sets launch
 ##     angle and spin, timing sets spray direction, offset along the bat sets how well it
 ##     is struck. Whiff, foul tip, or a batted ball.
-## The batter is right-handed (pull = left field, +X in this game's coordinates).
+## Handedness: the numbers below are worked out for a right-hander (pull = left field, +X in this
+## game's coordinates); a left-hander's batted ball is the mirror image (`bats_left`). Against a
+## pitcher of the other hand he sees the ball a little better (`platoon` +1), against the same hand
+## a little worse (-1).
 
 const R_SUM := 0.0685            # ball radius + barrel radius
 const ZONE_HALF_W := PitchPhysics.ZONE_HALF_W + PitchPhysics.BALL_RADIUS
@@ -32,6 +35,23 @@ var debug_perfect := false
 ## Tests: always (or never) bunt when given a situation.
 var force_bunt := false
 var force_no_bunt := false
+## A left-handed batter: everything he hits is mirrored left to right.
+var bats_left := false
+## -1 (same-handed pitcher, harder) .. +1 (opposite hand, easier); see platoon_for().
+var platoon := 0.0
+
+
+## How much easier or harder this batter-pitcher pairing is: +1 opposite hands, -1 the same hand.
+static func platoon_for(bats_right: bool, pitcher_throws_right: bool) -> float:
+	return 1.0 if bats_right != pitcher_throws_right else -1.0
+
+
+func _eye() -> float:
+	return clampf(profile.eye + 0.045 * platoon, 0.0, 1.0)
+
+
+func _con() -> float:
+	return clampf(profile.contact + 0.045 * platoon, 0.0, 1.0)
 
 
 func _init(p: BatterProfile = null) -> void:
@@ -44,6 +64,8 @@ func _init(p: BatterProfile = null) -> void:
 func _wants_bunt(sit: Dictionary) -> bool:
 	if sit.is_empty() or force_no_bunt:
 		return false
+	if String(sit.get("call", "")) == "squeeze":
+		return true                       # the play is on: he bunts
 	var on: Array = sit.get("bases", [false, false, false])
 	if not (on[0] or on[1]):
 		return false
@@ -88,6 +110,25 @@ func _bunt_contact(out: Dictionary, dx: float, dy: float, p: Vector3) -> Diction
 ## pitch: {release: Vector3, vel: Vector3, spin: Vector3, flutter_amp, flutter_seed,
 ##         analysis: PitchPhysics.analyze() result}
 func evaluate(pitch: Dictionary) -> Dictionary:
+	var out := _evaluate(pitch)
+	if bats_left and out.get("contact", false):
+		_mirror(out)
+	return out
+
+
+## A left-hander's hit is the right-hander's seen in a mirror (left-right swapped; spin reverses with it).
+static func _mirror(out: Dictionary) -> void:
+	if out.has("vel"):
+		var v: Vector3 = out["vel"]
+		out["vel"] = Vector3(-v.x, v.y, v.z)
+	if out.has("spin"):
+		var sp: Vector3 = out["spin"]
+		out["spin"] = Vector3(sp.x, -sp.y, -sp.z)
+	if out.has("spray") and absf(float(out["spray"])) < 179.0:
+		out["spray"] = -float(out["spray"])
+
+
+func _evaluate(pitch: Dictionary) -> Dictionary:
 	var a: Dictionary = pitch.analysis
 	var out := {"swing": false, "contact": false, "kind": "take", "p_swing": 0.0}
 	if not a.get("reached", false):
@@ -107,11 +148,13 @@ func evaluate(pitch: Dictionary) -> Dictionary:
 	var speed_diff := maxf(float(a.get("plate_mph", 58.0)) - 58.0, 0.0) * 0.010 * (1.2 - 0.4 * profile.timing)
 	var diff := 1.0 + speed_diff + (1.0 - profile.recognition) * 0.04 * move_in \
 		+ (flutter / 12.0) * lerpf(1.2, 0.5, profile.recognition)
-	var sigma_p := lerpf(0.20, 0.035, profile.eye) * diff
+	var sigma_p := lerpf(0.20, 0.035, _eye()) * diff
 	var perceived := Vector2(plate.x + rng.randfn(0.0, sigma_p), plate.y + rng.randfn(0.0, sigma_p))
 
 	# 2. Decide. In a bunting situation he squares around instead of swinging away.
-	var bunt := _wants_bunt(pitch.get("situation", {}))
+	var sit: Dictionary = pitch.get("situation", {})
+	var bunt := _wants_bunt(sit)
+	var call := String(sit.get("call", ""))
 	var dxo := maxf(absf(perceived.x) - ZONE_HALF_W, 0.0)
 	var dyo := maxf(maxf(ZONE_BOTTOM - perceived.y, perceived.y - ZONE_TOP), 0.0)
 	var d_out := sqrt(dxo * dxo + dyo * dyo)
@@ -119,10 +162,12 @@ func evaluate(pitch: Dictionary) -> Dictionary:
 	if d_out <= 0.0:
 		p_swing = lerpf(0.45, 0.92, profile.aggression)
 	else:
-		p_swing = pow(1.0 - profile.eye, 1.6) * lerpf(0.6, 1.4, profile.aggression) * exp(-d_out / 0.22)
+		p_swing = pow(1.0 - _eye(), 1.6) * lerpf(0.6, 1.4, profile.aggression) * exp(-d_out / 0.22)
 	if bunt:
 		# He offers at strikes and lets the rest go by.
-		p_swing = 0.92 if d_out <= 0.0 else 0.04
+		p_swing = 0.92 if d_out <= (0.30 if call == "squeeze" else 0.0) else 0.04
+	elif call == "hit_and_run" and d_out <= 0.35:
+		p_swing = maxf(p_swing, 0.90)             # the runner is going: he protects him
 	p_swing = clampf(p_swing, 0.0, 0.95)
 	out["p_swing"] = p_swing
 	out["bunt"] = bunt
@@ -164,8 +209,8 @@ func evaluate(pitch: Dictionary) -> Dictionary:
 	var edge := clampf(maxf(absf(plate.x) / PitchPhysics.ZONE_HALF_W, absf(plate.y - zone_mid_y) / zone_half_h), 0.0, 1.0)
 	out["edge"] = edge
 	# Better contact hitters are hurt less by the edges.
-	var edge_penalty := lerpf(0.40, 0.20, profile.contact)
-	var sigma_a := lerpf(0.078, 0.030, profile.contact) * diff * (1.0 + 2.5 * off_zone) 		* (1.0 - 0.10 + (edge_penalty + 0.10) * edge)
+	var edge_penalty := lerpf(0.40, 0.20, _con())
+	var sigma_a := lerpf(0.078, 0.030, _con()) * diff * (1.0 + 2.5 * off_zone) 		* (1.0 - 0.10 + (edge_penalty + 0.10) * edge)
 	var bat_y := plate.y + rng.randfn(0.0, sigma_a)
 	var sweet_x := plate.x + rng.randfn(0.0, sigma_a * 1.5)
 	if debug_perfect:
