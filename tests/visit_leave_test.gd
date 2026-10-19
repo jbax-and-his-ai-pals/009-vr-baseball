@@ -68,7 +68,7 @@ func _init() -> void:
 	_check(bp._ai_pitcher.player.name != starter and bp._spectate_timer > 0.0, "a reliever takes over")
 	var games_before := int(bp._profile.totals.get("games", 0))
 	var t := 0.0
-	for i in 60 * 400:
+	for i in 60 * 1500:
 		bp._process(1.0 / 60.0)
 		if bp._game.over and bp.results.game_recorded:
 			break
