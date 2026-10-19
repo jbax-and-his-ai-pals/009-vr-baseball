@@ -239,7 +239,7 @@ func call_balk(why: String) -> void:
 ## A ball in the air that is a throw: spawn it with a delay and a duration; the receiver puts his
 ## glove up as it arrives.
 func spawn_flight(from: Vector3, to: Vector3, delay: float, dur: float, receiver: int, tag: bool = false) -> void:
-	var b = host._make_ball()
+	var b = host.world.make_ball()
 	b.visible = false
 	flights.append({"ball": b, "from": from, "to": to, "t": 0.0, "delay": delay, "dur": maxf(dur, 0.1),
 		"receiver": receiver, "caught": false, "tag": tag})

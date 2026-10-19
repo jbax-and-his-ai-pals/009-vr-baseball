@@ -116,7 +116,7 @@ func leave_game() -> void:
 	runs_at_pitcher_change = host._game.runs
 	host._mode = GameMode.spectate()
 	host._sound.mode = host._mode
-	host._ensure_pitcher_doll()
+	host.world.ensure_pitcher_doll()
 	host._spectate_timer = 2.0
 	host.slog.record("leave_game", {"line": left_line, "reliever": rp.name})
 	host.hud.show_notice("%s takes over" % rp.name)

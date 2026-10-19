@@ -96,7 +96,7 @@ func enter_bottom() -> void:
 		opp_pitcher = AIPitcher.new(host._away.player_at(1))
 		opp_pitcher.rng.seed = host._run_rng.randi()
 	host._ai_pitcher = opp_pitcher
-	host._ensure_pitcher_doll()
+	host.world.ensure_pitcher_doll()
 	(host._field_nodes[1] as Node3D).visible = true
 	dress_teams(true)
 	place_for_role()
