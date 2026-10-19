@@ -76,25 +76,17 @@ enum SpinMode { RAW, WRIST_MODEL }
 @export_range(0.0, 0.1, 0.005) var spin_latency := 0.04
 @export var throwing_hand: StringName = &"right_hand"
 
-const GRAB_THRESHOLD := 0.7
-const RELEASE_THRESHOLD := 0.4
-const HOLD_OFFSET := Vector3(0.0, -0.02, -0.06)
 const LINGER_TIME := 1.5
 const MAX_PITCHES := 8
 const MITT_Z := -0.85
 const BACKSTOP_Z := -8.0
-const FORWARD := Vector3(0.0, 0.0, -1.0)
 ## Assisted pitches never leave the hand slower than this (m/s), so a feeble
 ## throw does not become a 45-degree rainbow.
-const MIN_ASSIST_SPEED := 12.0
 ## FUNNEL reads the hand's travel direction between these times before release.
 ## Chosen from recorded throws: much steadier than the instant of release, where the
 ## velocity direction swings ~1 degree per ms.
-const FUNNEL_FROM := 0.19
-const FUNNEL_TO := 0.04
-const ZONE_CENTER := Vector2(0.0, (PitchPhysics.ZONE_BOTTOM + PitchPhysics.ZONE_TOP) * 0.5)
+const ZONE_CENTER := HumanPitcher.ZONE_CENTER
 ## Releases slower than this (m/s of hand speed) are not throws: the ball just drops.
-const MIN_THROW_SPEED := 3.5
 
 var _xr_active := false
 var _demo := false
@@ -102,21 +94,22 @@ var _demo_timer := 1.0
 var _demo_interval := 0.35
 var _camera: Camera3D
 var _hand: XRController3D
-var _detector := ThrowDetector.new()
+var _human := HumanPitcher.new()          # you throwing: the controller, the release, your usual aim
+var _detector: ThrowDetector:
+	get: return _human.detector
 var _logger := ThrowLogger.new()
 ## Learned usual aim direction (degrees right / up of straight at the plate) and how much
 ## it scatters. Start from a recorded player; the first throws calibrate them quickly.
-var _aim_mu := Vector2(4.4, -0.3)
-var _aim_sigma := Vector2(6.0, 5.5)
-var _aim_n := 0
+var _aim_mu: Vector2:
+	get: return _human.aim_mu
 var _notice := ""
 var _notice_until := 0.0
-var _last_grip := 0.0
-var _wrist := WristModel.new()
 var _off_hand: XRController3D
 var _tag_index := 0
 var _tag_pressed := false
-var _held := false
+var _held: bool:
+	get: return _human.held
+	set(v): _human.held = v
 var _held_ball: MeshInstance3D
 var _pitches: Array[LivePitch] = []
 var _ball_mesh: ArrayMesh
@@ -150,10 +143,9 @@ var _perf_max := 0.0
 var _perf_spikes := 0
 var _mark_pressed := false
 # The running game.
-var _delivery_start := -1.0          # when your motion began (seconds), -1 if it has not
+var _delivery_start: float:               # when your motion began (seconds), -1 if it has not
+	get: return _human.delivery_start
 var _last_delivery := 0.9            # how long the last delivery took, motion start to release
-var _hand_prev := Vector3.ZERO
-var _hand_prev_t := -1.0
 var _steal := {}                     # a runner who is going: {from, runner, run_t, plan, apply_at, done}
 var _leads := [2.4, 2.4, 2.4]        # meters each runner stands off his base
 var _since_throw := [5, 5, 5]        # pitches since you last threw over, per base
@@ -243,6 +235,7 @@ func _ready() -> void:
 		_profile.save_path = "user://test_profile.json"      # a test run never touches the player's saved history
 		if _career != null:
 			_career.save_path = "user://test_career.json"
+	_human.knobs = self
 	_director.leads = _leads          # the scene asks where a runner stands before the world is built
 	_demo = "--demo" in OS.get_cmdline_user_args()
 	_settings = Settings.new() if "--no-settings" in OS.get_cmdline_user_args() else Settings.load_from()
@@ -1155,40 +1148,6 @@ func _unhandled_input(event: InputEvent) -> void:
 		_mark_moment()
 
 
-func _poll_hand(now: float) -> void:
-	if not _hand.get_is_active():
-		return
-	var grip := _hand.get_float("grip")
-	_last_grip = grip
-	_detector.add_sample(now, _hand.global_position, _hand.global_transform.basis.get_rotation_quaternion(), grip)
-	if not _held:
-		if grip > GRAB_THRESHOLD and _batter_ready:
-			_held = true
-			_haptics.play("grab")
-			_detector.clear()
-			_held_ball.visible = true
-			_delivery_start = -1.0
-			_hand_prev_t = -1.0
-		return
-	_held_ball.global_position = _hand.global_transform * HOLD_OFFSET
-	# Your delivery starts when the arm gets going. The runners read it and break.
-	var hp := _hand.global_position
-	if _hand_prev_t >= 0.0 and now > _hand_prev_t and _delivery_start < 0.0:
-		if hp.distance_to(_hand_prev) / (now - _hand_prev_t) > 1.6:
-			_delivery_start = now
-			_on_delivery_start()
-	_hand_prev = hp
-	_hand_prev_t = now
-	if release_mode == ReleaseMode.AUTO_PEAK:
-		var tp := _detector.find_release_peak(6.0, 0.85, FORWARD)
-		if tp > 0.0:
-			_release_from_hand(tp, 0.0, 0.0)
-		elif grip < RELEASE_THRESHOLD:
-			_drop_held()
-	elif grip < RELEASE_THRESHOLD:
-		_release_from_hand(now, velocity_latency, spin_latency)
-
-
 func _poll_tag() -> void:
 	if _off_hand == null or not _off_hand.get_is_active() or practice_tags.is_empty():
 		return
@@ -1426,205 +1385,59 @@ func _current_tag() -> String:
 	return practice_tags[_tag_index % practice_tags.size()] if not practice_tags.is_empty() else ""
 
 
-func _drop_held() -> void:
-	_held = false
-	_held_ball.visible = false
-	_delivery_start = -1.0
-	_hand_prev_t = -1.0
-
-
 func _release_from_hand(release_t: float, vel_latency: float, spin_latency: float) -> void:
 	var from := _held_ball.global_position
-	var est := _detector.estimate(release_t, vel_latency)
-	var spin_est := _detector.estimate(release_t, spin_latency)
-	var started := _delivery_start >= 0.0
-	var began_at := _delivery_start
-	_drop_held()
-	if not est.valid:
-		return
-	if (est.velocity as Vector3).length() < MIN_THROW_SPEED:
-		if started and _runners_on():
-			_call_balk("Dropped the ball")
-		else:
-			_show_notice("Too soft - that was a drop. Throw it!")
-		return
-	# Thrown toward a base: a throw over (a pickoff try), or a balk if nobody is there.
-	if from.z > 8.0:
-		var pk := HumanFielding.pick_base(from, est.velocity, 26.0)
-		if int(pk.base) in [1, 2, 3]:
-			_do_pickoff(int(pk.base), from, est.velocity as Vector3, float(pk.err))
-			return
-	_last_delivery = clampf(release_t - began_at, 0.25, 3.0) if started else 0.9
-	var tired := _arm_fatigue()
-	var vel: Vector3 = (est.velocity as Vector3) * velocity_gain * (1.0 - 0.06 * tired)
-	var max_speed := max_mph / PitchPhysics.MPS_TO_MPH
-	if vel.length() > max_speed:
-		vel = vel.normalized() * max_speed
-	var spin_src: Vector3 = spin_est.spin if spin_est.valid else est.spin
-	var hand_sign := 1.0 if throwing_hand == &"right_hand" else -1.0
-	var shape := {}
-	var spin: Vector3
-	if spin_mode == SpinMode.WRIST_MODEL:
-		_wrist.technique_gain = technique_gain
-		_wrist.fastball_backspin = fastball_backspin_rpm * PitchPhysics.RPM_TO_RADS
-		var slot := from.y - _camera.global_position.y
-		var extras := {"straight": _detector.straightness(release_t)}
-		var peak := _detector.peak_height(release_t)
-		if peak > -100.0:
-			extras["wind_peak"] = peak - _camera.global_position.y
-		shape = _wrist.shape(spin_src, est.velocity, slot, hand_sign, extras)
-		spin = shape.spin
-	else:
-		spin = spin_src * spin_gain
-	var scaled := vel
-	var funnel := {}
-	match aim_mode:
-		AimMode.HAND_ASSIST:
-			vel = PitchPhysics.assist_velocity(from, vel, spin, aim_assist)
-		AimMode.FUNNEL:
-			funnel = _funnel_target(from, release_t)
-			var target: Vector3 = funnel.target
-			vel = PitchPhysics.solve_aim(from, maxf(vel.length(), MIN_ASSIST_SPEED), spin, target)
-	var pitch := _launch(from, vel, spin, "Your pitch", shape.get("flutter", 0.0), _run_rng.randf() * 100.0)
-	pitch.label = PitchNamer.name_pitch(pitch.analysis, _wrist.typical_mph(velocity_gain), hand_sign, shape.get("knuckle", false))
-	_haptics.play("release", clampf(float(pitch.analysis.get("speed_mph", 60.0)) / 90.0, 0.0, 1.0))
-	_log_throw(pitch, from, release_t, vel_latency, est, scaled, spin, funnel, shape)
+	var r := _human.throw(release_t, vel_latency, spin_latency, from, _camera.global_position.y, _arm_fatigue(), _command_scale(), _runners_on())
+	_held_ball.visible = false
+	match String(r.kind):
+		"drop":
+			if bool(r.started):
+				_call_balk("Dropped the ball")
+			else:
+				_show_notice("Too soft - that was a drop. Throw it!")
+		"pickoff":
+			_do_pickoff(int(r.base), from, r.vel as Vector3, float(r.err))
+		"pitch":
+			_last_delivery = float(r.delivery)
+			var pitch := _launch(from, r.vel, r.spin, "Your pitch", float(r.flutter), _run_rng.randf() * 100.0)
+			pitch.label = PitchNamer.name_pitch(pitch.analysis, _human.wrist.typical_mph(velocity_gain), float(r.hand_sign), bool(r.knuckle))
+			_haptics.play("release", clampf(float(pitch.analysis.get("speed_mph", 60.0)) / 90.0, 0.0, 1.0))
+			_log_throw(pitch, from, release_t, vel_latency, r)
 
 
-## Where the pitch should cross the plate: the zone center plus how far this throw's aim
-## differs from the player's usual aim, measured in units of the player's own scatter.
-## Hands not travelling toward the plate give a centered target. Always returns a target.
-func _funnel_target(from: Vector3, release_t: float) -> Dictionary:
-	var a = _detector.position_at(release_t - FUNNEL_FROM)
-	var b = _detector.position_at(release_t - FUNNEL_TO)
-	var center := Vector3(ZONE_CENTER.x, ZONE_CENTER.y, 0.0)
-	if a == null or b == null:
-		return {"target": center, "fallback": true}
-	var d: Vector3 = (b as Vector3) - (a as Vector3)
-	var travel := d.length()
-	if travel < 0.03 or d.z / travel > -0.2:
-		return {"target": center, "fallback": true}
-	var x := Vector2(rad_to_deg(atan2(d.x, -d.z)), rad_to_deg(atan2(d.y, Vector2(d.x, d.z).length())))
-	var z_raw := (x - _aim_mu) / _aim_sigma
-	# A very erratic throw is allowed to be very wrong: clamp wide, not tight.
-	var z := Vector2(clampf(z_raw.x, -4.0, 4.0), clampf(z_raw.y, -4.0, 4.0))
-	# A tired arm is less exact: the same wobble lands further from where you meant it.
-	var wobble := 1.0 + 0.30 * _arm_fatigue()
-	var target := Vector3(
-		clampf(ZONE_CENTER.x + z.x * funnel_spread_x * wobble * _command_scale(), -2.0, 2.0),
-		clampf(ZONE_CENTER.y + z.y * funnel_spread_y * wobble * _command_scale(), 0.0, 2.6), 0.0)
-	var out := {"target": target, "fallback": false, "angle": x, "z": z,
-		"mu_before": _aim_mu, "sigma_before": _aim_sigma}
-	# Learn. The first throws calibrate fast and accept nearly anything; later ones skip
-	# deliberate outliers so a one-off wild throw does not redefine "usual".
-	var gate := 5.0 if _aim_n < 15 else 3.5
-	if absf(z_raw.x) <= gate and absf(z_raw.y) <= gate:
-		var rate := maxf(1.0 / (_aim_n + 3.0), aim_learn_rate)
-		var dev := x - _aim_mu
-		_aim_mu += dev * rate
-		var v := _aim_sigma * _aim_sigma
-		v += (dev * dev - v) * rate
-		_aim_sigma = Vector2(maxf(2.0, sqrt(v.x)), maxf(2.0, sqrt(v.y)))
-		_aim_n += 1
-	return out
+## One JSON line per throw (see HumanPitcher.log_entry): the scene supplies what only it knows.
+func _log_throw(pitch: LivePitch, from: Vector3, release_t: float, latency: float, r: Dictionary) -> void:
+	var ctx := {"head_pos": _camera.global_position, "head_fwd": -_camera.global_transform.basis.z,
+		"hand_fwd": (_hand.global_transform.basis * HumanPitcher.FORWARD) if _hand else HumanPitcher.FORWARD,
+		"tag": _current_tag(), "auto": release_mode == ReleaseMode.AUTO_PEAK, "batter_profile": _batter_ai.profile.name,
+		"game": {"inning": _game.inning, "outs": _game.outs, "balls": _game.balls, "strikes": _game.strikes,
+			"bases": [_game.bases[0] != null, _game.bases[1] != null, _game.bases[2] != null],
+			"batter": _batter_player.name if _batter_player else ""}}
+	_logger.record(_human.log_entry(ctx, pitch, from, release_t, latency, r.est, r.scaled, r.spin, r.funnel, r.shape))
 
 
-## One JSON line per throw: what the arm did, what the assist did, where it went.
-func _log_throw(pitch: LivePitch, from: Vector3, release_t: float, latency: float, est: Dictionary, scaled: Vector3, spin: Vector3, funnel: Dictionary, shape: Dictionary) -> void:
-	var raw: Vector3 = est.velocity
-	var series := []
-	for back_ms in [0, 20, 40, 60, 80, 120, 160]:
-		var e := _detector.estimate(release_t, latency + back_ms / 1000.0)
-		if e.valid:
-			var ev: Vector3 = e.velocity
-			series.append({"back_ms": back_ms, "speed": snappedf(ev.length(), 0.01),
-				"elev": snappedf(ThrowLogger.elevation_deg(ev), 0.1), "azim": snappedf(ThrowLogger.azimuth_deg(ev), 0.1)})
-	var samples := []
-	for smp in _detector.recent(release_t - 0.55):
-		samples.append({"ms": roundi((smp.t - release_t) * 1000.0), "p": ThrowLogger.vec(smp.p),
-			"f": ThrowLogger.vec(smp.f), "g": snappedf(smp.g, 0.01)})
-	var head := _camera.global_position
-	var dir := scaled.normalized()
-	var entry := {
-		"time": Time.get_datetime_string_from_system(),
-		"mode": "auto" if release_mode == ReleaseMode.AUTO_PEAK else "grip",
-		"aim_mode": AimMode.keys()[aim_mode],
-		"spin_mode": SpinMode.keys()[spin_mode],
-		"tag": _current_tag(),
-		"pitch_name": pitch.label,
-		"gains": {"velocity": velocity_gain, "spin": spin_gain, "assist": aim_assist,
-			"funnel_x": funnel_spread_x, "funnel_y": funnel_spread_y, "velocity_latency": latency, "spin_latency": spin_latency},
-		"release_pos": ThrowLogger.vec(from),
-		"head_pos": ThrowLogger.vec(head),
-		"hand_minus_head": ThrowLogger.vec(from - head),
-		"head_fwd": ThrowLogger.vec(-_camera.global_transform.basis.z),
-		"hand_fwd": ThrowLogger.vec((_hand.global_transform.basis * FORWARD) if _hand else FORWARD),
-		"grip_at_release": snappedf(_last_grip, 0.01),
-		"raw": {"vel": ThrowLogger.vec(raw), "speed": snappedf(raw.length(), 0.01),
-			"elev": snappedf(ThrowLogger.elevation_deg(raw), 0.1), "azim": snappedf(ThrowLogger.azimuth_deg(raw), 0.1),
-			"spin": ThrowLogger.vec(est.spin)},
-		"series": series,
-		"scaled_mph": snappedf(scaled.length() * PitchPhysics.MPS_TO_MPH, 0.1),
-		"final_vel": ThrowLogger.vec(pitch.vel),
-		"final_elev": snappedf(ThrowLogger.elevation_deg(pitch.vel), 0.1),
-		"samples": samples,
-	}
-	if dir.z < -0.01:
-		entry["pointed_plate"] = ThrowLogger.vec(from + dir * (from.z / -dir.z))
-	var unassisted := PitchPhysics.fly_to_plate(from, scaled, spin, true, 3.0, -100.0)
-	if unassisted.reached:
-		entry["unassisted_plate"] = ThrowLogger.vec(unassisted.pos)
-	if not shape.is_empty():
-		entry["wrist"] = {"z_snap": snappedf(shape.z_snap, 0.01), "z_side": snappedf(shape.z_side, 0.01),
-			"z_gyro": snappedf(shape.z_gyro, 0.01), "z_slot": snappedf(shape.z_slot, 0.01),
-			"tilt_deg": snappedf(shape.tilt_deg, 0.1), "stiff": snappedf(shape.stiff, 0.01),
-			"flutter": snappedf(shape.flutter, 0.01), "push": snappedf(shape.push, 0.01), "z_wind": snappedf(shape.z_wind, 0.01), "spin_rpm": snappedf(spin.length() / PitchPhysics.RPM_TO_RADS, 1.0),
-			"technique_gain": technique_gain,
-			"baseline": {"snap": snappedf(_wrist.mean_snap, 0.001), "side": snappedf(_wrist.mean_side, 0.001),
-				"gyro": snappedf(_wrist.mean_gyro, 0.001), "mag": snappedf(_wrist.mean_mag, 0.001),
-				"slot": snappedf(_wrist.mean_slot, 0.001), "speed": snappedf(_wrist.mean_speed, 0.001)}}
-	if funnel.has("target"):
-		var f := {"target": ThrowLogger.vec(funnel.target), "fallback": funnel.fallback}
-		if not funnel.fallback:
-			var ang: Vector2 = funnel.angle
-			var zz: Vector2 = funnel.z
-			var mb: Vector2 = funnel.mu_before
-			var sb: Vector2 = funnel.sigma_before
-			f["az"] = snappedf(ang.x, 0.01)
-			f["el"] = snappedf(ang.y, 0.01)
-			f["z"] = [snappedf(zz.x, 0.01), snappedf(zz.y, 0.01)]
-			f["mu_before"] = [snappedf(mb.x, 0.01), snappedf(mb.y, 0.01)]
-			f["sigma_before"] = [snappedf(sb.x, 0.01), snappedf(sb.y, 0.01)]
-		entry["funnel"] = f
-	var bt: Dictionary = pitch.bat
-	var bl := {"profile": _batter_ai.profile.name, "swing": bt.get("swing", false), "kind": bt.get("kind", "take"),
-		"p_swing": snappedf(bt.get("p_swing", 0.0), 0.001)}
-	if bt.get("swing", false):
-		bl["t_err_ms"] = snappedf(float(bt.get("t_err", 0.0)) * 1000.0, 0.1)
-		bl["dy"] = snappedf(bt.get("dy", 0.0), 0.001)
-		bl["dx"] = snappedf(bt.get("dx", 0.0), 0.001)
-		bl["z_m"] = snappedf(bt.get("z_m", 0.0), 0.001)
-	if not pitch.sim.is_empty():
-		var sm: Dictionary = pitch.sim
-		bl["ev_mph"] = snappedf(sm.ev_mph, 0.1)
-		bl["launch"] = snappedf(sm.launch, 0.1)
-		bl["spray"] = snappedf(sm.spray, 0.1)
-		bl["distance"] = snappedf(sm.distance, 0.1)
-		bl["hang"] = snappedf(sm.hang_time, 0.01)
-		bl["apex"] = snappedf(sm.apex, 0.1)
-		bl["fair"] = sm.fair
-		bl["home_run"] = sm.home_run
-		if not pitch.play.is_empty():
-			bl["play"] = pitch.play.get("result", "")
-			bl["play_text"] = pitch.play.get("text", "")
-	entry["batter"] = bl
-	entry["game"] = {"inning": _game.inning, "outs": _game.outs, "balls": _game.balls, "strikes": _game.strikes,
-		"bases": [_game.bases[0] != null, _game.bases[1] != null, _game.bases[2] != null],
-		"batter": _batter_player.name if _batter_player else ""}
-	var a := pitch.analysis
-	entry["result"] = {"reached": a.reached, "strike": a.get("strike", false),
-		"plate": ThrowLogger.vec(a.plate_pos) if a.reached else null}
-	_logger.record(entry)
+## Read the controller each frame: the ball in your hand follows it; grabs, the start of your delivery and
+## releases come back as events.
+func _poll_hand(now: float) -> void:
+	for e in _human.poll(now, _hand, _batter_ready, release_mode == ReleaseMode.AUTO_PEAK):
+		match String(e.type):
+			"grab":
+				_haptics.play("grab")
+				_held_ball.visible = true
+			"delivery_start":
+				_on_delivery_start()
+			"release":
+				_release_from_hand(float(e.t), float(e.vel_latency), float(e.spin_latency))
+			"drop":
+				_human.drop()
+				_held_ball.visible = false
+	if _human.held and _hand != null and _hand.get_is_active():
+		_held_ball.global_position = _hand.global_transform * HumanPitcher.HOLD_OFFSET
+
+
+func _drop_held() -> void:
+	_human.drop()
+	_held_ball.visible = false
 
 
 func _launch(from: Vector3, vel: Vector3, spin: Vector3, label: String, flutter_amp: float = 0.0, flutter_seed: float = 0.0) -> LivePitch:
@@ -2072,7 +1885,7 @@ func _glove_pos(h: LiveHit) -> Vector3:
 
 func _held_by_human(h: LiveHit) -> Vector3:
 	if h.human_state == "gripped" and _xr_active and _hand:
-		return _hand.global_transform * HOLD_OFFSET
+		return _hand.global_transform * HumanPitcher.HOLD_OFFSET
 	if _xr_active and _off_hand:
 		return _glove_pos(h)
 	return h.catch_pos
@@ -2237,10 +2050,10 @@ func _poll_fielding(now: float) -> void:
 		_field_samples.pop_front()
 	var grip := _hand.get_float("grip")
 	if h.human_state == "holding":
-		if grip > GRAB_THRESHOLD and _hand.global_position.distance_to(_glove_pos(h)) < 0.45:
+		if grip > HumanPitcher.GRAB_THRESHOLD and _hand.global_position.distance_to(_glove_pos(h)) < 0.45:
 			h.human_state = "gripped"
 			_field_samples.clear()
-	elif h.human_state == "gripped" and grip < RELEASE_THRESHOLD and _field_samples.size() >= 2:
+	elif h.human_state == "gripped" and grip < HumanPitcher.RELEASE_THRESHOLD and _field_samples.size() >= 2:
 		var a: Array = _field_samples[0]
 		var b: Array = _field_samples[_field_samples.size() - 1]
 		var dt := maxf(float(b[0]) - float(a[0]), 0.02)
