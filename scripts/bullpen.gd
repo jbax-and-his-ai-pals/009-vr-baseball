@@ -636,7 +636,7 @@ func apply_config(c: GameConfig) -> void:
 	_daily = c.daily
 	if _daily > 0:
 		forced_seed = GameConfig.daily_seed(_daily)
-	Park.current = Park.by_id("harbor" if c.career else c.park)
+	Park.current = Park.by_id(_career.game_park() if c.career and _career != null else c.park)
 	if _daily > 0:
 		Park.now().wind = GameConfig.daily_wind(_daily)        # the day's weather
 	_career_game = c.career and _career != null and not _career.is_over()

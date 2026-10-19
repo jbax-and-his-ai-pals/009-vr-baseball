@@ -110,6 +110,17 @@ func _init() -> void:
 	var d1 := GameConfig.daily_wind(20000)
 	_check(d1 == GameConfig.daily_wind(20000) and d1 != GameConfig.daily_wind(20001) and d1.length() <= 5.5 and d1.y == 0.0, "the day's wind is the same for everybody and different tomorrow")
 
+	# The league's parks.
+	var lg := League.create(5, 6)
+	_check(lg.park_of(0) == "harbor" and lg.park_of(5) == "summit" and lg.park_of(2) == "cozy" and lg.park_of(7) == "canyon" and lg.park_of(99) == "canyon", "every league team has a home park")
+	var car := Career.create("Cal Reyes", "Balanced", 6, 3, 5)
+	var at_home := car.game_park()
+	car.matchday = 1
+	_check(at_home == "harbor" and car.game_park() == car.league.park_of(car.opponent_index()), "a career plays at home on even matchdays and at the opponent's park on odd ones")
+	for pid in lg.PARKS:
+		_check(pid in Park.ids(), "park id %s exists" % pid)
+		break
+
 	# Config and menu.
 	var c := GameConfig.new()
 	c.park = "canyon"

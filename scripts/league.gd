@@ -49,6 +49,15 @@ static func create(season_seed: int, season_matchdays: int = 10) -> League:
 	return l
 
 
+## Each team's home park: Your Team and the Gulls play at Harbor Field, the Peaks in the thin air, the Rams in the short
+## porch, the Loons under the lights; the rest at Harbor Field.
+const PARKS := ["harbor", "harbor", "cozy", "harbor", "harbor", "summit", "harbor", "canyon"]
+
+
+func park_of(i: int) -> String:
+	return PARKS[clampi(i, 0, PARKS.size() - 1)]
+
+
 func team_name(i: int) -> String:
 	return String(TEAMS[i][0])
 

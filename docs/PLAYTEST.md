@@ -242,7 +242,7 @@ Play > Fielding > Position: P. The AI throws every pitch; you stand beside the r
 
 ## 21. Parks
 
-Play > any mode > setup > Park: Harbor Field (the old park), Cozy Yard (84 m short porch in left, 94 in right, 2.4 m wall, warm colors) or Canyon Park (108 m lines, 135 to center, 4.6 m wall, night). Check the homer rate feels different, that the night park is readable (ambient 0.34, sun 0.45), and that the foul poles and chalk line up with the fence. Career games are always at Harbor Field.
+Play > any mode > setup > Park: Harbor Field (the old park), Cozy Yard (84 m short porch in left, 94 in right, 2.4 m wall, warm colors) or Canyon Park (108 m lines, 135 to center, 4.6 m wall, night). Check the homer rate feels different, that the night park is readable (ambient 0.34, sun 0.45), and that the foul poles and chalk line up with the fence. A career plays at your park (Harbor Field) on even matchdays and at the opponent's park on odd ones; each league team has a home park (`League.PARKS`).
 
 ## 22. Hands and glove
 

@@ -61,6 +61,11 @@ func opponent_index() -> int:
 	return league.opponent(matchday)
 
 
+## Where this start is played: your park on even matchdays, theirs on odd ones (the road games).
+func game_park() -> String:
+	return league.park_of(League.USER) if matchday % 2 == 0 else league.park_of(opponent_index())
+
+
 func opponent_name() -> String:
 	return league.team_name(opponent_index())
 

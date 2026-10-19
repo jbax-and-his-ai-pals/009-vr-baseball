@@ -171,7 +171,7 @@ func items() -> Array[Dictionary]:
 					rows.append(_row("career_abandon", "Start a new career", "", true, "this ends the saved one"))
 				else:
 					rows.append(_row("career_play", "Play next start", "vs %s" % career.opponent_name(), true,
-						"%d-inning start, matchday %d of %d" % [career.innings_per_start, career.matchday + 1, career.league.matchdays]))
+						"%d-inning start, matchday %d of %d, at %s" % [career.innings_per_start, career.matchday + 1, career.league.matchdays, Park.by_id(career.game_park()).name]))
 					rows.append(_row("standings", "Standings"))
 					rows.append(_row("career_abandon", "Abandon career"))
 			if career != null and career.is_over():
