@@ -1051,7 +1051,7 @@ func _build_world() -> void:
 	_call_label.font_size = 96
 	_call_label.outline_size = 22
 	_call_label.no_depth_test = true
-	_call_label.position = Vector3(0.0, 2.7, -1.6)
+	_call_label.position = Vector3(0.0, 3.5, -1.6)
 	_call_label.visible = false
 	add_child(_call_label)
 	_zone_markers = ZoneMarkers.new()
