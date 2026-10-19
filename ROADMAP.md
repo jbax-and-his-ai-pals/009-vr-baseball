@@ -56,16 +56,16 @@ criteria for each phase are in section 5; this is the at-a-glance view. Updated 
 - [ ] Challenges: are the six fair and fun (parameters at the top of `scripts/scenario.gd`)
 - [ ] Exit: two full 3-inning games with no blocking marks; confusion matrix in `DESIGN.md`; tuned mix
 
-### Phase 3 - Split `bullpen.gd` (M3) - MOSTLY DONE
+### Phase 3 - Split `bullpen.gd` (M3) - MOSTLY DONE (the self-contained pieces are out; what is left is the game-flow core)
 - [x] `SoundDirector` (what is heard and why)
 - [x] `PlateCrew` (catcher and umpire, signals, own test)
 - [x] `FieldProps` (dust, dropped bats, game-time delay queue, own test)
 - [x] `BatterPresenter` (walk-on, box side, takes, bat drop, own test)
 - [x] `PlayDirector` (fielders, ball hand-to-glove, throws, runners, callouts)
 - [x] `LiveHit` / `LivePitch` data classes (were inner classes)
-- [ ] `PitchFlight` (pitch launch, flight, landing, contact detection)
-- [ ] `HumanPitcher` (XR input, throw detection, funnel aim, delivery timing, pickoff throws)
-- [ ] `GameDirector` (game flow, AI pitcher pacing, steals, menu hooks); `bullpen.gd` under 800 lines (now about 2,800)
+- [ ] `PitchFlight` (pitch launch, flight, landing, contact detection): left in the scene on purpose for now, because landing and contact are where the game rules are applied; best done together with `GameDirector`
+- [x] `HumanPitcher` (controller reading, release into a pitch description, learned aim funnel, throw log entry; own test). The scene keeps launching the pitch, the pickoff flow and the held-ball visual
+- [ ] `GameDirector` (game flow, AI pitcher pacing, steals, menu hooks) and the other pieces still in the scene (pitch flight and contact, human fielding, HUD and boards, log snapshots); `bullpen.gd` under 800 lines (now about 2,700)
 - [ ] Event bus: typed events (`pitch_arrived`, `contact`, `play_event`, `pa_over`, `half_over`, `game_over`) replacing the remaining direct calls
 - [ ] Typed plans (`PlayPlan`, `RunnerPlan`, `ThrowPlan`) instead of dictionaries
 - [~] One RNG per concern: gameplay, cosmetic and bottom-half generators are separate and seeded; the AI classes (`AIPitcher`, `BatterAI`, `Defense`, `GameState`) still self-seed for the half you pitch
