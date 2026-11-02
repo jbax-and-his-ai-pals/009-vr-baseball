@@ -137,6 +137,19 @@ A pitch has four parts. One is chosen, three are measured:
 - **The radar shows real-equivalent speed** (game mph ÷ 0.74), so your usual throw reads about 82
   and a hard one about 90. The physics is unchanged. The Radar station (B2) also shows the raw hand
   speed honestly.
+- *As built (2026-11-02), the band mostly caps the top.* `HumanPitcher.band_mph`:
+  - **Above your usual speed**, a throw rises through the 5 mph band (87-92 at VEL 50).
+  - **Below it**, speed scales in proportion, so a slow throw stays slow and Freestyle's changeup
+    rule still works.
+  - **Replayed over the logged game throws**, the 10th/50th/90th percentiles on the radar are about
+    61-72 / 84-87 / 92. The old gain mapping gave 62-75 / 79-96 / 99-118.
+  - **What changes.** Typical fastballs are about where they were. Your hardest throws no longer
+    reach 107-118 (about 80-87 game mph, far beyond the AI's 68 average), so expect batters to hit
+    them more than before.
+  - **Narrowing the low side** waits for grips, when the changeup becomes a grip and the namer no
+    longer needs "slow".
+  - **Calibration.** Your usual and top speeds are not yet saved between games. Each game
+    recalibrates over its first throws, and overthrowing is not charged until it has (10 throws).
 
 #### Movement: the pitch's own action, against your fastball
 - **The grip gives a basic shape:** spin axis and rate, at the Standard floor of 60% of the pitch's
@@ -183,7 +196,7 @@ A pitch has four parts. One is chosen, three are measured:
 
   | Assist | Reference scatter | Effect |
   |---|---|---|
-  | Casual | Your own | As today: everyone throws strikes |
+  | Casual | Your own (and aimed at the middle of the zone, not the glove) | As today: everyone throws strikes |
   | Standard | Between your own and the fixed 6.0/5.5 degrees (geometric mean) | Steadiness counts partly |
   | Pro | The fixed 6.0/5.5 degrees | Your steadiness is your command |
 

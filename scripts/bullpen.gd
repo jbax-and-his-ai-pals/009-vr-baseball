@@ -64,7 +64,7 @@ enum SpinMode { RAW, WRIST_MODEL }
 ## precise one end up with the same spread), 1 = the fixed scatter every player starts from (a steadier
 ## delivery lands closer), between = some of each. Set by the assist preset.
 @export_range(0.0, 1.0, 0.05) var aim_reference := 0.5
-## FUNNEL: aim at the catcher's glove (the sign's spot) instead of the middle of the zone.
+## FUNNEL: aim at the catcher's glove (the sign's spot) instead of the middle of the zone. Set by the assist preset.
 @export var aim_at_glove := true
 ## How your hand speed becomes pitch speed. GAIN: hand speed x `velocity_gain` (the original). BAND: your
 ## effort against your own usual and top speeds picks a speed in your pitcher's band (the VEL rating), so
@@ -609,6 +609,7 @@ func apply_assist(s: Settings) -> void:
 	funnel_spread_x = a.funnel_x
 	funnel_spread_y = a.funnel_y
 	aim_reference = a.aim_reference
+	aim_at_glove = a.glove
 	aim_assist = a.aim_assist
 	_catch_radius = a.catch_radius
 	_throw_cone = a.throw_cone

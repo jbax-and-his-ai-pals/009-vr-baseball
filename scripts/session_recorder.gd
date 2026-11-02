@@ -98,7 +98,13 @@ func log_throw(pitch: LivePitch, from: Vector3, release_t: float, latency: float
 		"game": {"inning": host._game.inning, "outs": host._game.outs, "balls": host._game.balls, "strikes": host._game.strikes,
 			"bases": [host._game.bases[0] != null, host._game.bases[1] != null, host._game.bases[2] != null],
 			"batter": host._batter_player.name if host._batter_player else ""}}
-	logger.record(host._human.log_entry(ctx, pitch, from, release_t, latency, r.est, r.scaled, r.spin, r.funnel, r.shape))
+	var entry: Dictionary = host._human.log_entry(ctx, pitch, from, release_t, latency, r.est, r.scaled, r.spin, r.funnel, r.shape)
+	# How hard you threw against your own usual and top speeds, and what the velocity band made of it.
+	var hand_speed := (r.est.velocity as Vector3).length()
+	entry["effort"] = {"mode": ["GAIN", "BAND"][int(host.velocity_mode)], "overthrow": snappedf(float(r.get("overthrow", 0.0)), 0.01),
+		"usual": snappedf(host._human.wrist.mean_speed, 0.01), "top": snappedf(host._human.top_speed(), 0.01),
+		"band_mph": snappedf(host._human.band_mph(hand_speed), 0.1), "radar_mph": snappedf(PitchPhysics.radar_mph(float(pitch.analysis.get("speed_mph", 0.0))), 0.1)}
+	logger.record(entry)
 
 
 func on_game_over(_ev: Dictionary) -> void:

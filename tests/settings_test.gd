@@ -50,6 +50,7 @@ func _init() -> void:
 	_check(c.funnel_x < std.funnel_x and std.funnel_x < p.funnel_x and c.catch_radius > std.catch_radius and std.catch_radius > p.catch_radius
 		and c.throw_cone > std.throw_cone and std.throw_cone > p.throw_cone and c.aim_reference < std.aim_reference and std.aim_reference < p.aim_reference,
 		"Casual helps most, Pro least, on every axis (Pro counts your steadiness most)")
+	_check(not c.glove and std.glove and p.glove, "Casual aims at the middle of the zone; Standard and Pro at the catcher's glove")
 
 	# --- Game config.
 	var g := GameConfig.new()

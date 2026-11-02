@@ -240,7 +240,7 @@ def command_section(throws):
     models = [
         ('shipped Standard: zone centre, own scatter, 0.40/0.30', False, 0.0, (0.40, 0.30), 0.0),
         ('shipped Pro:      zone centre, own scatter, 0.60/0.48', False, 0.0, (0.60, 0.48), 0.0),
-        ('Casual now:   glove, own scatter, 0.28/0.20, knee 1.5', True, 0.0, (0.28, 0.20), 1.5),
+        ('Casual now:   centre, own scatter, 0.28/0.20, knee 1.5', False, 0.0, (0.28, 0.20), 1.5),
         ('Standard now: glove, halfway,     0.30/0.24, knee 1.5', True, 0.5, (0.30, 0.24), 1.5),
         ('Pro now:      glove, fixed,       0.34/0.28, knee 1.5', True, 1.0, (0.34, 0.28), 1.5),
     ]

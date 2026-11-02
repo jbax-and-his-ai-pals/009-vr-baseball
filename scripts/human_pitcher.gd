@@ -145,8 +145,9 @@ func throw(release_t: float, vel_latency: float, spin_latency: float, from: Vect
 	else:
 		spin = spin_src * float(knobs.spin_gain)
 	var scaled := vel
-	# Throwing harder than your usual costs command (judged before this throw teaches your top speed).
-	var over := overthrow(hand_speed, wrist.mean_speed, wrist.sd_speed)
+	# Throwing harder than your usual costs command (judged before this throw teaches your top speed, and not
+	# while the first throws of a game are still learning what your usual is).
+	var over := overthrow(hand_speed, wrist.mean_speed, wrist.sd_speed) if wrist.throws_seen >= wrist.calibration_throws else 0.0
 	_remember_speed(hand_speed)
 	var funnel := {}
 	match int(knobs.aim_mode):

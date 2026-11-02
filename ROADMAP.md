@@ -155,7 +155,9 @@ Checklist:
   - [x] command against a reference scatter per assist (Casual 0, Standard 0.5, Pro 1), aimed at the catcher's glove (`HumanPitcher.miss_z`, `Manager.aim_center`)
   - [x] squeezed miss tails beyond 1.5 sd; a batter dodges two pitches in three at his body (`PitchLocation.HIT_CHANCE`). The replay showed hit batters come from the catcher's inside calls, not wild misses: squeezing alone took them only from 2.6% to 2.1%
   - [x] an overthrow cost (wider spread, extra arm wear, one notice)
-  - [x] the VEL rating sets a velocity band (`HumanPitcher.band_mph`; `velocity_mode` GAIN keeps the original)
+  - [x] the VEL rating sets a velocity band (`HumanPitcher.band_mph`; `velocity_mode` GAIN keeps the original). It mostly caps the top: the hardest throws stop at about 92 league mph instead of 107-118
+  - [x] Casual keeps aiming at the middle of the zone (about 79% in the zone in the replay)
+- [ ] Save the learned calibration between games: the wrist baseline, usual aim and scatter, and usual and top speeds. Every game currently relearns them from the starting prior
 - [ ] Grip, then motion (if chosen):
   - [ ] the sign or the thumbstick picks the grip, locked at delivery start
   - [ ] movement from the pitch's own action, with hanging pitches

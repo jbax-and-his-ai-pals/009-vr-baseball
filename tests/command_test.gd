@@ -100,6 +100,7 @@ func _init() -> void:
 	b.velocity_rating = 62.0
 	_check(b.band_mph(12.0) > 89.0, "a higher VEL rating raises the band")
 	_check(absf(b.typical_mph() - (78.0 + 0.18 * 62.0) * AIPitcher.GAME_SPEED) < 0.01, "the pitch namer's usual speed is the band's middle, in game miles per hour")
+	_check(b.wrist.throws_seen < b.wrist.calibration_throws, "(a fresh arm is still calibrating; a game's first throws are never charged for overthrowing)")
 	var p := b.throw(0.0, 0.015, 0.04, Vector3.ZERO, 1.7, 0.0, 1.0, false)
 	_check(p.kind == "invalid", "no samples: nothing readable")
 

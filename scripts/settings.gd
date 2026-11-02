@@ -19,18 +19,19 @@ const HAPTICS := ["Off", "Low", "Normal", "Strong"]
 
 ## The numbers an assist preset stands for. `aim_reference` is how much your own steadiness counts: 0 measures
 ## each throw against your own scatter (everyone is about equally accurate), 1 against the fixed scatter every
-## player starts from (a steadier delivery hits the glove more often). The funnel aims at the catcher's glove.
-## Chosen by replaying the logged throws (tools/throw_report.py, section 8): about half the pitches in the zone
-## and near the called spot for a typical thrower at Standard, about three in four for the steadiest session.
+## player starts from (a steadier delivery hits the glove more often). `glove`: the funnel aims at the catcher's
+## glove (the called spot) instead of the middle of the zone; Casual keeps the middle, so everyone throws strikes.
+## Chosen by replaying the logged throws (tools/throw_report.py, section 8): Casual about 79% in the zone;
+## Standard about half the pitches near the called spot for a typical session, three in four for the steadiest.
 const ASSIST_VALUES := {
-	"Casual":   {"funnel_x": 0.28, "funnel_y": 0.20, "aim_reference": 0.0, "aim_assist": 1.0, "catch_radius": 0.45, "throw_cone": 34.0},
-	"Standard": {"funnel_x": 0.30, "funnel_y": 0.24, "aim_reference": 0.5, "aim_assist": 1.0, "catch_radius": 0.34, "throw_cone": 26.0},
-	"Pro":      {"funnel_x": 0.34, "funnel_y": 0.28, "aim_reference": 1.0, "aim_assist": 0.5, "catch_radius": 0.28, "throw_cone": 18.0},
+	"Casual":   {"funnel_x": 0.28, "funnel_y": 0.20, "aim_reference": 0.0, "glove": false, "aim_assist": 1.0, "catch_radius": 0.45, "throw_cone": 34.0},
+	"Standard": {"funnel_x": 0.30, "funnel_y": 0.24, "aim_reference": 0.5, "glove": true, "aim_assist": 1.0, "catch_radius": 0.34, "throw_cone": 26.0},
+	"Pro":      {"funnel_x": 0.34, "funnel_y": 0.28, "aim_reference": 1.0, "glove": true, "aim_assist": 0.5, "catch_radius": 0.28, "throw_cone": 18.0},
 }
 
 ## What each assist level means, in words, for the menu.
 const ASSIST_NOTES := {
-	"Casual": "everyone hits the glove, big glove, forgiving throws",
+	"Casual": "pitches aim at the middle, big glove, forgiving throws",
 	"Standard": "the intended feel: a steadier delivery hits the glove more",
 	"Pro": "your steadiness is your command, small glove, throws must be on line",
 }

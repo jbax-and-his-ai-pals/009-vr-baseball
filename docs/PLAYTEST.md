@@ -262,7 +262,8 @@ Play > Fielding > Position: 1B. When an infielder fields a grounder and throws t
 ## 25. Command, velocity and the radar (Phase 9 quick wins, `docs/GAMEPLAY_NEXT.md` A3)
 
 **Aim and command**
-- **The aim point.** With catcher signs on, your pitch aims at his glove (the marker on the zone), not the middle of the zone. A throw like your usual one should land on the marker.
+- **The aim point.** At Standard and Pro with catcher signs on, your pitch aims at his glove (the marker on the zone), not the middle of the zone. A throw like your usual one should land on the marker. Casual still aims at the middle (about 79% in the zone in the replay).
+- **Fewer pitches in the zone at Standard, by design.** The catcher calls corners, and off the plate at two strikes: about 52% in the zone for a typical session (59% before), with far more near the called spot (56% vs 23%).
 - **Hitting the spot.** The HUD's "SIGN HIT!" should now come often when you are steady: the replay of your logs says about half the time at Standard for a typical session, about three in four for your steadiest.
 - **Steadiness counts.**
   - Standard measures each throw halfway between your own scatter and a fixed 6/5.5 degrees; Pro wholly against the fixed one.
@@ -273,9 +274,15 @@ Play > Fielding > Position: 1B. When an infielder fields a grounder and throws t
 
 **Velocity and effort**
 - **The velocity band (`velocity_mode` BAND).** Your usual hand speed is the middle of your pitcher's band (87 league mph at VEL 50) and your top speed (the 90th percentile of your last 30 throws) is its top (92).
-  - Check that throwing harder still feels faster, and that the band is not too narrow to feel.
+  - Below your usual speed, pitches scale down in proportion. The band mostly caps the top: your hardest throws used to reach 107-118 on this radar and now stop at about 92-95. Check whether batters now hit your best fastball too often.
+  - Check that throwing harder still feels faster.
   - The original mapping is `velocity_mode` GAIN on the Bullpen node.
+  - Each game relearns your usual and top speeds over its first throws (not saved yet); overthrowing is not charged for the first 10.
 - **Overthrowing.** Throws past your usual speed + 1 sd spread up to 25% wider and wear the arm like up to 1.5 pitches. The first one says "Max effort: harder to locate, tires the arm". Check that max effort feels worth it now and then, not every pitch.
 
 **Radar**
-- Speeds on the HUD, the scoreboard, the boards, the pitch lab and the stats are in league mph (game mph ÷ 0.74), so a typical throw reads about 85. Logs keep game mph.
+- Speeds on the HUD, the scoreboard, the boards, the pitch lab and the stats are in league mph (game mph ÷ 0.74), so a typical throw reads about 85. Logs keep game mph; each log line's `effort` has the band and radar speeds.
+
+**Side effects to check**
+- **Challenges and lessons** run with signs off, so they aim at the middle of the zone. At Standard and Pro the funnel is now narrower for a steady thrower, so a corner needs a bigger deliberate shift. Are the "corners" challenge's thresholds (`scripts/scenario.gd`) still fair?
+- **Leaderboards.** The Standard and Pro boards now mix games from the old and the new aim models.
