@@ -104,6 +104,13 @@ func log_throw(pitch: LivePitch, from: Vector3, release_t: float, latency: float
 	entry["effort"] = {"mode": ["GAIN", "BAND"][int(host.velocity_mode)], "overthrow": snappedf(float(r.get("overthrow", 0.0)), 0.01),
 		"usual": snappedf(host._human.wrist.mean_speed, 0.01), "top": snappedf(host._human.top_speed(), 0.01),
 		"band_mph": snappedf(host._human.band_mph(hand_speed), 0.1), "radar_mph": snappedf(PitchPhysics.radar_mph(float(pitch.analysis.get("speed_mph", 0.0))), 0.1)}
+	# How the pitch was chosen: with grips, `pitch_name` is the grip, and `grip` says how well its action was done.
+	entry["pitch_select"] = String(host.pitch_select)
+	var gi: Dictionary = r.get("grip", {})
+	if not gi.is_empty():
+		entry["grip"] = {"grip": gi.grip, "action": snappedf(float(gi.action), 0.01), "execution": snappedf(float(gi.execution), 0.01),
+			"movement": snappedf(float(gi.movement), 0.01), "aimed_for": snappedf(float(gi.aimed_for), 0.01), "floor": snappedf(float(gi.floor), 0.01),
+			"quality": gi.quality, "learning": gi.learning}
 	logger.record(entry)
 
 

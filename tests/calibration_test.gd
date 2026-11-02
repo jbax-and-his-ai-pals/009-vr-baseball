@@ -107,6 +107,21 @@ func _init() -> void:
 	_check(bp.acts.tutorial != null and bp._config.tutorial and bp._config.activity == "Bullpen", "a lesson started from the menu is still the lesson (and the bullpen) after set-up")
 	bp.queue_free()
 	await process_frame
+	for want in [["Pitching", "Bullpen"], ["Fielding", "Drill"], ["Hitting", "Derby"]]:
+		var ac := GameConfig.new()
+		ac.mode = want[0]
+		ac.activity = want[1]
+		var ab := _scene(ac.normalized())
+		for i in 5:
+			await process_frame
+		var kept: bool = ab._config.activity == want[1]
+		if want[1] == "Drill":
+			kept = kept and ab.acts.drill
+		if want[1] == "Derby":
+			kept = kept and ab.acts.derby
+		_check(kept, "%s %s started from the menu is still that after set-up (and runs)" % want)
+		ab.queue_free()
+		await process_frame
 
 	# --- The scene picks up your saved arm, and a warm-up starts from scratch.
 	var bp2 := _scene()

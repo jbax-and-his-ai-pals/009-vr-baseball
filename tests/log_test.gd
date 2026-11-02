@@ -67,7 +67,7 @@ func _init() -> void:
 	var up: Dictionary = lines[0]
 	var down: Dictionary = lines[1]
 	var shape_ok: bool = up.has("raw") and up.has("series") and up.samples.size() > 10 and up.has("funnel") and up.result.has("strike") \
-		and up.has("effort") and up.effort.has("overthrow") and up.effort.has("band_mph")
+		and up.has("effort") and up.effort.has("overthrow") and up.effort.has("band_mph") and up.get("pitch_select", "") == "Freestyle" and not up.has("grip")
 	# Measured from where each was aimed (the catcher's glove, if the scene had a sign up).
 	var ty_up: float = up.funnel.target[1] - up.funnel.center[1]
 	var ty_dn: float = down.funnel.target[1] - down.funnel.center[1]

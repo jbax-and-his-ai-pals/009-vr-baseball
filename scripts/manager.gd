@@ -222,7 +222,7 @@ func grade_sign(pitch: LivePitch, plate: Vector3) -> void:
 		sign_tally.type += 1
 	if g.loc:
 		sign_tally.loc += 1
-	host.slog.record("sign", {"sign": sign.words, "thrown": pitch.label, "type": g.type, "loc": g.loc, "perfect": g.perfect})
+	host.slog.record("sign", {"sign": sign.words, "thrown": pitch.label, "type": g.type, "loc": g.loc, "perfect": g.perfect, "select": String(host.pitch_select)})
 	if g.perfect:
 		host.hud.show_notice("SIGN HIT!", true)
 		host._sfx("corner_chime")

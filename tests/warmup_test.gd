@@ -66,6 +66,8 @@ func _init() -> void:
 	for i in 10:
 		_throw(bp, 12.0 + 0.3 * sin(i * 1.7), 0.15 * sin(i * 2.3))
 	_check(bp.acts.warmup.step == 1 and not Calibration.exists("right"), "ten easy throws in: on to the harder ones, nothing saved yet")
+	bp.hud.refresh_hud()
+	_check(" ".join(bp.hud.pitch_board.lines).contains("WARM-UP 2 of 2 - A little harder (0/3)"), "the board says what to do next (%s)" % " | ".join(bp.hud.pitch_board.lines))
 	for i in 3:
 		_throw(bp, 15.0 + 0.2 * i, 0.0)
 	_check(bp.acts.warmup.is_done() and Calibration.exists("right"), "the thirteenth throw finishes it and saves your arm")
@@ -74,6 +76,8 @@ func _init() -> void:
 	_check((bp._human as HumanPitcher).top_speed() >= 14.9, "and your top speed from the hard ones (%.2f)" % (bp._human as HumanPitcher).top_speed())
 	_check(bp.acts.warmup_card.size() == 4 and bp.acts.warmup_card[1].contains("hand speed"), "the board shows what it learned (%s)" % " | ".join(bp.acts.warmup_card))
 	_check(bp.flight.swings == 0, "the batter only watched")
+	bp.hud.refresh_hud()
+	_check(" ".join(bp.hud.pitch_board.lines).contains("WARM-UP DONE") and " ".join(bp.hud.pitch_board.lines).contains("Suggested assist"), "and then the card")
 
 	Calibration.clear()
 	Calibration.override_path = ""

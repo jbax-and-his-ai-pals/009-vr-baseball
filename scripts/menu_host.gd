@@ -74,6 +74,7 @@ func on_menu_event(ev: Dictionary) -> void:
 				Career.delete_saved()
 		"settings":
 			host._settings.save()
+			host._menu.model.calibrated = Calibration.exists(host._settings.hand) or not Calibration.may_load()     # the hand may have changed
 			host.apply_assist(host._settings)
 			host._haptics.set_level(host._settings.haptics)
 			PitchLocation.colorblind = host._settings.colorblind

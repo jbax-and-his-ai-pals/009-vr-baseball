@@ -14,6 +14,8 @@ Sections (numbers quoted in docs/GAMEPLAY_NEXT.md come from here):
   7. Game pitches far off the plate
   8. Command model replay: the logged aim readings through a candidate funnel (target, reference scatter,
      squeezed tails, spread), per session: in the zone, near the catcher's spot, far off the plate
+  9. Grip pitches (Pitch choice: Grip): per grip, how often, its action, how much movement, and in words
+  (Sections 1, 2, 5 and 6 are about the technique classifier and leave grip pitches out.)
 
     python tools/throw_report.py --command    # just section 8
 """
@@ -54,6 +56,11 @@ def is_strike(x, y):
     return abs(x) <= ZONE_HALF_W + BALL_R and ZONE_BOTTOM - BALL_R <= y <= ZONE_TOP + BALL_R
 
 
+def freestyle(r):
+    """A throw (or sign event) whose pitch name came from the technique classifier, not a chosen grip."""
+    return r.get('pitch_select', r.get('select', 'Freestyle')) != 'Grip'
+
+
 def untagged(r):
     return r.get('tag') in ('normal', '', None)
 
@@ -72,7 +79,7 @@ def main():
     print('%d throws, %d events' % (len(throws), len(events)))
 
     print('\n== 1. Catcher signs: called vs named ==')
-    signs = [e for e in events if e.get('kind') == 'sign']
+    signs = [e for e in events if e.get('kind') == 'sign' and freestyle(e)]          # with grips the sign sets the grip
     print('signs %d, type matched %d, spot hit %d, both %d' % (len(signs), sum(bool(s.get('type')) for s in signs),
           sum(bool(s.get('loc')) for s in signs), sum(bool(s.get('perfect')) for s in signs)))
     by_call = collections.defaultdict(collections.Counter)
@@ -82,7 +89,7 @@ def main():
         print('  called %-10s n=%2d -> %s' % (call, sum(c.values()), dict(c.most_common())))
 
     print('\n== 2. Untagged game throws ==')
-    game = [r for r in throws if 'game' in r and untagged(r) and 'wrist' in r]
+    game = [r for r in throws if 'game' in r and untagged(r) and 'wrist' in r and freestyle(r)]
     names = collections.Counter(r['pitch_name'] for r in game)
     print('n %d: %s' % (len(game), dict(names.most_common())))
     fb = names['Four-seam'] + names['Fastball']
@@ -123,7 +130,7 @@ def main():
 
     print('\n== 5. Deliberate vs accidental: a threshold on each gesture\'s own reading ==')
     tagged = [r for r in throws if not untagged(r) and 'wrist' in r and r['raw']['speed'] > 4 and r['_sess'] in TAGGED_PLAYER_A]
-    normal = [r for r in throws if untagged(r) and 'wrist' in r and r['raw']['speed'] > 4]
+    normal = [r for r in throws if untagged(r) and 'wrist' in r and r['raw']['speed'] > 4 and freestyle(r)]
     gestures = {'big snap': 'arc', 'wrist twist': 'side', 'gyro roll': 'gyro', 'low arm': 'low'}
     for t in (1.0, 1.5, 2.0, 2.5):
         parts = []
@@ -258,9 +265,25 @@ def command_section(throws):
     print('  own aim scatter per session (deg): ' + ', '.join('%s %.1f/%.1f' % (n[5:], sd([r['funnel']['az'] for r in sessions[n]]), sd([r['funnel']['el'] for r in sessions[n]])) for n in names))
 
 
+def grip_section(throws):
+    print('\n== 9. Grip pitches ==')
+    gp = [r for r in throws if r.get('grip')]
+    if not gp:
+        print('  none logged yet (Options > Pitch choice: Grip)')
+        return
+    by = collections.defaultdict(list)
+    for r in gp:
+        by[r['grip']['grip']].append(r['grip'])
+    print('  %-12s %4s  %7s  %8s  %s' % ('grip', 'n', 'action', 'movement', 'quality'))
+    for g, xs in sorted(by.items(), key=lambda kv: -len(kv[1])):
+        q = collections.Counter(x['quality'] for x in xs)
+        print('  %-12s %4d  %+7.2f  %7.0f%%  %s' % (g, len(xs), st.mean(x['action'] for x in xs), 100 * st.mean(x['movement'] for x in xs), dict(q.most_common())))
+
+
 if __name__ == '__main__':
     if '--command' in sys.argv:
         command_section(load('throws_*.jsonl'))
     else:
         main()
         command_section(load('throws_*.jsonl'))
+        grip_section(load('throws_*.jsonl'))

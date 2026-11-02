@@ -144,7 +144,15 @@ func _init() -> void:
 	bp._held = true
 	bp.flight.release_from_hand(500.0 + 26.0 / 90.0, 0.015, 0.04)
 	var last: LivePitch = bp.flight.pitches.back()
-	_check(last.label == "Four-seam" and last.shape.has("grip") and bp.acts.lab_lines(last) == "" or last.label == "Four-seam", "the pitch is named for its grip (%s)" % last.label)
+	_check(last.label == "Four-seam" and last.shape.has("grip"), "the pitch is named for its grip (%s)" % last.label)
+	var lf := FileAccess.open(bp.slog.logger.path, FileAccess.READ)
+	var line: Dictionary = {}
+	while not lf.eof_reached():
+		var l := lf.get_line()
+		if l != "":
+			line = JSON.parse_string(l)
+	_check(line.get("pitch_select", "") == "Grip" and line.has("grip") and line.grip.grip == "Four-seam" and line.grip.has("quality") and line.grip.has("movement"),
+		"the throw log says it was a grip pitch and how well it was thrown")
 	_check(PitchLab.explain(last.label, last.analysis, last.shape).any(func(l): return String(l).contains("Four-seam grip")), "and the lab explains it as a grip")
 
 	print("FAILURES: %d" % _failures)
