@@ -138,7 +138,55 @@ criteria for each phase are in section 5; this is the at-a-glance view. Updated 
 - [x] Weather and altitude for batted balls (`Park.air` thin air at Summit Field, `Park.wind` steady wind; Canyon Park has a headwind; the daily game has the day's wind; notice at the start; pitches are deliberately not affected so the tuned pitching feel is unchanged; tests/park_test.gd). Rain and changing wind are open
 - [x] Replays for big plays, as a ghost in the world rather than a camera cut (no motion for the head to disagree with): `HighlightReplay` redraws a homer or a 95 m ball in half speed with its distance (tests/replay_ghost_test.gd)
 
+### Phase 9 - Great pitching (proposed 2026-11-02, `docs/GAMEPLAY_NEXT.md` Part A) - WAITING ON DECISIONS
+What the 1,137 logged throws say (`tools/throw_report.py`):
+- Off-speed signs came out as the called pitch 1 time in 21.
+- Only 38% of ordinary game throws were named a plain fastball.
+- A seven-way classifier on the wrist readings is right 48% of the time.
+- The player's aim scatter halved over ten days, but the strike rate did not rise (the funnel divides by your own scatter).
+- 6.6% of game pitches hit the batter.
+
+Checklist:
+- [x] Low pitches were unnamed (11% of game pitches): the comparison flight without spin lift hit the ground (`PitchPhysics.analyze`; tests/pitch_namer_test.gd)
+- [x] The throw log keeps the full controller rotation per sample, so the wrist's roll can be recomputed later
+- [x] `tools/throw_report.py`: signs, accidental pitches, scatter per session, the fixed-scatter replay, threshold sweep, classifier
+- [ ] Quick wins:
+  - [ ] real-equivalent mph on the radar
+  - [ ] command against a reference scatter per assist, aimed at the catcher's glove
+  - [ ] squeezed miss tails (hit batters at or below 1% of pitches)
+  - [ ] an overthrow cost
+  - [ ] the VEL rating sets a velocity band
+- [ ] Grip, then motion (if chosen):
+  - [ ] the sign or the thumbstick picks the grip, locked at delivery start
+  - [ ] movement from the pitch's own action, with hanging pitches
+  - [ ] the grip on the hand model
+  - [ ] Freestyle (today's classifier) kept as an option
+  - [ ] a replay scorer over the logs
+- [ ] Headset check:
+  - [ ] Freestyle vs Grip, 40 pitches each
+  - [ ] a sign-following session
+  - [ ] tagged good and hanging pitches
+- [ ] Personal action templates recorded in the tutorial
+- [ ] Deception (tells from the gross delivery; a changeup sold with fastball arm speed)
+- [ ] Batter memory: pitches and spots seen, times through the order, sitting on a pitch, tunnelling, a scouting line
+
+### Phase 10 - A game around it (proposed 2026-11-02, `docs/GAMEPLAY_NEXT.md` Part B) - WAITING ON DECISIONS
+Built around sessions of 30-60 real throws (a 9-inning game is 130-150).
+- [ ] Pitching Contest:
+  - [ ] Strikeout 9 (3×3 panels, 12 balls)
+  - [ ] Radar (best speed that is a strike)
+  - [ ] Nasty (movement against your fastball)
+  - [ ] Pressure (3-2, bases loaded)
+  - [ ] a daily contest; tiers
+- [ ] League: 16 teams in two leagues, team identities (power, contact and speed, patient, free swingers), two hand-written stars each, parks by parameter
+- [ ] `Bracket`: season playoffs (best-of-3 semis and final), then the Tournament (pools, semis, final; pitch-count and rest rules)
+- [ ] Season extras: relief outings between starts, a Pitcher of the Year race, training focus between starts
+
 ### Decisions waiting for you
+- [ ] How the pitch type is chosen: grip, then motion (recommended) / fewer gestures with a dead zone / retune pure motion (`docs/GAMEPLAY_NEXT.md` A3, A5)
+- [ ] What decides accuracy: a fixed reference scatter, so steadiness is command (recommended) / each player's own scatter (today)
+- [ ] Which mode first: Pitching Contest (recommended) / season playoffs / tournament
+- [ ] League size: 16 teams in two leagues (recommended) / 12 / 8 with identities
 - [ ] Standalone Quest or PC VR as the target (recommendation: measure in Phase 1 first)
 - [ ] Arcade/challenges first or career first (recommendation: challenges first; challenges are now in)
 - [ ] One art style, soft or paper
