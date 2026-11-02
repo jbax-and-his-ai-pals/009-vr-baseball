@@ -84,12 +84,12 @@ func find_release_peak(min_speed: float, drop_ratio: float, forward: Vector3) ->
 
 
 ## Raw samples from the last seconds, oldest first, for the throw logger.
-## Each is {t, p (position), f (pointing direction), g (grip)}.
+## Each is {t, p (position), f (pointing direction), q (full rotation), g (grip)}.
 func recent(since_t: float) -> Array:
 	var out := []
 	for i in _t.size():
 		if _t[i] >= since_t:
-			out.append({"t": _t[i], "p": _p[i], "f": _q[i] * Vector3(0.0, 0.0, -1.0), "g": _g[i]})
+			out.append({"t": _t[i], "p": _p[i], "f": _q[i] * Vector3(0.0, 0.0, -1.0), "q": _q[i], "g": _g[i]})
 	return out
 
 

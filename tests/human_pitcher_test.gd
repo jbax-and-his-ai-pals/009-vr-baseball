@@ -107,6 +107,8 @@ func _init() -> void:
 	var rr := h.throw(600.0 + 26.0 / 90.0, 0.015, 0.04, from, 1.7, 0.0, 1.0, false)
 	var entry := h.log_entry(ctx, pitch, from, 600.0 + 26.0 / 90.0, 0.015, rr.est, rr.scaled, rr.spin, rr.funnel, rr.shape)
 	_check(entry.has("raw") and entry.has("wrist") and entry.has("funnel") and entry.pitch_name == "Fastball" and entry.game.batter == "X" and entry.aim_mode == "FUNNEL", "the log line has the arm, the wrist model, the funnel and the game")
+	var smp0: Dictionary = entry.samples[0] if not entry.samples.is_empty() else {}
+	_check(smp0.has("q") and (smp0.q as Array).size() == 4 and absf(Quaternion(smp0.q[0], smp0.q[1], smp0.q[2], smp0.q[3]).length() - 1.0) < 0.01, "each hand sample keeps the full rotation, so the wrist's roll can be recomputed later")
 
 	print("FAILURES: %d" % _failures)
 	quit(1 if _failures > 0 else 0)

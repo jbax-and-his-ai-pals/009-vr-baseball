@@ -131,7 +131,9 @@ static func analyze(release_pos: Vector3, vel: Vector3, spin: Vector3, flutter_a
 	}
 	if not real.reached:
 		return out
-	var dry := fly_to_plate(release_pos, vel, spin, false)
+	# The comparison flight ignores the ground: without the spin's lift a low pitch would land short of the plate
+	# and its break could not be measured (11% of recorded game pitches went unnamed that way).
+	var dry := fly_to_plate(release_pos, vel, spin, false, 2.5, -100.0)
 	var p: Vector3 = real.pos
 	out["plate_pos"] = p
 	out["time"] = real.time

@@ -197,7 +197,7 @@ func log_entry(ctx: Dictionary, pitch: LivePitch, from: Vector3, release_t: floa
 	var samples := []
 	for smp in detector.recent(release_t - 0.55):
 		samples.append({"ms": roundi((smp.t - release_t) * 1000.0), "p": ThrowLogger.vec(smp.p),
-			"f": ThrowLogger.vec(smp.f), "g": snappedf(smp.g, 0.01)})
+			"f": ThrowLogger.vec(smp.f), "q": _quat(smp.q), "g": snappedf(smp.g, 0.01)})
 	var head: Vector3 = ctx.head_pos
 	var dir := scaled.normalized()
 	var entry := {
@@ -278,3 +278,9 @@ func log_entry(ctx: Dictionary, pitch: LivePitch, from: Vector3, release_t: floa
 	entry["result"] = {"reached": a.reached, "strike": a.get("strike", false),
 		"plate": ThrowLogger.vec(a.plate_pos) if a.reached else null}
 	return entry
+
+
+## A rotation for the log, [x, y, z, w]: with it the wrist's roll can be recomputed from old logs (the pointing
+## direction alone loses it).
+static func _quat(q: Quaternion) -> Array:
+	return [snappedf(q.x, 0.0001), snappedf(q.y, 0.0001), snappedf(q.z, 0.0001), snappedf(q.w, 0.0001)]
