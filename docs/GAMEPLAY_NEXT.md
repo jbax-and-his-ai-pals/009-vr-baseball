@@ -370,6 +370,11 @@ Four stations of 10-15 throws each, about 45 throws in all:
 
 ## Decisions for you
 
+**Decided 2026-11-02: all four as recommended.** Grip then motion (Freestyle kept as an option);
+steadiness is command, aimed at the catcher's glove; the Pitching Contest first; 16 teams in two
+leagues.
+
+
 1. **How the pitch type is chosen.**
    - **Recommended:** grip, then motion (A3), with Freestyle kept as an option.
    - Alternatives: fewer gestures with a dead zone, or retune pure motion (A5).

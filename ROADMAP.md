@@ -138,7 +138,7 @@ criteria for each phase are in section 5; this is the at-a-glance view. Updated 
 - [x] Weather and altitude for batted balls (`Park.air` thin air at Summit Field, `Park.wind` steady wind; Canyon Park has a headwind; the daily game has the day's wind; notice at the start; pitches are deliberately not affected so the tuned pitching feel is unchanged; tests/park_test.gd). Rain and changing wind are open
 - [x] Replays for big plays, as a ghost in the world rather than a camera cut (no motion for the head to disagree with): `HighlightReplay` redraws a homer or a 95 m ball in half speed with its distance (tests/replay_ghost_test.gd)
 
-### Phase 9 - Great pitching (proposed 2026-11-02, `docs/GAMEPLAY_NEXT.md` Part A) - WAITING ON DECISIONS
+### Phase 9 - Great pitching (`docs/GAMEPLAY_NEXT.md` Part A; decided 2026-11-02) - NEXT
 What the 1,137 logged throws say (`tools/throw_report.py`):
 - Off-speed signs came out as the called pitch 1 time in 21.
 - Only 38% of ordinary game throws were named a plain fastball.
@@ -170,7 +170,7 @@ Checklist:
 - [ ] Deception (tells from the gross delivery; a changeup sold with fastball arm speed)
 - [ ] Batter memory: pitches and spots seen, times through the order, sitting on a pitch, tunnelling, a scouting line
 
-### Phase 10 - A game around it (proposed 2026-11-02, `docs/GAMEPLAY_NEXT.md` Part B) - WAITING ON DECISIONS
+### Phase 10 - A game around it (`docs/GAMEPLAY_NEXT.md` Part B; decided 2026-11-02) - after Phase 9's quick wins
 Built around sessions of 30-60 real throws (a 9-inning game is 130-150).
 - [ ] Pitching Contest:
   - [ ] Strikeout 9 (3×3 panels, 12 balls)
@@ -183,10 +183,10 @@ Built around sessions of 30-60 real throws (a 9-inning game is 130-150).
 - [ ] Season extras: relief outings between starts, a Pitcher of the Year race, training focus between starts
 
 ### Decisions waiting for you
-- [ ] How the pitch type is chosen: grip, then motion (recommended) / fewer gestures with a dead zone / retune pure motion (`docs/GAMEPLAY_NEXT.md` A3, A5)
-- [ ] What decides accuracy: a fixed reference scatter, so steadiness is command (recommended) / each player's own scatter (today)
-- [ ] Which mode first: Pitching Contest (recommended) / season playoffs / tournament
-- [ ] League size: 16 teams in two leagues (recommended) / 12 / 8 with identities
+- [x] How the pitch type is chosen: **grip, then motion** (decided 2026-11-02; Freestyle stays as an option)
+- [x] What decides accuracy: **a fixed reference scatter, so steadiness is command**, aimed at the catcher's glove (decided 2026-11-02)
+- [x] Which mode first: **the Pitching Contest** (decided 2026-11-02)
+- [x] League size: **16 teams in two leagues** (decided 2026-11-02)
 - [ ] Standalone Quest or PC VR as the target (recommendation: measure in Phase 1 first)
 - [ ] Arcade/challenges first or career first (recommendation: challenges first; challenges are now in)
 - [ ] One art style, soft or paper
