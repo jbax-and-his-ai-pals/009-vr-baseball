@@ -57,7 +57,8 @@ func stat_pitch(label: String, mph: float, outcome: String) -> void:
 
 func release_from_hand(release_t: float, vel_latency: float, spin_latency: float) -> void:
 	var from = held_ball.global_position
-	var r = host._human.throw(release_t, vel_latency, spin_latency, from, host._camera.global_position.y, host.manager.arm_fatigue(), host.manager.command_scale(), host._runners_on())
+	var r = host._human.throw(release_t, vel_latency, spin_latency, from, host._camera.global_position.y, host.manager.arm_fatigue(),
+		host.manager.command_scale(), host._runners_on(), host.manager.aim_center())
 	held_ball.visible = false
 	match String(r.kind):
 		"drop":
@@ -71,7 +72,8 @@ func release_from_hand(release_t: float, vel_latency: float, spin_latency: float
 			host._last_delivery = float(r.delivery)
 			var pitch = launch(from, r.vel, r.spin, "Your pitch", float(r.flutter), host._run_rng.randf() * 100.0)
 			pitch.shape = r.shape
-			pitch.label = PitchNamer.name_pitch(pitch.analysis, host._human.wrist.typical_mph(host.velocity_gain), float(r.hand_sign), bool(r.knuckle))
+			pitch.label = PitchNamer.name_pitch(pitch.analysis, host._human.typical_mph(), float(r.hand_sign), bool(r.knuckle))
+			host.manager.add_load(float(r.overthrow))
 			host._haptics.play("release", clampf(float(pitch.analysis.get("speed_mph", 60.0)) / 90.0, 0.0, 1.0))
 			host.slog.log_throw(pitch, from, release_t, vel_latency, r)
 
@@ -277,7 +279,11 @@ func land(pitch: LivePitch) -> void:
 	elif a.get("reached", false) and a.get("strike", false):
 		outcome = "called_strike"
 	elif a.get("reached", false) and PitchLocation.hits_batter(plate.x, plate.y, host.flow.batter_is_lefty()):
-		outcome = "hit_by_pitch"
+		# Most pitches at a batter are dodged; the rest hit him.
+		if PitchLocation.hit_by(plate.x, plate.y, host.flow.batter_is_lefty(), host._run_rng.randf()):
+			outcome = "hit_by_pitch"
+		else:
+			host.hud.show_notice("Brushed back", true)
 	if host.fielding.is_catcher() and a.get("reached", false) and outcome in ["ball", "called_strike"]:
 		outcome = host.fielding.receive(pitch, plate, outcome)
 	mark_pitch(a, outcome)

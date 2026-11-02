@@ -114,6 +114,13 @@ static func fly_to_plate(pos: Vector3, vel: Vector3, spin: Vector3, use_magnus: 
 	return {"reached": false, "pos": pos, "vel": vel, "time": t}
 
 
+## A pitch speed as the radar shows it: in league miles per hour, on real baseball's scale. Pitches in this
+## world fly at AIPitcher.GAME_SPEED of real speed (a real 92 mph fastball is 68 here), so a typical throw of
+## yours reads about 85, not 63. Physics, logs and stats keep the game's own speed.
+static func radar_mph(game_mph: float) -> float:
+	return game_mph / AIPitcher.GAME_SPEED
+
+
 static func is_strike(plate_pos: Vector3) -> bool:
 	return absf(plate_pos.x) <= ZONE_HALF_W + BALL_RADIUS \
 		and plate_pos.y >= ZONE_BOTTOM - BALL_RADIUS \

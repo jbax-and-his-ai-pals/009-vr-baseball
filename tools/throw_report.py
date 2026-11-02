@@ -12,12 +12,18 @@ Sections (numbers quoted in docs/GAMEPLAY_NEXT.md come from here):
      alarms on ordinary ones)
   6. Seven-way nearest-centroid classifier on the wrist readings, leave-one-out (tagged throws)
   7. Game pitches far off the plate
+  8. Command model replay: the logged aim readings through a candidate funnel (target, reference scatter,
+     squeezed tails, spread), per session: in the zone, near the catcher's spot, far off the plate
+
+    python tools/throw_report.py --command    # just section 8
 """
-import collections, glob, json, math, os, statistics as st, sys
+import collections, glob, json, math, os, random, statistics as st, sys
 
 ZONE_HALF_W, ZONE_BOTTOM, ZONE_TOP, BALL_R = 0.30, 0.40, 1.30, 0.037
 REF_SIGMA = (6.0, 5.5)            # degrees: the aim scatter every player starts from (HumanPitcher.aim_sigma)
 TAGGED_PLAYER_A = ('2026-10-09T18-41', '2026-10-09T21-13', '2026-10-09T22-57')
+# CatcherSigns: rows and columns of the called spots (metres), how near counts as hitting it.
+SIGN_LOW, SIGN_MID, SIGN_HIGH, SIGN_IN_OUT, SIGN_NEAR = 0.55, 0.85, 1.15, 0.22, 0.30
 
 
 def folder():
@@ -161,5 +167,100 @@ def main():
     print('logged game throws more than 0.8 m to either side: %.1f%%' % (100 * sum(abs(r['result']['plate'][0]) > 0.8 for r in reached) / max(1, len(reached))))
 
 
+
+def sign_cell(balls, strikes, outs, third_on, rng):
+    """CatcherSigns.call_pitch's choice of spot (the pitch type does not matter here)."""
+    no_dirt = third_on and outs < 2
+    if balls >= 3:
+        cell = rng.choice(['low-away', 'mid-away', 'middle'])
+    elif strikes == 2 and not no_dirt:
+        cell = 'chase-low-away' if rng.random() < 0.7 else 'chase-high'
+    elif strikes > balls:
+        cell = rng.choice(['low-away', 'low-in', 'mid-away'])
+    elif balls > strikes:
+        cell = rng.choice(['mid-away', 'mid-in', 'low-away', 'middle'])
+    else:
+        cell = rng.choice(['low-away', 'mid-away', 'high-in', 'low-in', 'mid-in'])
+    if no_dirt and cell.startswith('low'):
+        cell = 'mid-away'
+    return cell
+
+
+def cell_target(cell, side=1.0):
+    """CatcherSigns.cell_target for a batter on `side` (+1 a right-hander)."""
+    away, inside = -side * SIGN_IN_OUT, side * SIGN_IN_OUT
+    table = {'low-away': (away, SIGN_LOW), 'low-in': (inside, SIGN_LOW), 'low-mid': (0.0, SIGN_LOW),
+             'mid-away': (away, SIGN_MID), 'mid-in': (inside, SIGN_MID), 'middle': (0.0, SIGN_MID),
+             'high-away': (away, SIGN_HIGH), 'high-in': (inside, SIGN_HIGH), 'high-mid': (0.0, SIGN_HIGH),
+             'chase-low-away': (-side * 0.40, 0.30), 'chase-high': (0.0, 1.48), 'chase-away': (-side * 0.45, SIGN_MID)}
+    return table.get(cell, (0.0, SIGN_MID))
+
+
+def squeeze(z, knee):
+    """Beyond `knee` sd a miss grows at 0.4 the rate (HumanPitcher.squeeze_miss)."""
+    if knee <= 0 or abs(z) <= knee:
+        return z
+    return math.copysign(knee + 0.4 * (abs(z) - knee), z)
+
+
+def replay_command(rs, glove, reference, spread, knee, seed=7):
+    """Logged aim readings through one funnel. reference 0 = your own scatter, 1 = the fixed REF_SIGMA, between =
+    geometric. Returns (in the zone, near the called spot, would hit a right-handed batter, plate sd x, plate sd y)."""
+    rng = random.Random(seed)
+    zone = near = far = 0
+    xs, ys = [], []
+    for r in rs:
+        f, g = r['funnel'], r['game']
+        cell = sign_cell(int(g.get('balls', 0)), int(g.get('strikes', 0)), int(g.get('outs', 0)), bool((g.get('bases') or [0, 0, 0])[2]), rng)
+        cx, cy = cell_target(cell) if glove else (0.0, (ZONE_BOTTOM + ZONE_TOP) / 2)
+        own = f['sigma_before']
+        sig = [own[i] ** (1.0 - reference) * REF_SIGMA[i] ** reference for i in (0, 1)]
+        zx = squeeze(max(-4.0, min(4.0, (f['az'] - f['mu_before'][0]) / sig[0])), knee)
+        zy = squeeze(max(-4.0, min(4.0, (f['el'] - f['mu_before'][1]) / sig[1])), knee)
+        x = max(-2.0, min(2.0, cx + zx * spread[0]))
+        y = max(0.0, min(2.6, cy + zy * spread[1]))
+        zone += is_strike(x, y)
+        tx, ty = cell_target(cell)
+        near += math.hypot(x - tx, y - ty) <= SIGN_NEAR
+        far += 0.62 <= x <= 1.28 and 0.25 <= y <= 1.60     # at a right-handed batter's body (before he dodges)
+        xs.append(x - cx)
+        ys.append(y - cy)
+    n = max(1, len(rs))
+    return 100 * zone / n, 100 * near / n, 100 * far / n, sd(xs), sd(ys)
+
+
+def command_section(throws):
+    print('\n== 8. Command model replay (untagged game throws; the spot is what the catcher would have called) ==')
+    sessions = collections.defaultdict(list)
+    for r in throws:
+        f = r.get('funnel')
+        if f and not f.get('fallback', True) and 'game' in r and untagged(r) and r['raw']['speed'] > 4:
+            sessions[r['_sess']].append(r)
+    sessions = {s: rs for s, rs in sessions.items() if len(rs) >= 40}
+    models = [
+        ('shipped Standard: zone centre, own scatter, 0.40/0.30', False, 0.0, (0.40, 0.30), 0.0),
+        ('shipped Pro:      zone centre, own scatter, 0.60/0.48', False, 0.0, (0.60, 0.48), 0.0),
+        ('Casual now:   glove, own scatter, 0.28/0.20, knee 1.5', True, 0.0, (0.28, 0.20), 1.5),
+        ('Standard now: glove, halfway,     0.30/0.24, knee 1.5', True, 0.5, (0.30, 0.24), 1.5),
+        ('Pro now:      glove, fixed,       0.34/0.28, knee 1.5', True, 1.0, (0.34, 0.28), 1.5),
+    ]
+    names = sorted(sessions)
+    print('  %-56s' % 'model' + ''.join('  %-22s' % n[5:] for n in names))
+    print('  %-56s' % '' + ''.join('  %-22s' % 'zone/near/hbp%  sd x/y' for _ in names))
+    for label, glove, ref, spread, knee in models:
+        cells = []
+        for n in names:
+            z, nr, fa, sx, sy = replay_command(sessions[n], glove, ref, spread, knee)
+            cells.append('%3.0f/%3.0f/%3.1f  %.2f/%.2f' % (z, nr, fa, sx, sy))
+        every = [r for n in names for r in sessions[n]]
+        z, nr, fa, sx, sy = replay_command(every, glove, ref, spread, knee)
+        print('  %-56s' % label + ''.join('  %-22s' % c for c in cells) + '  all: %3.0f/%3.0f/%3.1f' % (z, nr, fa))
+    print('  own aim scatter per session (deg): ' + ', '.join('%s %.1f/%.1f' % (n[5:], sd([r['funnel']['az'] for r in sessions[n]]), sd([r['funnel']['el'] for r in sessions[n]])) for n in names))
+
+
 if __name__ == '__main__':
-    main()
+    if '--command' in sys.argv:
+        command_section(load('throws_*.jsonl'))
+    else:
+        main()
+        command_section(load('throws_*.jsonl'))

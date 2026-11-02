@@ -20,6 +20,8 @@ class Knobs:
 	var spin_mode := 1
 	var aim_mode := 2
 	var throwing_hand := &"right_hand"
+	var aim_reference := 0.0
+	var velocity_mode := 0
 
 var _failures := 0
 

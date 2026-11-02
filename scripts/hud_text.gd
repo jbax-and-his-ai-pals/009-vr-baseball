@@ -131,16 +131,16 @@ func refresh_scoreboard() -> void:
 		"home_inning_runs": home_by_inning, "home_runs": home_runs, "home_hits": home_hits,
 		"hits": g.hits, "errors": g.errors, "balls": host._game.balls, "strikes": host._game.strikes, "outs": host._game.outs,
 		"batter": who, "batter_line": line, "pitcher": pitcher,
-		"last_kind": String(host._stats.last_pitch.get("kind", "")), "last_mph": float(host._stats.last_pitch.get("mph", 0.0)),
+		"last_kind": String(host._stats.last_pitch.get("kind", "")), "last_mph": PitchPhysics.radar_mph(float(host._stats.last_pitch.get("mph", 0.0))),
 		"final": g.over})
 
 
 func format_report(label: String, a: Dictionary) -> String:
-	var head = "%s\n%.1f mph | %d rpm" % [label, a.speed_mph, roundi(a.spin_rpm)]
+	var head = "%s\n%.1f mph | %d rpm" % [label, PitchPhysics.radar_mph(a.speed_mph), roundi(a.spin_rpm)]
 	if not a.reached:
 		return head + "\nDid not reach the plate"
 	var p: Vector3 = a.plate_pos
-	var text = head + "\nPlate %.1f mph in %.2fs" % [a.plate_mph, a.time]
+	var text = head + "\nPlate %.1f mph in %.2fs" % [PitchPhysics.radar_mph(a.plate_mph), a.time]
 	if a.has("ivb_in"):
 		text += "\nInduced vert %+.1f in | horiz %+.1f in" % [a.ivb_in, a.hb_in]
 	text += "\n%s  %s  (%+.1f in x, %.1f in y)" % [
@@ -218,12 +218,12 @@ func refresh_hud() -> void:
 	var prow: Array = []
 	for k in host._stats.types_sorted():
 		var x: Dictionary = host._stats.by_type[k]
-		prow.append([k, x.n, "%.0f" % host._stats.avg_mph(x), "%.0f" % x.mph_max, "%.0f" % host._stats.strike_pct(x),
+		prow.append([k, x.n, "%.0f" % PitchPhysics.radar_mph(host._stats.avg_mph(x)), "%.0f" % PitchPhysics.radar_mph(x.mph_max), "%.0f" % host._stats.strike_pct(x),
 			("%.0f" % host._stats.whiff_pct(x)) if x.swings > 0 else "-"])
 	if prow.is_empty():
 		prow.append(["-", "", "", "", "", ""])
 	else:
-		prow.append(["TOTAL", t.n, "%.0f" % (host._stats.avg_mph(t)), "%.0f" % t.mph_max, "%.0f" % host._stats.strike_pct(t),
+		prow.append(["TOTAL", t.n, "%.0f" % PitchPhysics.radar_mph(host._stats.avg_mph(t)), "%.0f" % PitchPhysics.radar_mph(t.mph_max), "%.0f" % host._stats.strike_pct(t),
 			("%.0f" % host._stats.whiff_pct(t)) if t.swings > 0 else "-"])
 	pitch_board.rows = prow
 	pitch_board.total_row = prow.size() > 1

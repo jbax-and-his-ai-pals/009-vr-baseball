@@ -13,6 +13,8 @@ const CALL_WORDS := {"ump_strike": "STRIKE", "ump_strike_three": "STRIKE THREE",
 var visit_used := false                     # the one mound visit a game
 var visit_timer := 0.0                      # seconds left of a visit (no pitching during it)
 var fatigue_credit := 0                     # pitches your arm is rested by (a mound visit)
+var extra_load := 0.0                       # extra pitches' worth of wear from overthrowing
+var overthrow_notice := false
 var user_left := false                      # you handed the ball to the bullpen
 var left_line := {}                         # your line at that moment
 var sign := {}                              # the catcher's call for the next pitch ({} when none)
@@ -58,7 +60,7 @@ func issue_intentional_walk() -> void:
 func arm_fatigue() -> float:
 	if host._game == null or host._home == null:
 		return 0.0
-	var f: float = host._home.player_at(1).fatigue(maxi(host._game.pitch_count - fatigue_credit, 0))
+	var f: float = host._home.player_at(1).fatigue(maxi(host._game.pitch_count + int(extra_load) - fatigue_credit, 0))
 	if f > 0.35 and not tired_notice:
 		tired_notice = true
 		host.hud.show_notice("Your arm is getting tired")
@@ -236,6 +238,22 @@ func update_alignment() -> void:
 		host.slog.record("alignment", {"infield_in": want})
 		if want:
 			host.hud.show_notice("Infield in", true)
+
+
+## An overthrown pitch (0..1, see HumanPitcher.overthrow) wears the arm like up to one and a half pitches.
+## Tells you once what it costs.
+func add_load(over: float) -> void:
+	extra_load += 0.5 * over
+	if over > 0.5 and not overthrow_notice:
+		overthrow_notice = true
+		host.hud.show_notice("Max effort: harder to locate, tires the arm", true)
+
+
+## Where your pitch is aimed: the catcher's glove when he has called a spot, else the middle of the zone.
+func aim_center() -> Vector2:
+	if host.aim_at_glove and not sign.is_empty():
+		return sign.target
+	return HumanPitcher.ZONE_CENTER
 
 
 ## A career pitcher's command narrows or widens the aim funnel (1.0 for everyone else).

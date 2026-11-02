@@ -47,7 +47,7 @@ func _init() -> void:
 	_check(Tutorial.new(99).is_done() and Tutorial.new(-5).step == 0 and Tutorial.new(2).step == 2, "a saved step is clamped, and a lesson can resume")
 
 	# The pitch lab.
-	var a := {"reached": true, "speed_mph": 84.2, "spin_rpm": 2400.0, "ivb_in": -14.0, "hb_in": 3.0}
+	var a := {"reached": true, "speed_mph": 62.0, "spin_rpm": 2400.0, "ivb_in": -14.0, "hb_in": 3.0}     # 62 game mph reads 84 on the radar
 	var curve := PitchLab.explain("Curveball", a, {"z_snap": 2.0, "z_side": 0.1, "z_gyro": 0.0, "z_slot": 0.0, "z_wind": 0.0, "stiff": 0.0})
 	_check(curve[0].begins_with("Curveball  84 mph") and curve[1].contains("down 14 in") and curve[2].contains("flick") and curve[2].contains("curve"), "a curve is explained by the wrist flick (%s)" % str(curve))
 	var slider := PitchLab.explain("Slider", a, {"z_snap": 0.1, "z_side": -1.8, "z_gyro": 0.0, "z_slot": 0.0, "z_wind": 0.0, "stiff": 0.0})

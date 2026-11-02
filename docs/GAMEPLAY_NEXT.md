@@ -200,6 +200,15 @@ A pitch has four parts. One is chosen, three are measured:
   That is the real trade between command and safety.
 - **Squeezed tails.** Beyond 2 sd the miss is compressed (2 + 0.4 × the excess) instead of clamped
   at 4 sd. The target is hit batters at or below 1% of pitches (6.6% today).
+  - *Built differently (2026-11-02).* Replaying the logs (`tools/throw_report.py --command`) showed
+    that once the funnel aims at the glove, hit batters come from the catcher's *inside* calls. A
+    normal miss of about 1.3 sd from an inside spot reaches the batter, so squeezing the tails (knee
+    1.5 sd) only took them from 2.6% to 2.1%.
+  - The fix is the batter: he gets out of the way of two pitches in three at his body
+    (`PitchLocation.HIT_CHANCE`), and you see "Brushed back".
+  - The spreads that shipped (Casual 0.28/0.20, Standard 0.30/0.24, Pro 0.34/0.28 m per sd) give
+    about half the pitches near the called spot for a typical session at Standard, and three in four
+    for the steadiest.
 - **Overthrowing widens the spread** (velocity section).
 - **The pitch lab explains a vertical miss** from release height: "you let go early: high". Keep
   the measurement; it is the real cause (finding 4).

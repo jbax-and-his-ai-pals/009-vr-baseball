@@ -191,7 +191,7 @@ func lifetime_lines() -> Array:
 		"%d games, %d-%d" % [g, int(totals.get("wins", 0)), int(totals.get("losses", 0))],
 		"%s IP, %d K, %d BB" % [ip_text(int(totals.get("outs", 0))), int(totals.get("k", 0)), int(totals.get("bb", 0))],
 		"%d H, %d R, %d HR" % [int(totals.get("h", 0)), int(totals.get("r", 0)), int(totals.get("hr", 0))],
-		"%d pitches, %.0f%% strikes, top %.0f mph" % [pitches, strike_pct, float(totals.get("max_mph", 0.0))],
+		"%d pitches, %.0f%% strikes, top %.0f mph" % [pitches, strike_pct, PitchPhysics.radar_mph(float(totals.get("max_mph", 0.0)))],
 	] + ([] if int(totals.get("signs", 0)) == 0 else ["Catcher signs: %d of %d hit" % [int(totals.get("sign_hits", 0)), int(totals.get("signs", 0))]]) + ([] if fg == 0 else ["Fielding: %d games, %d of %d caught, %d errors" % [fg, int(totals.get("f_caught", 0)), int(totals.get("f_chances", 0)), int(totals.get("f_errors", 0))]])
 
 

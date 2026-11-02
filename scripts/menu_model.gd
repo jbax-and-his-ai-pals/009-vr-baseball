@@ -224,7 +224,7 @@ func items() -> Array[Dictionary]:
 		"stats_types":
 			for t in profile.type_lines(8):
 				rows.append(_row("info", "%s  %d" % [t.kind, int(t.n)], "%.0f%% str  %s  %.0f avg  %.0f top" % [
-					t.strike_pct, ("%.0f%% whf" % t.whiff_pct) if float(t.whiff_pct) >= 0.0 else "- whf", t.mph_avg, t.mph_max], false))
+					t.strike_pct, ("%.0f%% whf" % t.whiff_pct) if float(t.whiff_pct) >= 0.0 else "- whf", PitchPhysics.radar_mph(float(t.mph_avg)), PitchPhysics.radar_mph(float(t.mph_max))], false))
 			rows.append(_row("back", "Back"))
 		"stats_games":
 			for g in profile.recent(8):

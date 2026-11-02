@@ -49,12 +49,23 @@ static func outside_by(x: float, y: float) -> float:
 	return sqrt(dx * dx + dy * dy)
 
 
+## A pitch at the batter's body hits him this often; he gets out of the way of the rest. (Logged games had 6.6%
+## of pitches hit the batter, far more than real baseball's well under 1%.)
+const HIT_CHANCE := 0.35
+
+
 ## Does a pitch crossing here hit the batter standing in his box? A right-hander stands on the
 ## third-base side (+x), a left-hander on the other: his body is well off the plate, from about
-## the knees to the shoulders.
+## the knees to the shoulders. (Whether he gets out of the way is HIT_CHANCE.)
 static func hits_batter(x: float, y: float, lefty: bool = false) -> bool:
 	var side := -x if lefty else x
 	return side >= 0.62 and side <= 1.28 and y >= 0.25 and y <= 1.60
+
+
+## Does this pitch actually hit him? Only one at his body, and then only when he fails to get out of the way
+## (`roll` is a random number 0..1 from the gameplay generator).
+static func hit_by(x: float, y: float, lefty: bool, roll: float) -> bool:
+	return hits_batter(x, y, lefty) and roll < HIT_CHANCE
 
 
 static func classify(x: float, y: float) -> Dictionary:

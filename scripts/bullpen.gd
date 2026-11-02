@@ -56,12 +56,21 @@ enum SpinMode { RAW, WRIST_MODEL }
 @export_range(0.5, 5.0, 0.05) var velocity_gain := 2.4
 ## HAND_ASSIST only: 0 = pure physics, 1 = ball goes where the hand pointed.
 @export_range(0.0, 1.0, 0.05) var aim_assist := 1.0
-## FUNNEL: meters at the plate for each standard deviation of YOUR OWN aim scatter. The game
-## learns how consistent you are, so an erratic thrower and a precise one both end up
-## with the same spread; deliberate aim shifts bigger than your noise still move the ball.
-## Raise for a harder, more skill-dependent game; lower for more forgiving.
-@export_range(0.0, 1.0, 0.01) var funnel_spread_x := 0.40
-@export_range(0.0, 1.0, 0.01) var funnel_spread_y := 0.30
+## FUNNEL: meters at the plate for each standard deviation of aim scatter (see `aim_reference`). Set by the
+## assist preset. Raise for a harder game; lower for more forgiving.
+@export_range(0.0, 1.0, 0.01) var funnel_spread_x := 0.30
+@export_range(0.0, 1.0, 0.01) var funnel_spread_y := 0.24
+## FUNNEL: what a throw's aim is measured against. 0 = your own learned scatter (an erratic thrower and a
+## precise one end up with the same spread), 1 = the fixed scatter every player starts from (a steadier
+## delivery lands closer), between = some of each. Set by the assist preset.
+@export_range(0.0, 1.0, 0.05) var aim_reference := 0.5
+## FUNNEL: aim at the catcher's glove (the sign's spot) instead of the middle of the zone.
+@export var aim_at_glove := true
+## How your hand speed becomes pitch speed. GAIN: hand speed x `velocity_gain` (the original). BAND: your
+## effort against your own usual and top speeds picks a speed in your pitcher's band (the VEL rating), so
+## a big adult and a seated child both reach the top of their band at their own maximum.
+enum VelocityMode { GAIN, BAND }
+@export var velocity_mode: VelocityMode = VelocityMode.BAND
 ## FUNNEL: how fast the learned usual aim and scatter follow your throws (0-1 per throw)
 ## once the first few throws have calibrated them.
 @export_range(0.0, 1.0, 0.01) var aim_learn_rate := 0.08
@@ -599,6 +608,7 @@ func apply_assist(s: Settings) -> void:
 	var a := s.assist_values()
 	funnel_spread_x = a.funnel_x
 	funnel_spread_y = a.funnel_y
+	aim_reference = a.aim_reference
 	aim_assist = a.aim_assist
 	_catch_radius = a.catch_radius
 	_throw_cone = a.throw_cone
@@ -644,6 +654,7 @@ func apply_config(c: GameConfig) -> void:
 	if _daily > 0:
 		Park.now().wind = GameConfig.daily_wind(_daily)        # the day's weather
 	_career_game = c.career and _career != null and not _career.is_over()
+	_human.velocity_rating = float(_career.ratings.get("velocity", 50.0)) if _career_game else 50.0
 
 
 # ------------------------------------------------------------------ menus

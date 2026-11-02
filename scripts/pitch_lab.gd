@@ -16,7 +16,7 @@ static func explain(label: String, analysis: Dictionary, shape: Dictionary) -> A
 	var lines: Array = []
 	if not analysis.get("reached", false):
 		return ["%s: it did not reach the plate" % label]
-	lines.append("%s  %.0f mph  %d rpm" % [label, float(analysis.speed_mph), roundi(float(analysis.spin_rpm))])
+	lines.append("%s  %.0f mph  %d rpm" % [label, PitchPhysics.radar_mph(float(analysis.speed_mph)), roundi(float(analysis.spin_rpm))])
 	if analysis.has("ivb_in"):
 		var rise := float(analysis.ivb_in)
 		var run := float(analysis.hb_in)

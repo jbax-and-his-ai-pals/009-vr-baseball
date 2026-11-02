@@ -1,6 +1,6 @@
 extends SceneTree
 ## Drives synthetic throws through the real release path and checks the funnel aim
-## and the log line.
+## (at the catcher's glove when he has called a spot) and the log line.
 ## Run: godot --headless --path . -s res://tests/log_test.gd
 
 var _t0 := 100.0
@@ -47,6 +47,10 @@ func _init() -> void:
 	var before: int = bp.slog.logger.count
 	_throw_soft(bp)
 	var drop_ok: bool = bp.slog.logger.count == before
+	# With a sign called, the funnel aims at the catcher's glove.
+	bp.manager.sign = CatcherSigns.call_pitch({"balls": 0, "strikes": 2, "outs": 0, "bases": [false, false, false], "batter_side": 1.0}, [], RandomNumberGenerator.new())
+	var called: Vector2 = bp.manager.sign.target
+	_throw(bp, 0.0)
 
 	var path: String = bp.slog.logger.path
 	print("log path: ", ProjectSettings.globalize_path(path))
@@ -56,15 +60,17 @@ func _init() -> void:
 		var l := f.get_line()
 		if l != "":
 			lines.append(JSON.parse_string(l))
-	var ok := lines.size() == 3
+	var ok := lines.size() == 4
 	var up: Dictionary = lines[0]
 	var down: Dictionary = lines[1]
 	var shape_ok: bool = up.has("raw") and up.has("series") and up.samples.size() > 10 and up.has("funnel") and up.result.has("strike")
-	var ty_up: float = up.funnel.target[1]
-	var ty_dn: float = down.funnel.target[1]
+	# Measured from where each was aimed (the catcher's glove, if the scene had a sign up).
+	var ty_up: float = up.funnel.target[1] - up.funnel.center[1]
+	var ty_dn: float = down.funnel.target[1] - down.funnel.center[1]
 	print("funnel target y: rising hand %.3f | falling hand %.3f | usual aim %s -> %s" % [ty_up, ty_dn, bias_start, bp._aim_mu])
 	var order_ok := ty_up > ty_dn
-	var bounded := absf(ty_up - 0.85) < 1.0 and absf(ty_dn - 0.85) < 1.0
+	var bounded := absf(ty_up) < 1.0 and absf(ty_dn) < 1.0
+	var glove_ok: bool = Vector2(lines[3].funnel.center[0], lines[3].funnel.center[1]).distance_to(called) < 0.002
 	var lands_ok := true
 	for d in lines:
 		var plate = d.result.plate
@@ -73,7 +79,7 @@ func _init() -> void:
 			lands_ok = false
 	var bias_moved: bool = bp._aim_mu != bias_start
 	print("shape %s | higher hand -> higher pitch %s | bounded near zone %s | lands on target %s | bias adapts %s" % [shape_ok, order_ok, bounded, lands_ok, bias_moved])
-	print("soft release ignored %s" % drop_ok)
-	ok = ok and shape_ok and order_ok and bounded and lands_ok and bias_moved and drop_ok
+	print("soft release ignored %s | aimed at the called spot %s" % [drop_ok, glove_ok])
+	ok = ok and shape_ok and order_ok and bounded and lands_ok and bias_moved and drop_ok and glove_ok
 	print("PASS" if ok else "FAIL")
 	quit(0 if ok else 1)

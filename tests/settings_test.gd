@@ -18,8 +18,8 @@ func _init() -> void:
 	# --- Defaults are what the game has always played like.
 	var s := Settings.new()
 	var std := s.assist_values()
-	_check(s.assist == "Standard" and is_equal_approx(std.funnel_x, 0.40) and is_equal_approx(std.funnel_y, 0.30),
-		"the default assist is the current game feel")
+	_check(s.assist == "Standard" and is_equal_approx(std.funnel_x, 0.30) and is_equal_approx(std.funnel_y, 0.24) and is_equal_approx(std.aim_reference, 0.5),
+		"the default assist is Standard: the funnel half measured against the reference scatter")
 	_check(s.throwing_hand_name() == &"right_hand", "right-handed by default")
 	_check(Settings.load_from(path).assist == "Standard", "a missing file gives defaults")
 
@@ -48,7 +48,8 @@ func _init() -> void:
 	var c := Settings.ASSIST_VALUES.Casual
 	var p := Settings.ASSIST_VALUES.Pro
 	_check(c.funnel_x < std.funnel_x and std.funnel_x < p.funnel_x and c.catch_radius > std.catch_radius and std.catch_radius > p.catch_radius
-		and c.throw_cone > std.throw_cone and std.throw_cone > p.throw_cone, "Casual helps most, Pro least, on every axis")
+		and c.throw_cone > std.throw_cone and std.throw_cone > p.throw_cone and c.aim_reference < std.aim_reference and std.aim_reference < p.aim_reference,
+		"Casual helps most, Pro least, on every axis (Pro counts your steadiness most)")
 
 	# --- Game config.
 	var g := GameConfig.new()

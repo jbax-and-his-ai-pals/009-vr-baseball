@@ -150,12 +150,12 @@ Checklist:
 - [x] Low pitches were unnamed (11% of game pitches): the comparison flight without spin lift hit the ground (`PitchPhysics.analyze`; tests/pitch_namer_test.gd)
 - [x] The throw log keeps the full controller rotation per sample, so the wrist's roll can be recomputed later
 - [x] `tools/throw_report.py`: signs, accidental pitches, scatter per session, the fixed-scatter replay, threshold sweep, classifier
-- [ ] Quick wins:
-  - [ ] real-equivalent mph on the radar
-  - [ ] command against a reference scatter per assist, aimed at the catcher's glove
-  - [ ] squeezed miss tails (hit batters at or below 1% of pitches)
-  - [ ] an overthrow cost
-  - [ ] the VEL rating sets a velocity band
+- [x] Quick wins (tests/command_test.gd, tests/log_test.gd; spreads chosen by replaying the logs, `tools/throw_report.py --command`; headset check in `docs/PLAYTEST.md` section 25):
+  - [x] league mph on the radar (`PitchPhysics.radar_mph`: game mph ÷ 0.74)
+  - [x] command against a reference scatter per assist (Casual 0, Standard 0.5, Pro 1), aimed at the catcher's glove (`HumanPitcher.miss_z`, `Manager.aim_center`)
+  - [x] squeezed miss tails beyond 1.5 sd; a batter dodges two pitches in three at his body (`PitchLocation.HIT_CHANCE`). The replay showed hit batters come from the catcher's inside calls, not wild misses: squeezing alone took them only from 2.6% to 2.1%
+  - [x] an overthrow cost (wider spread, extra arm wear, one notice)
+  - [x] the VEL rating sets a velocity band (`HumanPitcher.band_mph`; `velocity_mode` GAIN keeps the original)
 - [ ] Grip, then motion (if chosen):
   - [ ] the sign or the thumbstick picks the grip, locked at delivery start
   - [ ] movement from the pitch's own action, with hanging pitches

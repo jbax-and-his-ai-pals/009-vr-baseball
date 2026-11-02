@@ -258,3 +258,24 @@ Your controllers are now a cartoon hand (throwing hand; both hands when batting)
 ## 24. First baseman
 
 Play > Fielding > Position: 1B. When an infielder fields a grounder and throws to first, "THROW TO FIRST!" flashes: get the glove to the bag (within 0.6 m of where the ball arrives, about 1.15 m up). A miss is an error on you (E3) and the batter is safe. Check the cue timing and whether the stretch distance feels fair.
+
+## 25. Command, velocity and the radar (Phase 9 quick wins, `docs/GAMEPLAY_NEXT.md` A3)
+
+**Aim and command**
+- **The aim point.** With catcher signs on, your pitch aims at his glove (the marker on the zone), not the middle of the zone. A throw like your usual one should land on the marker.
+- **Hitting the spot.** The HUD's "SIGN HIT!" should now come often when you are steady: the replay of your logs says about half the time at Standard for a typical session, about three in four for your steadiest.
+- **Steadiness counts.**
+  - Standard measures each throw halfway between your own scatter and a fixed 6/5.5 degrees; Pro wholly against the fixed one.
+  - Check that a steady session at Pro feels like real command, and a sloppy one like real wildness.
+  - Spreads: Casual 0.28/0.20, Standard 0.30/0.24, Pro 0.34/0.28 m per sd (`Settings.ASSIST_VALUES`). First guesses from the replay.
+- **Wild throws.** Beyond 1.5 sd a miss grows at 0.4 the rate (`HumanPitcher.MISS_KNEE`): a wild pitch still misses, but not by 2 m.
+- **Hit batters.** A pitch at the batter's body hits him a third of the time (`PitchLocation.HIT_CHANCE`). Otherwise he gets out of the way and you see "Brushed back". Target: hit batters well under 1% of pitches. Count them in a 3-inning game.
+
+**Velocity and effort**
+- **The velocity band (`velocity_mode` BAND).** Your usual hand speed is the middle of your pitcher's band (87 league mph at VEL 50) and your top speed (the 90th percentile of your last 30 throws) is its top (92).
+  - Check that throwing harder still feels faster, and that the band is not too narrow to feel.
+  - The original mapping is `velocity_mode` GAIN on the Bullpen node.
+- **Overthrowing.** Throws past your usual speed + 1 sd spread up to 25% wider and wear the arm like up to 1.5 pitches. The first one says "Max effort: harder to locate, tires the arm". Check that max effort feels worth it now and then, not every pitch.
+
+**Radar**
+- Speeds on the HUD, the scoreboard, the boards, the pitch lab and the stats are in league mph (game mph ÷ 0.74), so a typical throw reads about 85. Logs keep game mph.
