@@ -6,3 +6,4 @@ extends RefCounted
 static var pending: GameConfig = null      # a game to start as soon as the scene loads
 static var current: GameConfig = null      # the game being played, for Restart
 static var show_menu := false              # open the main menu when the scene loads
+static var after_warmup: GameConfig = null # the game you chose before the warm-up you had to do first

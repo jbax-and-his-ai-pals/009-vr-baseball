@@ -71,6 +71,11 @@ enum SpinMode { RAW, WRIST_MODEL }
 ## a big adult and a seated child both reach the top of their band at their own maximum.
 enum VelocityMode { GAIN, BAND }
 @export var velocity_mode: VelocityMode = VelocityMode.BAND
+## How the pitch type is chosen (Settings.PITCH_SELECT): "Grip" (the sign or the thumbstick picks the grip, your
+## wrist decides how well it moves) or "Freestyle" (the way you throw is the pitch). Set from Options.
+var pitch_select := "Grip"
+## Grip: the share of a grip's movement it gets with no action at all (set by the assist preset).
+var move_floor := 0.6
 ## FUNNEL: how fast the learned usual aim and scatter follow your throws (0-1 per throw)
 ## once the first few throws have calibrated them.
 @export_range(0.0, 1.0, 0.01) var aim_learn_rate := 0.08
@@ -249,9 +254,13 @@ func _ready() -> void:
 	_human.knobs = self
 	_director.leads = plays.leads          # the scene asks where a runner stands before the world is built
 	_demo = "--demo" in OS.get_cmdline_user_args()
-	_settings = Settings.new() if "--no-settings" in OS.get_cmdline_user_args() else Settings.load_from()
+	# A test run plays with the default settings (and saves them to a scratch file), never the player's.
+	_settings = Settings.new() if "--no-settings" in OS.get_cmdline_user_args() or ThrowLogger.override_path != "" else Settings.load_from()
 	apply_settings(_settings)
-	if throwing_hand == &"left_hand":
+	var saved_arm := Calibration.load_for(_settings.hand)
+	if not saved_arm.is_empty():
+		_human.apply_dict(saved_arm)          # what earlier games learned about your arm
+	elif throwing_hand == &"left_hand":
 		_human.mirror_aim()          # a left-hander's usual aim starts on the other side
 	# Did the menu (before a reload) ask for a particular game, or for the menu itself?
 	var want_menu := false
@@ -598,6 +607,7 @@ func _poll_tag() -> void:
 
 ## Player preferences: handedness and the assist preset (funnel, glove, throw cone).
 func apply_settings(s: Settings) -> void:
+	pitch_select = s.pitch_select
 	throwing_hand = s.throwing_hand_name()
 	apply_assist(s)
 
@@ -610,9 +620,19 @@ func apply_assist(s: Settings) -> void:
 	funnel_spread_y = a.funnel_y
 	aim_reference = a.aim_reference
 	aim_at_glove = a.glove
+	move_floor = a.move_floor
 	aim_assist = a.aim_assist
 	_catch_radius = a.catch_radius
 	_throw_cone = a.throw_cone
+
+
+## After each of your pitches: keep what has been learned about your arm for the next game, once it knows you
+## (a warm-up saves when it is done, so stopping half way keeps the old calibration).
+func remember_arm() -> void:
+	if acts.warmup != null:
+		return
+	if _human.is_calibrated():
+		Calibration.save_for(_settings.hand, _human.to_dict())
 
 
 ## The game as the exports and flags currently describe it.
@@ -624,6 +644,10 @@ func _current_config() -> GameConfig:
 	c.batter = batter_profile
 	c.assist = _settings.assist
 	c.activity = "Game" if lineup_mode == "Game" else "Practice"
+	if _config != null and _config.activity != "Game" and lineup_mode != "Game":
+		c.activity = _config.activity          # Bullpen, Drill and Derby play as practice: keep which one it is
+	c.tutorial = _config != null and _config.tutorial
+	c.warmup = _config != null and _config.warmup
 	c.scenario = acts.scenario_id
 	c.career = _career_game
 	c.two_way = roles.two_way
@@ -646,7 +670,13 @@ func apply_config(c: GameConfig) -> void:
 	acts.scenario_id = c.scenario
 	acts.drill = c.activity == "Drill" and not acts.mode_is_not_fielding(c)
 	acts.derby = c.activity == "Derby" and c.mode == "Hitting"
-	acts.tutorial = Tutorial.new(_settings.tutorial_step) if c.tutorial else null
+	acts.tutorial = Tutorial.new(_settings.tutorial_step, _settings.pitch_select == "Grip") if c.tutorial else null
+	if c.warmup and acts.warmup == null:
+		acts.warmup = Warmup.new()
+		_human.reset_calibration(_settings.hand == "left")          # a warm-up learns your arm from scratch
+		_human.grip = Grips.FOUR_SEAM                               # with your usual fastball
+	elif not c.warmup:
+		acts.warmup = null
 	roles.two_way = c.two_way
 	_daily = c.daily
 	if _daily > 0:
@@ -656,6 +686,11 @@ func apply_config(c: GameConfig) -> void:
 		Park.now().wind = GameConfig.daily_wind(_daily)        # the day's weather
 	_career_game = c.career and _career != null and not _career.is_over()
 	_human.velocity_rating = float(_career.ratings.get("velocity", 50.0)) if _career_game else 50.0
+	# A career pitcher is still learning the grips he has not made his own yet.
+	_human.learning = []
+	if _career_game:
+		var known := _career.repertoire.map(func(n): return Grips.canonical(n))
+		_human.learning = Grips.names().filter(func(g): return not (g in known))
 
 
 # ------------------------------------------------------------------ menus

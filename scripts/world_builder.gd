@@ -206,6 +206,18 @@ func build_world() -> void:
 	host.flight.trail_mat.albedo_color = Color(1.0, 0.9, 0.2)
 	host.flight.held_ball = make_ball()
 	host.flight.held_ball.visible = false
+	host.flight.grip_view = MeshInstance3D.new()          # your fingers on the ball: the grip
+	host.flight.grip_view.material_override = MeshMerger.vertex_color_material()
+	host.flight.grip_view.visible = false
+	host.add_child(host.flight.grip_view)
+	host.flight.grip_label = Label3D.new()
+	host.flight.grip_label.pixel_size = 0.0008
+	host.flight.grip_label.font_size = 40
+	host.flight.grip_label.outline_size = 10
+	host.flight.grip_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	host.flight.grip_label.no_depth_test = true
+	host.flight.grip_label.visible = false
+	host.add_child(host.flight.grip_label)
 
 	host.hud.build_boards()
 

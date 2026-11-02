@@ -193,6 +193,7 @@ func refresh_sign() -> void:
 		"bases": [host._game.bases[0] != null, host._game.bases[1] != null, host._game.bases[2] != null], "batter_side": side}, [], host._fx_rng)
 	sign_label.text = "SIGN: %s" % sign.words
 	sign_label.visible = true
+	host.flight.grip_from_sign(String(sign.pitch))
 	var tg: Vector2 = sign.target
 	sign_marker.position = Vector3(tg.x, tg.y, 0.02)
 	sign_marker.visible = true

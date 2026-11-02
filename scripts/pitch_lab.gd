@@ -23,6 +23,9 @@ static func explain(label: String, analysis: Dictionary, shape: Dictionary) -> A
 		lines.append("Moved %s %.0f in, and %.0f in %s" % ["up" if rise >= 0.0 else "down", absf(rise), absf(run), "to the right" if run >= 0.0 else "to the left"])
 	if shape.is_empty():
 		return lines
+	if shape.has("grip"):
+		lines.append_array(Grips.explain(shape.grip))              # the grip was the pitch: say how well it was thrown
+		return lines
 	var why := _reasons(shape)
 	if why.is_empty():
 		lines.append("Your usual throw: nothing special added")

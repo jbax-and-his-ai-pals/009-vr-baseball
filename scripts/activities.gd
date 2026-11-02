@@ -1,12 +1,14 @@
 class_name Activities
 extends RefCounted
 ## The things you can do instead of (or inside) an ordinary game: the home run derby, a fielding drill, a challenge (a short
-## situation to solve) and the pitching lesson with the pitch lab. Each has its own small state and its own end; the scene (`host`)
+## situation to solve), the warm-up (the game learns your arm) and the pitching lesson with the pitch lab. Each has its own small state and its own end; the scene (`host`)
 ## owns everything else and is told what happened.
 
 var host                                    # the bullpen scene (untyped: its members are reached by name)
 
 var tutorial: Tutorial                     # the pitching lesson, when that is what you are playing
+var warmup: Warmup                         # the warm-up, when that is what you are doing
+var warmup_card: Array[String] = []        # what it learned, once it is done
 var derby := false                         # home run derby: ten outs of easy pitches
 var derby_outs := 0
 var derby_hr := 0
@@ -138,7 +140,7 @@ func lab_lines(pitch: LivePitch) -> String:
 func tutorial_pitch(pitch: LivePitch) -> void:
 	if tutorial == null or pitch.shape.is_empty() or not pitch.analysis.get("reached", false):
 		return
-	var r = tutorial.on_pitch(pitch.label, bool(pitch.analysis.get("strike", false)))
+	var r = tutorial.on_pitch(pitch.label, bool(pitch.analysis.get("strike", false)), String(pitch.shape.get("grip", {}).get("quality", "")))
 	if String(r.text) != "":
 		host.hud.show_notice(String(r.text), true)
 	if r.advanced:
@@ -147,6 +149,45 @@ func tutorial_pitch(pitch: LivePitch) -> void:
 		host._sfx("corner_chime")
 		host._haptics.play("ui_select")
 	host.hud.refresh_hud()
+
+
+## One throw of the warm-up, as it leaves your hand (every pitch counts, even a wild one: the game is learning your
+## usual scatter; a drop does not).
+func warmup_pitch(pitch: LivePitch) -> void:
+	if warmup == null or warmup.is_done():
+		return
+	var r := warmup.on_throw(PitchPhysics.radar_mph(float(pitch.analysis.get("speed_mph", 0.0))))
+	if String(r.text) != "":
+		host.hud.show_notice(String(r.text), true)
+	if r.advanced:
+		host._sfx("corner_chime")
+		host._haptics.play("ui_select")
+	if r.done:
+		finish_warmup()
+	host.hud.refresh_hud()
+
+
+## The warm-up is over: remember your arm, say what was learned, then go on to the game you chose (or the menu).
+func finish_warmup() -> void:
+	var human: HumanPitcher = host._human
+	Calibration.save_for(host._settings.hand, human.to_dict())
+	var usual_speed := human.wrist.mean_speed
+	var top_speed := human.top_speed()
+	var usual_mph := PitchPhysics.radar_mph(human.typical_mph())
+	var top_mph := human.band_mph(top_speed) if int(host.velocity_mode) == 1 else PitchPhysics.radar_mph(top_speed * float(host.velocity_gain) * PitchPhysics.MPS_TO_MPH)
+	warmup_card = warmup.summary(usual_mph, top_mph, human.aim_sigma)
+	warmup_card[1] += " (hand speed %.1f m/s usual, %.1f top)" % [usual_speed, top_speed]
+	host.slog.record("warmup", {"usual": snappedf(usual_speed, 0.01), "top": snappedf(top_speed, 0.01),
+		"aim_sigma": [snappedf(human.aim_sigma.x, 0.01), snappedf(human.aim_sigma.y, 0.01)], "aim_mu": [snappedf(human.aim_mu.x, 0.01), snappedf(human.aim_mu.y, 0.01)]})
+	host.hud.show_notice(warmup_card[0], true)
+	host._sfx_later(0.3, "crowd_cheer_big")
+	host._props.later(10.0, func():
+		if Session.after_warmup != null:
+			Session.pending = Session.after_warmup
+			Session.after_warmup = null
+		else:
+			Session.show_menu = true
+		host.get_tree().reload_current_scene.call_deferred())
 
 
 ## A pitch had its result (the derby counts it, the lesson watches it); one that reached the plate may also be a challenge's pitch.

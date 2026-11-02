@@ -236,6 +236,11 @@ func refresh_hud() -> void:
 			pl.append("%s: %s" % [host.acts.scenario.title.to_upper(), host.acts.scenario.progress_text(g)])
 		if host.acts.tutorial != null:
 			pl.append(host.acts.tutorial.prompt())
+		if host.acts.warmup != null:
+			if host.acts.warmup.is_done():
+				pl.append_array(host.acts.warmup_card)
+			else:
+				pl.append(host.acts.warmup.prompt())
 	pitch_board.lines = pl
 	pitch_board.refresh()
 

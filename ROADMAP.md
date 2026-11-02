@@ -157,13 +157,20 @@ Checklist:
   - [x] an overthrow cost (wider spread, extra arm wear, one notice)
   - [x] the VEL rating sets a velocity band (`HumanPitcher.band_mph`; `velocity_mode` GAIN keeps the original). It mostly caps the top: the hardest throws stop at about 92 league mph instead of 107-118
   - [x] Casual keeps aiming at the middle of the zone (about 79% in the zone in the replay)
-- [ ] Save the learned calibration between games: the wrist baseline, usual aim and scatter, and usual and top speeds. Every game currently relearns them from the starting prior
-- [ ] Grip, then motion (if chosen):
-  - [ ] the sign or the thumbstick picks the grip, locked at delivery start
-  - [ ] movement from the pitch's own action, with hanging pitches
-  - [ ] the grip on the hand model
-  - [ ] Freestyle (today's classifier) kept as an option
-  - [ ] a replay scorer over the logs
+- [x] Save the learned calibration between games (`Calibration`, user://calibration.json, per throwing hand): the wrist baseline, usual aim and scatter, recent hand speeds. Saved after each pitch once the arm is known. While calibrating, the usual values are the plain average of your throws; the prior only steadies the spreads (tests/calibration_test.gd)
+- [x] The warm-up, the introductory calibration (`Warmup`; Play > Warm up, Options > Recalibrate pitching; tests/warmup_test.gd):
+  - [x] ten easy throws at the catcher's glove, then three harder ones, in the bullpen with a batter who only watches
+  - [x] a closing card: usual and top speed, aim steadiness in words, a suggested assist
+  - [x] until your arm is known, the main menu starts with it, and anything on the mound runs it first, then the game you chose
+- [x] Grip, then motion (`Grips`; Options > Pitch choice: Grip / Freestyle; tests/grips_test.gd):
+  - [x] the sign or the thumbstick picks the grip, locked at delivery start (flick toward a family, again for the next in it; press for the knuckleball)
+  - [x] movement from the pitch's own action, with hanging pitches (aimed for an ordinary execution; half the difference shows as a miss, `Grips.MISS_SHARE`)
+  - [x] the grip on the hand model (`HandModels.grip_mesh`, the grip's name over the ball; `tools/grip_preview.gd`)
+  - [x] Freestyle (the original classifier) kept as an option
+  - [x] only four-seamers teach your usual throw; a career pitcher's unlearned grips move less until learned
+  - [x] the lesson with grips: four-seam strikes, then changeup, curve, slider, sinker, each counted only when its action was good
+  - [ ] a replay scorer over the logs (needs grip-tagged sessions)
+- [x] Fixed on the way: a lesson, bullpen, drill or derby started from the menu became plain practice (the scene's second set-up kept only Game or Practice); a test run read and wrote the player's own settings file
 - [ ] Headset check:
   - [ ] Freestyle vs Grip, 40 pitches each
   - [ ] a sign-following session

@@ -20,6 +20,7 @@ func build_menu(show_main: bool) -> void:
 	var menu_model = MenuModel.new(host._settings)
 	menu_model.profile = host._profile
 	menu_model.career = host._career
+	menu_model.calibrated = Calibration.exists(host._settings.hand) or not Calibration.may_load()
 	host._menu.setup(menu_model, host._camera, ctrls)
 	host._menu.chosen.connect(on_menu_event)
 	Session.current = host._current_config()
@@ -80,6 +81,7 @@ func on_menu_event(ev: Dictionary) -> void:
 				host._audio.apply_volumes(host._settings.volumes)
 		"start":
 			Session.pending = ev.config
+			Session.after_warmup = ev.get("then", null)
 			host._settings.save()
 			host.get_tree().reload_current_scene.call_deferred()
 		"restart":

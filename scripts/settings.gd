@@ -12,6 +12,9 @@ const PATH := "user://settings.cfg"
 const VERSION := 1
 
 const ASSISTS := ["Casual", "Standard", "Pro"]
+## How the pitch type is chosen. Grip: the catcher's sign or a thumbstick flick picks the grip, and your wrist
+## decides how well it moves. Freestyle: the way you throw is the pitch (the original technique classifier).
+const PITCH_SELECT := ["Grip", "Freestyle"]
 const HANDS := ["right", "left"]
 const QUALITY := ["Auto", "Quest", "High"]
 const LOCOMOTION := ["smooth", "teleport"]
@@ -21,12 +24,13 @@ const HAPTICS := ["Off", "Low", "Normal", "Strong"]
 ## each throw against your own scatter (everyone is about equally accurate), 1 against the fixed scatter every
 ## player starts from (a steadier delivery hits the glove more often). `glove`: the funnel aims at the catcher's
 ## glove (the called spot) instead of the middle of the zone; Casual keeps the middle, so everyone throws strikes.
+## `move_floor` (grips): the share of a grip's movement it gets with no action; at 1 (Casual) nothing hangs.
 ## Chosen by replaying the logged throws (tools/throw_report.py, section 8): Casual about 79% in the zone;
 ## Standard about half the pitches near the called spot for a typical session, three in four for the steadiest.
 const ASSIST_VALUES := {
-	"Casual":   {"funnel_x": 0.28, "funnel_y": 0.20, "aim_reference": 0.0, "glove": false, "aim_assist": 1.0, "catch_radius": 0.45, "throw_cone": 34.0},
-	"Standard": {"funnel_x": 0.30, "funnel_y": 0.24, "aim_reference": 0.5, "glove": true, "aim_assist": 1.0, "catch_radius": 0.34, "throw_cone": 26.0},
-	"Pro":      {"funnel_x": 0.34, "funnel_y": 0.28, "aim_reference": 1.0, "glove": true, "aim_assist": 0.5, "catch_radius": 0.28, "throw_cone": 18.0},
+	"Casual":   {"funnel_x": 0.28, "funnel_y": 0.20, "aim_reference": 0.0, "glove": false, "move_floor": 1.0, "aim_assist": 1.0, "catch_radius": 0.45, "throw_cone": 34.0},
+	"Standard": {"funnel_x": 0.30, "funnel_y": 0.24, "aim_reference": 0.5, "glove": true, "move_floor": 0.6, "aim_assist": 1.0, "catch_radius": 0.34, "throw_cone": 26.0},
+	"Pro":      {"funnel_x": 0.34, "funnel_y": 0.28, "aim_reference": 1.0, "glove": true, "move_floor": 0.35, "aim_assist": 0.5, "catch_radius": 0.28, "throw_cone": 18.0},
 }
 
 ## What each assist level means, in words, for the menu.
@@ -41,6 +45,7 @@ var assist := "Standard"
 var quality := "Auto"              # Auto: governor decides; Quest: tuned settings; High: no tuning
 var locomotion := "smooth"
 var tutorial_step := 0             # how far through the pitching lesson you are
+var pitch_select := "Grip"         # how the pitch type is chosen (PITCH_SELECT)
 var haptics := "Normal"            # controller vibration strength
 var colorblind := false            # zone colours that avoid red against green
 var call_text := true              # the umpire's calls are also shown as words
@@ -65,7 +70,7 @@ func throwing_hand_name() -> StringName:
 
 func to_dict() -> Dictionary:
 	return {"version": VERSION, "hand": hand, "assist": assist, "quality": quality,
-		"locomotion": locomotion, "tutorial_step": tutorial_step, "haptics": haptics, "colorblind": colorblind, "call_text": call_text, "seated": seated, "gestures": gestures, "signs": signs, "vignette": vignette, "snap_turn": snap_turn,
+		"locomotion": locomotion, "tutorial_step": tutorial_step, "pitch_select": pitch_select, "haptics": haptics, "colorblind": colorblind, "call_text": call_text, "seated": seated, "gestures": gestures, "signs": signs, "vignette": vignette, "snap_turn": snap_turn,
 		"developer": developer, "volumes": volumes, "last_game": last_game}
 
 
@@ -78,6 +83,7 @@ static func from_dict(d: Dictionary) -> Settings:
 	s.quality = d.get("quality", s.quality) if d.get("quality", "") in QUALITY else s.quality
 	s.locomotion = d.get("locomotion", s.locomotion) if d.get("locomotion", "") in LOCOMOTION else s.locomotion
 	s.tutorial_step = clampi(int(d.get("tutorial_step", 0)), 0, 99)
+	s.pitch_select = d.get("pitch_select", s.pitch_select) if d.get("pitch_select", "") in PITCH_SELECT else s.pitch_select
 	s.haptics = d.get("haptics", s.haptics) if d.get("haptics", "") in HAPTICS else s.haptics
 	s.colorblind = bool(d.get("colorblind", s.colorblind))
 	s.call_text = bool(d.get("call_text", s.call_text))
@@ -97,7 +103,14 @@ static func from_dict(d: Dictionary) -> Settings:
 	return s
 
 
-func save(path: String = PATH) -> bool:
+## Where settings are saved by default: a test run (ThrowLogger.override_path set) never writes the player's file.
+static func default_path() -> String:
+	return "user://test_scene_settings.cfg" if ThrowLogger.override_path != "" else PATH
+
+
+func save(path: String = "") -> bool:
+	if path == "":
+		path = default_path()
 	var f := FileAccess.open(path, FileAccess.WRITE)
 	if f == null:
 		push_warning("Settings: cannot write %s" % path)

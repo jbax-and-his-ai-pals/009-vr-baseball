@@ -33,6 +33,59 @@ static func hand_mesh(right: bool = true) -> ArrayMesh:
 	return m.build()
 
 
+## Your fingers on the ball you are holding, showing the grip (Grip pitch choice): in the controller's frame, over
+## the ball at HumanPitcher.HOLD_OFFSET. Two fingers across the top for a four-seamer, along the seams for a
+## two-seamer, off-centre for a cutter or slider, the index tucked up for a curve, three fingers and a circle for a
+## changeup, split wide for a splitter, fingertips dug in for a knuckleball.
+static func grip_mesh(grip: String, right: bool = true) -> ArrayMesh:
+	var s := 1.0 if right else -1.0
+	var m := MeshMerger.new()
+	var c := HumanPitcher.HOLD_OFFSET
+	var r := BallVisual.VISUAL_RADIUS
+	# One finger lying over the ball from behind its top to over its front, `x` across (toward the glove side < 0).
+	var lay := func(x: float, color: Color) -> void:
+		var base := c + Vector3(x * s, r * 0.72, r * 0.95)
+		var mid := c + Vector3(x * s, r + 0.010, 0.0)
+		var tip := c + Vector3(x * s, r * 0.55, -r * 0.92)
+		Figure.limb(m, base, mid, 0.0095, color)
+		Figure.limb(m, mid, tip, 0.0090, color)
+	match grip:
+		"Two-seam", "Sinker":
+			lay.call(-0.003, SKIN)
+			lay.call(0.015, SKIN)
+		"Cutter", "Slider":
+			lay.call(-0.030, SKIN)
+			lay.call(-0.010, SKIN)
+		"Curveball", "Slurve":
+			lay.call(0.008, SKIN)
+			# The index finger tucked, its knuckle up off the ball (a knuckle curve).
+			var kb := c + Vector3(-0.014 * s, r * 0.72, r * 0.95)
+			var kk := c + Vector3(-0.014 * s, r + 0.032, r * 0.15)
+			var kt := c + Vector3(-0.014 * s, r + 0.004, -r * 0.10)
+			Figure.limb(m, kb, kk, 0.0095, SKIN)
+			Figure.limb(m, kk, kt, 0.0090, SKIN_SHADE)
+		"Changeup":
+			lay.call(-0.004, SKIN)
+			lay.call(0.016, SKIN)
+			lay.call(0.034, SKIN_SHADE)
+			# The index finger curls down the side to meet the thumb: the circle.
+			Figure.limb(m, c + Vector3(-0.030 * s, r * 0.55, r * 0.70), c + Vector3(-0.050 * s, 0.0, -r * 0.20), 0.0090, SKIN)
+		"Splitter":
+			lay.call(-0.030, SKIN)
+			lay.call(0.030, SKIN)
+		"Knuckleball":
+			for x in [-0.012, 0.012]:
+				var b := c + Vector3(x * s, r * 0.72, r * 0.95)
+				var k := c + Vector3(x * s, r + 0.030, r * 0.25)
+				var t := c + Vector3(x * s, r + 0.002, -r * 0.20)
+				Figure.limb(m, b, k, 0.0095, SKIN)
+				Figure.limb(m, k, t, 0.0085, SKIN_SHADE)
+		_:
+			lay.call(-0.011, SKIN)             # four-seam: index and middle together across the top
+			lay.call(0.011, SKIN)
+	return m.build()
+
+
 ## A fielder's glove: a thick pad with a pocket, four fingers and a thumb, a web, laces.
 ## The pocket faces -Z (toward where the ball comes from when you hold your hand out in front of you).
 static func glove_mesh(right_hand_glove: bool = false) -> ArrayMesh:

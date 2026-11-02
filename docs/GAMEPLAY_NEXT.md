@@ -226,6 +226,22 @@ A pitch has four parts. One is chosen, three are measured:
 - **The pitch lab explains a vertical miss** from release height: "you let go early: high". Keep
   the measurement; it is the real cause (finding 4).
 
+#### As built (2026-11-02): grip, then motion
+- **Choosing the grip.** The sign or the stick picks the grip (families as above; press is the knuckleball), shown
+  as fingers on the ball and its name over it. `Grips`, `HumanPitcher.grip`, `PitchFlight.grip_input`.
+- **Movement** is `four-seamer spin + m × (grip spin − four-seamer spin)`, where `m` comes from the grip's own
+  action.
+  - The grip spins are the AI pitchers' table, so the batter faces the same pitches from both.
+  - With too little `m` the pitch spins like a slow fastball: a hanger.
+- **Aim.** The pitch is aimed for an ordinary execution. Only half the difference between what it got and what
+  was expected becomes a miss (`Grips.MISS_SHARE`). The whole difference made a hanging curve miss by 0.9 m and a
+  flat one by 0.26 m, too harsh while the curve's action is the weakest reading.
+- **The changeup's action is arm speed** against your usual (the deception rule, ahead of the deception system).
+- **Learning.** Only four-seamers teach the wrist model your usual throw, now that the game knows which throws
+  they are.
+- **The warm-up** (`Warmup`) is the introductory calibration and the way to recalibrate. Calibration is saved
+  between games (`Calibration`).
+
 #### Deception: the batter reads your delivery (A8, step 6)
 - **Today.** The batter keeps one expected flight time (`lerp(expected, actual, 0.35)` per pitch)
   and misreads a speed change by `(1 - recognition)^2` **[code]**. That is good, but it only covers

@@ -53,6 +53,11 @@ var _hand_prev := Vector3.ZERO
 var _hand_prev_t := -1.0
 ## The career pitcher's VEL rating (50 for everyone else): where his velocity band sits.
 var velocity_rating := 50.0
+## Grip, then motion: the grip in your hand, and whether your delivery has started (it is locked then).
+var grip := Grips.FOUR_SEAM
+var grip_locked := false
+## Grips you are still learning (a career pitcher's unlearned ones): they move less.
+var learning: Array = []
 var _speeds: Array[float] = []              # recent hand speeds of real pitches (m/s), for your top speed
 
 
@@ -63,11 +68,11 @@ func poll(now: float, hand: XRController3D, can_grab: bool, auto_release: bool) 
 	var events: Array = []
 	if hand == null or not hand.get_is_active():
 		return events
-	var grip := hand.get_float("grip")
-	last_grip = grip
-	detector.add_sample(now, hand.global_position, hand.global_transform.basis.get_rotation_quaternion(), grip)
+	var squeeze := hand.get_float("grip")
+	last_grip = squeeze
+	detector.add_sample(now, hand.global_position, hand.global_transform.basis.get_rotation_quaternion(), squeeze)
 	if not held:
-		if grip > GRAB_THRESHOLD and can_grab:
+		if squeeze > GRAB_THRESHOLD and can_grab:
 			held = true
 			detector.clear()
 			delivery_start = -1.0
@@ -79,6 +84,7 @@ func poll(now: float, hand: XRController3D, can_grab: bool, auto_release: bool) 
 	if _hand_prev_t >= 0.0 and now > _hand_prev_t and delivery_start < 0.0:
 		if hp.distance_to(_hand_prev) / (now - _hand_prev_t) > DELIVERY_SPEED:
 			delivery_start = now
+			grip_locked = true                       # the grip cannot change once you have started
 			events.append({"type": "delivery_start"})
 	_hand_prev = hp
 	_hand_prev_t = now
@@ -86,9 +92,9 @@ func poll(now: float, hand: XRController3D, can_grab: bool, auto_release: bool) 
 		var tp := detector.find_release_peak(6.0, 0.85, FORWARD)
 		if tp > 0.0:
 			events.append({"type": "release", "t": tp, "vel_latency": 0.0, "spin_latency": 0.0})
-		elif grip < RELEASE_THRESHOLD:
+		elif squeeze < RELEASE_THRESHOLD:
 			events.append({"type": "drop"})
-	elif grip < RELEASE_THRESHOLD:
+	elif squeeze < RELEASE_THRESHOLD:
 		events.append({"type": "release", "t": now, "vel_latency": float(knobs.velocity_latency), "spin_latency": float(knobs.spin_latency)})
 	return events
 
@@ -132,7 +138,8 @@ func throw(release_t: float, vel_latency: float, spin_latency: float, from: Vect
 	var hand_sign := 1.0 if knobs.throwing_hand == &"right_hand" else -1.0
 	var shape := {}
 	var spin: Vector3
-	if knobs.spin_mode == 1:                                  # SpinMode.WRIST_MODEL
+	var gripped := grip_mode()
+	if knobs.spin_mode == 1 or gripped:                       # SpinMode.WRIST_MODEL (grips read the wrist too)
 		wrist.technique_gain = float(knobs.technique_gain)
 		wrist.fastball_backspin = float(knobs.fastball_backspin_rpm) * PitchPhysics.RPM_TO_RADS
 		var slot := from.y - camera_y
@@ -140,10 +147,36 @@ func throw(release_t: float, vel_latency: float, spin_latency: float, from: Vect
 		var peak := detector.peak_height(release_t)
 		if peak > -100.0:
 			extras["wind_peak"] = peak - camera_y
-		shape = wrist.shape(spin_src, est.velocity, slot, hand_sign, extras)
+		# With grips we know which throws are your usual one: only four-seamers teach the wrist model.
+		shape = wrist.shape(spin_src, est.velocity, slot, hand_sign, extras, not gripped or grip == Grips.FOUR_SEAM)
 		spin = shape.spin
 	else:
 		spin = spin_src * float(knobs.spin_gain)
+	# Grip, then motion: the grip's shape, as much of it as the pitch's own action earned. It is aimed as if it
+	# had its usual movement (`aim_spin`), so a hanging one misses up and a sharp one dives past the spot.
+	var aim_spin := spin
+	var grip_info := {}
+	var flutter := float(shape.get("flutter", 0.0))
+	var knuckle := bool(shape.get("knuckle", false))
+	if gripped:
+		var floor_m := float(_knob("move_floor", 0.6))
+		var still_learning := grip in learning
+		if still_learning:
+			floor_m *= Grips.LEARNING_FLOOR
+		var act := Grips.action(grip, shape, hand_speed / maxf(wrist.mean_speed, 1.0))
+		var e := Grips.execution(act)
+		var m := Grips.movement(e, floor_m)
+		if still_learning:
+			m = minf(m, Grips.LEARNING_CAP)
+		var m_aim := Grips.aimed_for(m, floor_m)
+		spin = Grips.spin(grip, m, hand_sign)
+		aim_spin = Grips.spin(grip, m_aim, hand_sign)
+		flutter = Grips.flutter(grip, m)
+		knuckle = grip == "Knuckleball" and m > 0.5
+		vel *= Grips.speed_factor(grip)
+		grip_info = {"grip": grip, "action": act, "execution": e, "movement": m, "aimed_for": m_aim, "floor": floor_m,
+			"quality": Grips.quality(e, floor_m), "learning": still_learning}
+		shape["grip"] = grip_info
 	var scaled := vel
 	# Throwing harder than your usual costs command (judged before this throw teaches your top speed, and not
 	# while the first throws of a game are still learning what your usual is).
@@ -156,10 +189,10 @@ func throw(release_t: float, vel_latency: float, spin_latency: float, from: Vect
 		2:                                                    # AimMode.FUNNEL
 			funnel = funnel_target(release_t, tired, command_scale, aim_center, 1.0 + OVERTHROW_SPREAD * over)
 			var target: Vector3 = funnel.target
-			vel = PitchPhysics.solve_aim(from, maxf(vel.length(), MIN_ASSIST_SPEED), spin, target)
+			vel = PitchPhysics.solve_aim(from, maxf(vel.length(), MIN_ASSIST_SPEED), aim_spin, target)
 	return {"kind": "pitch", "vel": vel, "spin": spin, "scaled": scaled, "est": est, "shape": shape, "funnel": funnel,
-		"hand_sign": hand_sign, "delivery": delivery, "flutter": float(shape.get("flutter", 0.0)), "knuckle": bool(shape.get("knuckle", false)),
-		"overthrow": over}
+		"hand_sign": hand_sign, "delivery": delivery, "flutter": flutter, "knuckle": knuckle,
+		"overthrow": over, "grip": grip_info}
 
 
 ## How far past your usual effort a throw was: 0 up to your usual speed + 1 sd, 1 at + 2 sd and beyond.
@@ -206,14 +239,72 @@ func typical_mph() -> float:
 	return wrist.typical_mph(float(knobs.velocity_gain))
 
 
+## Change the grip (Grip pitch choice). Not once the delivery has started. Returns whether it changed.
+func set_grip(name: String) -> bool:
+	var g := Grips.canonical(name)
+	if grip_locked or g == grip:
+		return false
+	grip = g
+	return true
+
+
+func _knob(name: String, fallback: Variant) -> Variant:
+	var v = knobs.get(name) if knobs != null else null
+	return fallback if v == null else v
+
+
+## Is the pitch chosen by the grip (rather than read from how you threw)?
+func grip_mode() -> bool:
+	return String(_knob("pitch_select", "Freestyle")) == "Grip"
+
+
 ## A left-hander starts from the mirror image of the usual aim (until his own throws teach it otherwise).
 func mirror_aim() -> void:
 	aim_mu.x = -aim_mu.x
 
 
+## Everything learned about your arm, for Calibration to save: the wrist model's baselines, your usual aim
+## and its scatter, your recent hand speeds.
+func to_dict() -> Dictionary:
+	return {"wrist": wrist.to_dict(), "aim_mu": [aim_mu.x, aim_mu.y], "aim_sigma": [aim_sigma.x, aim_sigma.y],
+		"aim_n": aim_n, "speeds": _speeds.duplicate()}
+
+
+## Pick up a saved calibration (anything missing keeps its starting value).
+func apply_dict(d: Dictionary) -> void:
+	wrist.from_dict(d.get("wrist", {}))
+	var mu: Array = d.get("aim_mu", [])
+	var sg: Array = d.get("aim_sigma", [])
+	if mu.size() == 2:
+		aim_mu = Vector2(float(mu[0]), float(mu[1]))
+	if sg.size() == 2:
+		aim_sigma = Vector2(maxf(2.0, float(sg[0])), maxf(2.0, float(sg[1])))
+	aim_n = int(d.get("aim_n", aim_n))
+	_speeds.clear()
+	for v in d.get("speeds", []):
+		_speeds.append(float(v))
+
+
+## Start learning your arm from scratch (the warm-up does this), from the recorded prior.
+func reset_calibration(left_handed: bool) -> void:
+	wrist = WristModel.new()
+	aim_mu = Vector2(4.4, -0.3)
+	aim_sigma = REFERENCE_SIGMA
+	aim_n = 0
+	_speeds.clear()
+	if left_handed:
+		mirror_aim()
+
+
+## Has it seen enough of your throws to know your usual one (wrist, aim and speeds)?
+func is_calibrated() -> bool:
+	return wrist.throws_seen >= wrist.calibration_throws and aim_n >= 10 and _speeds.size() >= TOP_MIN_THROWS
+
+
 ## You let go (or the ball was dropped): nothing is held any more.
 func drop() -> void:
 	held = false
+	grip_locked = false
 	delivery_start = -1.0
 	_hand_prev_t = -1.0
 
@@ -249,7 +340,8 @@ func funnel_target(release_t: float, tired: float, command_scale: float, center:
 	if absf(z_raw.x) <= gate and absf(z_raw.y) <= gate:
 		var rate := maxf(1.0 / (aim_n + 3.0), float(knobs.aim_learn_rate))
 		var dev := x - aim_mu
-		aim_mu += dev * rate
+		# The first throws' usual aim is their plain average (the prior only steadies the scatter).
+		aim_mu += dev * (maxf(1.0 / (aim_n + 1.0), float(knobs.aim_learn_rate)) if aim_n < 15 else rate)
 		var v := aim_sigma * aim_sigma
 		v += (dev * dev - v) * rate
 		aim_sigma = Vector2(maxf(2.0, sqrt(v.x)), maxf(2.0, sqrt(v.y)))

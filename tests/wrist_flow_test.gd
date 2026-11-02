@@ -27,6 +27,7 @@ func _init() -> void:
 	bp.menu_on_start = false
 	root.add_child(bp)
 	await process_frame
+	bp.pitch_select = "Freestyle"          # this test is about the way you throw naming the pitch
 	# A usual throw at 12 m/s: snap ratio 2.67, natural twist ratio 0.76 (recorded averages).
 	var usual_omega := -2.67 * 12.0
 	var usual_twist := 0.76 * 12.0

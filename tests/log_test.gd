@@ -39,6 +39,9 @@ func _init() -> void:
 	root.add_child(bp)
 	await process_frame
 	bp.spin_mode = 0  # RAW: synthetic hand has no rotation, which would read as a stiff-wrist knuckleball
+	bp.pitch_select = "Freestyle"   # a grip from a random sign would (rightly) miss its target by its movement
+	bp._settings.signs = false      # aim at the middle of the zone until this test calls its own sign
+	bp.manager.refresh_sign()
 	var bias_start: Vector2 = bp._aim_mu
 	_throw(bp, 1.5)
 	_throw(bp, -1.5)
@@ -78,6 +81,7 @@ func _init() -> void:
 		var tgt: Array = d.funnel.target
 		if plate == null or absf(plate[0] - tgt[0]) > 0.02 or absf(plate[1] - tgt[1]) > 0.02:
 			lands_ok = false
+			print("missed its target: plate %s target %s (%s, %s)" % [str(plate), str(tgt), d.pitch_name, d.funnel])
 	var bias_moved: bool = bp._aim_mu != bias_start
 	print("shape %s | higher hand -> higher pitch %s | bounded near zone %s | lands on target %s | bias adapts %s" % [shape_ok, order_ok, bounded, lands_ok, bias_moved])
 	print("soft release ignored %s | aimed at the called spot %s" % [drop_ok, glove_ok])

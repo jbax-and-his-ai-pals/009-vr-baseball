@@ -8,6 +8,11 @@ extends RefCounted
 var host                                    # the bullpen scene (untyped: its members are reached by name)
 
 var held_ball: MeshInstance3D
+var grip_view: MeshInstance3D               # your fingers on the held ball, showing the grip (Grip pitch choice)
+var grip_label: Label3D                     # the grip's name over the held ball
+var _grip_meshes := {}
+var _stick_family := ""                     # the family the throwing hand's stick pointed at last frame
+var _stick_click := false
 var pitches: Array[LivePitch] = []
 var ball_mesh: ArrayMesh
 var trail_mat: StandardMaterial3D
@@ -72,8 +77,18 @@ func release_from_hand(release_t: float, vel_latency: float, spin_latency: float
 			host._last_delivery = float(r.delivery)
 			var pitch = launch(from, r.vel, r.spin, "Your pitch", float(r.flutter), host._run_rng.randf() * 100.0)
 			pitch.shape = r.shape
-			pitch.label = PitchNamer.name_pitch(pitch.analysis, host._human.typical_mph(), float(r.hand_sign), bool(r.knuckle))
+			var gi: Dictionary = r.get("grip", {})
+			if not gi.is_empty():
+				pitch.label = String(gi.grip)                      # the grip is the pitch; the lab says how well it moved
+				if gi.quality == "hanging":
+					host.hud.show_notice("Hanging %s" % pitch.label.to_lower(), true)
+				elif gi.quality == "sharp" and gi.grip != Grips.FOUR_SEAM:
+					host.hud.show_notice("Sharp %s!" % pitch.label.to_lower(), true)
+			else:
+				pitch.label = PitchNamer.name_pitch(pitch.analysis, host._human.typical_mph(), float(r.hand_sign), bool(r.knuckle))
 			host.manager.add_load(float(r.overthrow))
+			host.acts.warmup_pitch(pitch)
+			host.remember_arm()
 			host._haptics.play("release", clampf(float(pitch.analysis.get("speed_mph", 60.0)) / 90.0, 0.0, 1.0))
 			host.slog.log_throw(pitch, from, release_t, vel_latency, r)
 
@@ -86,6 +101,7 @@ func poll_hand(now: float) -> void:
 			"grab":
 				host._haptics.play("grab")
 				held_ball.visible = true
+				show_grip()
 			"delivery_start":
 				host.plays.on_delivery_start()
 			"release":
@@ -95,11 +111,78 @@ func poll_hand(now: float) -> void:
 				held_ball.visible = false
 	if host._human.held and host._hand != null and host._hand.get_is_active():
 		held_ball.global_position = host._hand.global_transform * HumanPitcher.HOLD_OFFSET
+	grip_input()
+	place_grip()
 
 
 func drop_held() -> void:
 	host._human.drop()
 	held_ball.visible = false
+	place_grip()
+
+
+## Grip, then motion: the throwing hand's stick picks the grip. Flick toward a family (up: four-seam, cutter;
+## arm side: two-seam, sinker; glove side: curve, slider, slurve; down: changeup, splitter; press: knuckleball),
+## flick that way again for the next one in it. Not once your delivery has started, and not in the warm-up.
+func grip_input() -> void:
+	if not host._human.grip_mode() or host._hand == null or not host._hand.get_is_active():
+		return
+	var hand_sign := 1.0 if host.throwing_hand == &"right_hand" else -1.0
+	var fam := Grips.family_of_stick(host._hand.get_vector2("primary"), hand_sign)
+	var click: bool = host._hand.is_button_pressed("primary_click")
+	if fam != "" and _stick_family == "":
+		pick_family(fam)
+	elif click and not _stick_click:
+		pick_family("press")
+	_stick_family = Grips.family_of_stick(host._hand.get_vector2("primary"), hand_sign, 0.4)      # must come back near the middle
+	_stick_click = click
+
+
+func pick_family(fam: String) -> void:
+	if host.acts.warmup != null:
+		host.hud.show_notice("Warm-up: four-seam fastballs only", true)
+		return
+	set_grip(Grips.flick(host._human.grip, fam))
+
+
+## Put a grip in your hand (from the stick or the catcher's sign). Says so, ticks the controller, shows it.
+func set_grip(name: String, announce: bool = true) -> void:
+	if not host._human.grip_mode() or not host._human.set_grip(name):
+		return
+	if announce:
+		host._haptics.play("ui_select")
+		var learning := " (still learning it)" if host._human.grip in host._human.learning else ""
+		host.hud.show_notice("Grip: %s%s" % [host._human.grip, learning], true)
+	show_grip()
+
+
+## The catcher's sign puts its pitch in your hand (you can still change it with the stick).
+func grip_from_sign(kind: String) -> void:
+	set_grip(kind, false)
+
+
+## Your fingers on the ball show the grip, and its name hangs just above it.
+func show_grip() -> void:
+	if grip_view == null:
+		return
+	var right: bool = host.throwing_hand == &"right_hand"
+	var key := "%s/%s" % [host._human.grip, right]
+	if not _grip_meshes.has(key):
+		_grip_meshes[key] = HandModels.grip_mesh(host._human.grip, right)
+	grip_view.mesh = _grip_meshes[key]
+	grip_label.text = host._human.grip.to_upper()
+	place_grip()
+
+
+func place_grip() -> void:
+	if grip_view == null:
+		return
+	var on: bool = host._human.grip_mode() and host._human.held and host._hand != null and host._hand.get_is_active()
+	grip_view.visible = on
+	grip_label.visible = on
+	if on:
+		grip_view.global_transform = host._hand.global_transform
+		grip_label.global_position = held_ball.global_position + Vector3(0.0, 0.11, 0.0)
 
 
 func launch(from: Vector3, vel: Vector3, spin: Vector3, label: String, flutter_amp: float = 0.0, flutter_seed: float = 0.0) -> LivePitch:
@@ -166,7 +249,7 @@ func launch(from: Vector3, vel: Vector3, spin: Vector3, label: String, flutter_a
 
 ## The batter's decision for this pitch: the AI's, or (when you bat) a take until your bat says otherwise.
 func evaluate_batter(d: Dictionary) -> Dictionary:
-	if host._mode.human_batter:
+	if host._mode.human_batter or host.acts.warmup != null:          # (in the warm-up he just watches)
 		return {"swing": false, "contact": false, "kind": "take", "p_swing": 0.0}
 	return host._batter_ai.evaluate(d)
 

@@ -74,6 +74,24 @@ var max_spin := 340.0            ## rad/s, ~3250 rpm: nobody spins it faster
 var flutter_max := 12.0          ## m/s^2 of knuckleball wobble at full stiffness
 
 
+## What it has learned about your usual throw, for saving between games (see Calibration).
+const SAVED := ["mean_snap", "sd_snap", "mean_side", "sd_side", "mean_gyro", "sd_gyro", "mean_mag", "sd_mag",
+	"mean_slot", "sd_slot", "mean_speed", "sd_speed", "mean_wind", "sd_wind", "mean_straight", "sd_straight", "throws_seen"]
+
+
+func to_dict() -> Dictionary:
+	var d := {}
+	for k in SAVED:
+		d[k] = get(k)
+	return d
+
+
+func from_dict(d: Dictionary) -> void:
+	for k in SAVED:
+		if d.has(k):
+			set(k, int(d[k]) if k == "throws_seen" else float(d[k]))
+
+
 func typical_mph(velocity_gain: float) -> float:
 	return mean_speed * velocity_gain * 2.23694
 
@@ -82,7 +100,8 @@ func typical_mph(velocity_gain: float) -> float:
 ## slot: hand height minus head height (m). hand_sign: +1 right-handed, -1 left-handed.
 ## Returns {spin, flutter, knuckle, z_snap, z_side, z_gyro, z_slot, tilt_deg, stiff}.
 ## extras (optional): "straight" = hand-path straightness, "wind_peak" = windup height above head.
-func shape(omega: Vector3, vel: Vector3, slot: float, hand_sign: float, extras: Dictionary = {}) -> Dictionary:
+## `learn` false reads the throw without letting it teach your usual one (with grips, only four-seamers teach).
+func shape(omega: Vector3, vel: Vector3, slot: float, hand_sign: float, extras: Dictionary = {}, learn: bool = true) -> Dictionary:
 	var speed := maxf(vel.length(), 5.0)
 	var t := vel.normalized() if vel.length() > 0.01 else Vector3(0.0, 0.0, -1.0)
 	var right := t.cross(Vector3.UP)
@@ -152,26 +171,29 @@ func shape(omega: Vector3, vel: Vector3, slot: float, hand_sign: float, extras: 
 
 	# Learn. Early on, calibrate fast to whoever is throwing; afterwards only ordinary
 	# throws teach it, so deliberate off-style pitches do not redefine "normal".
-	if stiff < 0.2:
+	if stiff < 0.2 and learn:
 		var calibrating := throws_seen < calibration_throws
 		var steady_rate := anchored_rate if anchor_baseline else learn_rate
 		var rate := maxf(1.0 / (throws_seen + 3.0), steady_rate) if calibrating else steady_rate
+		# While calibrating, your usual is the plain average of your throws so far (the recorded prior only steadies
+		# the spreads): after ten throws it is all you, not three parts in thirteen the prior.
+		var mean_rate := 1.0 / (throws_seen + 1.0) if calibrating else rate
 		var gate := 6.0 if calibrating else (2.5 if anchor_baseline else 2.2)
 		# Learn arm slot as it would be at the usual speed, so a hard throw does not
 		# teach "low arm is normal".
 		var slot_at_usual := slot - slot_per_speed * (speed - mean_speed)
-		var f_snap := _learn(r_snap, mean_snap, sd_snap, 0.25, rate, gate)
-		var f_side := _learn(r_side, mean_side, sd_side, 0.20, rate, gate)
-		var f_gyro := _learn(r_gyro, mean_gyro, sd_gyro, 0.15, rate, gate)
-		var f_mag := _learn(r_mag, mean_mag, sd_mag, 0.30, rate, gate)
-		var f_slot := _learn(slot_at_usual, mean_slot, sd_slot, 0.08, rate, gate)
-		var f_speed := _learn(speed, mean_speed, sd_speed, 1.0, rate, gate)
+		var f_snap := _learn(r_snap, mean_snap, sd_snap, 0.25, rate, gate, mean_rate)
+		var f_side := _learn(r_side, mean_side, sd_side, 0.20, rate, gate, mean_rate)
+		var f_gyro := _learn(r_gyro, mean_gyro, sd_gyro, 0.15, rate, gate, mean_rate)
+		var f_mag := _learn(r_mag, mean_mag, sd_mag, 0.30, rate, gate, mean_rate)
+		var f_slot := _learn(slot_at_usual, mean_slot, sd_slot, 0.08, rate, gate, mean_rate)
+		var f_speed := _learn(speed, mean_speed, sd_speed, 1.0, rate, gate, mean_rate)
 		if has_wind:
-			var f_wind := _learn(wind, mean_wind, sd_wind, 0.04, rate, gate)
+			var f_wind := _learn(wind, mean_wind, sd_wind, 0.04, rate, gate, mean_rate)
 			mean_wind = f_wind.x
 			sd_wind = f_wind.y
 		if straight > 0.0:
-			var f_str := _learn(straight, mean_straight, sd_straight, 0.02, rate, gate)
+			var f_str := _learn(straight, mean_straight, sd_straight, 0.02, rate, gate, mean_rate)
 			mean_straight = f_str.x
 			sd_straight = f_str.y
 		mean_snap = f_snap.x
@@ -197,10 +219,10 @@ func shape(omega: Vector3, vel: Vector3, slot: float, hand_sign: float, extras: 
 
 ## One running mean / spread update. Skips values more than gate sd out (deliberate
 ## outliers). Returns (mean, sd).
-func _learn(value: float, mean: float, sd: float, sd_floor: float, rate: float, gate: float) -> Vector2:
+func _learn(value: float, mean: float, sd: float, sd_floor: float, rate: float, gate: float, mean_rate: float = -1.0) -> Vector2:
 	var dev := value - mean
 	if absf(dev) > gate * sd:
 		return Vector2(mean, sd)
 	var v := sd * sd
 	v += (dev * dev - v) * rate
-	return Vector2(mean + dev * rate, maxf(sd_floor, sqrt(v)))
+	return Vector2(mean + dev * (rate if mean_rate < 0.0 else mean_rate), maxf(sd_floor, sqrt(v)))

@@ -286,3 +286,48 @@ Play > Fielding > Position: 1B. When an infielder fields a grounder and throws t
 **Side effects to check**
 - **Challenges and lessons** run with signs off, so they aim at the middle of the zone. At Standard and Pro the funnel is now narrower for a steady thrower, so a corner needs a bigger deliberate shift. Are the "corners" challenge's thresholds (`scripts/scenario.gd`) still fair?
 - **Leaderboards.** The Standard and Pro boards now mix games from the old and the new aim models.
+
+## 26. Warm-up, calibration and grips
+
+**The warm-up (first run, Play > Warm up, Options > Recalibrate pitching)**
+- With no saved calibration, the main menu starts with "Warm up". Starting anything on the mound runs the warm-up first, then the game you chose.
+- Ten easy throws, then three harder ones. The batter only watches and the grip stays a four-seamer. The board shows the steps; each throw shows its speed.
+- The closing card: usual and top speed (league mph and hand speed), aim steadiness in words, a suggested assist. Then the chosen game (or the menu) after about 10 s.
+- Check:
+  - Is it clear what to do without anyone explaining?
+  - Is ten plus three the right length?
+  - Does the "harder" step invite a dangerous effort? (The text says never so hard that it hurts.)
+  - Does the suggested assist match how it felt?
+- A game's later pitches keep teaching. The calibration is saved after each pitch once it is known (user://calibration.json, one per throwing hand).
+
+**Grips (Options > Pitch choice: Grip, the default)**
+- **The sign sets the grip.** Accept it by throwing; Y shakes him off.
+- **The throwing hand's stick:**
+  - up: four-seam, cutter
+  - toward your arm side: two-seam, sinker
+  - toward your glove side: curve, slider, slurve
+  - down: changeup, splitter
+  - press: knuckleball
+  - Flick the same way again for the next grip in that family. The grip locks when your delivery starts.
+- **Seeing it.** The grip shows as fingers on the ball and its name over the ball. A tick in the controller on each change. Check that both are readable and not in the way. `tools/grip_preview.gd` renders them.
+- **Each grip's own action decides its movement:**
+
+  | Grip | Action |
+  |---|---|
+  | Slider | Twist (doorknob) |
+  | Cutter | Roll |
+  | Curve | Snap over the top, or a high windup |
+  | Two-seam / sinker | A lower arm |
+  | Changeup / splitter | Fastball arm speed (a slowed arm is the wrong way) |
+  | Knuckleball | A stiff wrist |
+
+  The four-seamer is always all there.
+- **Movement by assist.** At Standard no action gets 60% of the grip's movement and a full action (2 sd of your own wrist) gets 100%. The wrong way hangs (down to about 25%). Casual never hangs; Pro's floor is 35%. The notices say "Sharp slider!" and "Hanging curveball"; the pitch lab says how much and how to fix it.
+- **Where it ends up.** A pitch is aimed for an ordinary execution, and half the difference shows as a miss (`Grips.MISS_SHARE`). At Standard, a flat curve crosses about 0.13 m high and a hanging one about 0.4 m high; a sharp one dives below the spot.
+- **First guesses to check:**
+  - Spins are the AI pitchers' table (a 2300 rpm four-seamer, more ride than the old wrist model's 1700).
+  - The curve's action is the weakest reading in the logs (A2): is a good curve reachable?
+  - Changeup arm speed: 85% of usual is no action, each 7.5% more is one unit.
+- **Lessons.** Learn to pitch, with grips: four-seam strikes, then changeup, curve, slider and sinker, each counted only when its action was "good" or "sharp".
+- **Career.** Grips you have not learned move less (floor × 0.6, at most 85%) until learned. Throwing them often for strikes still teaches them.
+- **Freestyle** keeps the original "the way you throw is the pitch". Compare 40 pitches of each.

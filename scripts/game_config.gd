@@ -26,6 +26,7 @@ var batter := "Contact Hitter"
 var assist := "Standard"
 var scenario := ""             # a challenge id (see Scenario); "" for an ordinary game
 var tutorial := false          # the pitching lesson (a bullpen with prompts)
+var warmup := false            # the warm-up: the game learns your arm (a bullpen, a batter who never swings)
 var daily := 0                 # a daily game: the day number (days since 1970), 0 for an ordinary game
 var park := "harbor"           # which ballpark (see Park)
 var two_way := false           # pitch the top halves, bat the bottom halves yourself
@@ -47,7 +48,11 @@ func normalized() -> GameConfig:
 	c.innings = innings if innings in INNINGS else 9
 	c.batter = batter if batter in BATTERS else "Contact Hitter"
 	c.assist = assist if assist in Settings.ASSISTS else "Standard"
-	if tutorial and scenario == "" and not career:
+	if warmup and scenario == "" and not career:
+		c.warmup = true
+		c.mode = "Pitching"
+		c.activity = "Bullpen"
+	if tutorial and scenario == "" and not career and not c.warmup:
 		c.tutorial = true
 		c.mode = "Pitching"
 		c.activity = "Bullpen"
@@ -63,14 +68,14 @@ func normalized() -> GameConfig:
 		c.activity = "Game"
 		c.innings = int(Scenario.by_id(scenario).setup.get("innings", 9)) if int(Scenario.by_id(scenario).setup.get("innings", 9)) in INNINGS else 9
 	c.park = park if park in Park.ids() else Park.DEFAULT_ID
-	if daily > 0 and scenario == "" and not career and not tutorial:
+	if daily > 0 and scenario == "" and not career and not tutorial and not c.warmup:
 		# The daily game: everybody gets the same visitors and the same dice for the day, three innings.
 		c.daily = daily
 		c.mode = "Pitching"
 		c.activity = "Game"
 		c.innings = 3
 		c.park = Park.DEFAULT_ID
-	c.two_way = two_way and c.mode == "Pitching" and c.activity == "Game" and c.scenario == "" and not c.career and not c.tutorial and c.daily == 0
+	c.two_way = two_way and c.mode == "Pitching" and c.activity == "Game" and c.scenario == "" and not c.career and not c.tutorial and not c.warmup and c.daily == 0
 	# Spectating is always a full game of watching; there is nothing to practise.
 	if c.mode == "Spectate":
 		c.activity = "Game"
@@ -84,6 +89,11 @@ func normalized() -> GameConfig:
 	if c.activity == "Bullpen" and c.mode != "Pitching":
 		c.activity = "Game"
 	return c
+
+
+## Does this game have you on the mound, so the game has to know your arm first (see Warmup)?
+func needs_arm() -> bool:
+	return mode == "Pitching" and not warmup
 
 
 func is_scored() -> bool:
@@ -129,6 +139,8 @@ func title() -> String:
 		return "Daily game - %s" % Time.get_date_string_from_unix_time(daily * 86400)
 	if scenario != "":
 		return "Challenge - %s" % Scenario.by_id(scenario).title
+	if warmup:
+		return "Warm-up"
 	if tutorial:
 		return "Learn to pitch"
 	if career:
@@ -153,7 +165,7 @@ func title() -> String:
 
 func to_dict() -> Dictionary:
 	return {"mode": mode, "activity": activity, "position": position, "innings": innings,
-		"batter": batter, "assist": assist, "scenario": scenario, "career": career, "tutorial": tutorial, "two_way": two_way, "park": park, "daily": daily}
+		"batter": batter, "assist": assist, "scenario": scenario, "career": career, "tutorial": tutorial, "warmup": warmup, "two_way": two_way, "park": park, "daily": daily}
 
 
 static func from_dict(d: Dictionary) -> GameConfig:
@@ -167,6 +179,7 @@ static func from_dict(d: Dictionary) -> GameConfig:
 	c.scenario = str(d.get("scenario", ""))
 	c.career = bool(d.get("career", false))
 	c.tutorial = bool(d.get("tutorial", false))
+	c.warmup = bool(d.get("warmup", false))
 	c.two_way = bool(d.get("two_way", false))
 	c.park = str(d.get("park", Park.DEFAULT_ID))
 	c.daily = int(d.get("daily", 0))

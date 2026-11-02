@@ -23,6 +23,9 @@ var new_length := 10
 var new_innings := 3
 var can_mound_visit := false              # the pause screen offers these (the scene says when)
 var can_leave := false
+## Has the game learned your arm (a warm-up done, or enough pitches)? Until it has, the main screen starts with
+## the warm-up, and starting anything on the mound runs the warm-up first.
+var calibrated := true
 var stats_key := ""                       # the leaderboard the Stats screen is showing
 const VOLUME_ROWS := {"Master": "Master volume", "SFX": "Effects", "Crowd": "Crowd", "Music": "Music", "Voice": "Voices"}
 const VOLUME_STEPS := [0.0, 0.25, 0.5, 0.75, 1.0]
@@ -100,6 +103,8 @@ func items() -> Array[Dictionary]:
 	match screen():
 		"main":
 			var last := GameConfig.from_dict(settings.last_game) if not settings.last_game.is_empty() else null
+			if not calibrated:
+				rows.append(_row("warmup", "Warm up", "start here", true, "13 throws so the game learns your arm"))
 			if last != null:
 				rows.append(_row("continue", "Continue", last.title()))
 			rows.append(_row("play", "Play"))
@@ -111,7 +116,9 @@ func items() -> Array[Dictionary]:
 			var dkey := "Daily/%d/%s" % [day, settings.assist]
 			var dtop: Array = profile.top(dkey, 1) if profile != null else []
 			rows.append(_row("daily", "Daily game", "best today: %d" % int(dtop[0].score) if not dtop.is_empty() else "new today", true, "everyone gets the same visitors and dice today: three innings"))
-			rows.append(_row("tutorial", "Learn to pitch", "lesson %d of %d" % [mini(settings.tutorial_step + 1, Tutorial.STEPS.size()), Tutorial.STEPS.size()] if settings.tutorial_step < Tutorial.STEPS.size() else "done (replay)", true, "a short lesson: your usual throw, then one gesture per pitch"))
+			rows.append(_row("warmup", "Warm up", "start here" if not calibrated else "recalibrate", true, "13 throws: the game learns your usual throw, your aim and your top speed"))
+			rows.append(_row("tutorial", "Learn to pitch", "lesson %d of %d" % [mini(settings.tutorial_step + 1, Tutorial.STEPS.size()), Tutorial.STEPS.size()] if settings.tutorial_step < Tutorial.STEPS.size() else "done (replay)", true,
+				"a short lesson: strikes, then one grip at a time" if settings.pitch_select == "Grip" else "a short lesson: your usual throw, then one gesture per pitch"))
 			rows.append(_row("mode:Pitching", "Pitching", "you pitch to AI batters"))
 			rows.append(_row("mode:Fielding", "Fielding", "you play a position"))
 			rows.append(_row("mode:Spectate", "Spectate", "watch an AI game"))
@@ -143,6 +150,9 @@ func items() -> Array[Dictionary]:
 		"options":
 			rows.append(_row("hand", "Throwing hand", settings.hand, true, "applies next game"))
 			rows.append(_row("assist_opt", "Assist", settings.assist, true, Settings.ASSIST_NOTES.get(settings.assist, "")))
+			rows.append(_row("pitch_select", "Pitch choice", settings.pitch_select, true,
+				"the catcher's sign or a thumbstick flick picks the grip; your wrist makes it move" if settings.pitch_select == "Grip" else "the way you throw is the pitch (experimental)"))
+			rows.append(_row("recalibrate", "Recalibrate pitching", "", true, "warm up again: the game relearns your arm"))
 			rows.append(_row("quality", "Quality", settings.quality, true, "applies next game"))
 			rows.append(_row("locomotion", "Movement", settings.locomotion))
 			rows.append(_row("haptics", "Haptics", settings.haptics))
@@ -274,8 +284,23 @@ func _activities() -> Array:
 	return ["Game", "Practice", "Drill"] if config.mode == "Fielding" else ["Game", "Practice"]
 
 
-## Choose row `index` of the current screen.
+## Choose row `index` of the current screen. Anything that puts you on the mound before the game knows your
+## arm becomes the warm-up, with the game you chose to follow it ({"then": that game}).
 func activate(index: int) -> Dictionary:
+	var ev := _activate(index)
+	if String(ev.get("type", "")) == "start" and not calibrated and (ev.config as GameConfig).needs_arm():
+		return {"type": "start", "config": warmup_config(), "then": ev.config}
+	return ev
+
+
+func warmup_config() -> GameConfig:
+	var w := GameConfig.new()
+	w.warmup = true
+	w.assist = settings.assist
+	return w.normalized()
+
+
+func _activate(index: int) -> Dictionary:
 	var rows := items()
 	if index < 0 or index >= rows.size() or not rows[index].enabled:
 		return {}
@@ -417,6 +442,11 @@ func activate(index: int) -> Dictionary:
 			return {"type": "start", "config": c}
 		"hand":
 			settings.hand = _cycle(Settings.HANDS, settings.hand)
+			return {"type": "settings"}
+		"warmup", "recalibrate":
+			return {"type": "start", "config": warmup_config()}
+		"pitch_select":
+			settings.pitch_select = _cycle(Settings.PITCH_SELECT, settings.pitch_select)
 			return {"type": "settings"}
 		"assist_opt":
 			settings.assist = _cycle(Settings.ASSISTS, settings.assist)

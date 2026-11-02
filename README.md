@@ -12,9 +12,10 @@ move the controller decides the speed, the spin, and which pitch comes out. Buil
 
 ## What is in it
 
-- **Pitching by technique.** No pitch menu. A wrist snap, a twist, a lower arm slot or a slow throw
-  each produce a curveball, slider, sinker or changeup, judged against *your* usual throw.
-  Ball flight is a custom integrator (gravity, drag, Magnus), not engine physics.
+- **Grip, then motion.** The catcher's sign (or a flick of the thumbstick) puts a grip in your hand;
+  your arm decides the rest. Effort sets the speed, a steady delivery hits the glove, and the
+  pitch's own wrist action decides how much it breaks (a lazy one hangs). A warm-up learns your
+  arm first. Ball flight is a custom integrator (gravity, drag, Magnus), not engine physics.
 - **A full game.** Counts, innings, baserunning, steals, pickoffs, wild pitches, umpire calls, an
   inning card between halves, and a ghost replay of big hits.
 - **Every position.** Switch roles to bat, catch (framing and blocking), pitch, cover first base, or
